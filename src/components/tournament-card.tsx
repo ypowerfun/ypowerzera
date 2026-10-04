@@ -11,15 +11,13 @@ const tone = { DRAFT: "neutral", REGISTRATION: "ok", CHECK_IN: "warn", LIVE: "ac
 export function TournamentCard({ t, count, orgName }: { t: Tournament; count: number; orgName?: string }) {
   const game = getGame(t.gameId);
   return (
-    <Link href={`/torneios/${t.slug}`} className="group block rounded-xl border border-line bg-surface/80 p-5 transition hover:border-brand-soft/60 hover:shadow-glow focus-ring">
-      <div className="flex items-start gap-3">
+    <Link href={`/torneios/${t.slug}`} className="group block min-w-0 rounded-xl border border-line bg-surface/80 p-5 transition hover:border-brand-soft/60 hover:shadow-glow focus-ring">
+      <div className="flex items-center gap-3">
         {game && <GameBadge abbr={game.abbr} accent={game.accent} />}
-        <div className="min-w-0">
-          <h3 className="truncate font-bold group-hover:text-brand-soft">{t.name}</h3>
-          <p className="truncate text-xs text-muted">{game?.name}{orgName ? ` · ${orgName}` : ""}</p>
-        </div>
+        <p className="min-w-0 truncate text-xs text-muted">{game?.name}{orgName ? ` · ${orgName}` : ""}</p>
         <Badge tone={tone[t.status]} className="ml-auto shrink-0">{STATUS_LABELS[t.status]}</Badge>
       </div>
+      <h3 className="mt-3 line-clamp-2 font-bold group-hover:text-brand-soft">{t.name}</h3>
       <dl className="mt-4 grid grid-cols-3 gap-2 text-xs">
         <div><dt className="text-muted">Início</dt><dd className="font-semibold">{formatDateTime(t.startsAt)}</dd></div>
         <div><dt className="text-muted">Inscrição</dt><dd className="font-semibold">{t.entryFeeCents ? formatMoney(t.entryFeeCents, t.currency) : "Grátis"}</dd></div>

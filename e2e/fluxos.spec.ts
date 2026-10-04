@@ -185,3 +185,25 @@ test.describe("cabeçalhos de segurança", () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe("responsividade", () => {
+  test("sem rolagem horizontal em celular (390px), deslogado e logado", async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 800 }, locale: "pt-BR" });
+    const page = await ctx.newPage();
+    const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    for (const p of ["/", "/jogos", "/jogos/valorant", "/torneios", "/entrar", "/cadastro", "/desafios"]) {
+      await page.goto(p);
+      expect(await overflow(), `overflow em ${p}`).toBeLessThanOrEqual(0);
+    }
+    // o nome do campeonato aparece inteiro no cartão (não truncado ao lado do selo)
+    await page.goto("/torneios");
+    await expect(page.getByRole("heading", { name: "Copa PRiME de Street Fighter 6" })).toBeVisible();
+
+    await loginOk(page, "lider1@primearena.local");
+    for (const p of ["/carteira", "/desafios/novo", "/times", "/conta"]) {
+      await page.goto(p);
+      expect(await overflow(), `overflow em ${p}`).toBeLessThanOrEqual(0);
+    }
+    await ctx.close();
+  });
+});

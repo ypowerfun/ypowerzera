@@ -17,9 +17,9 @@ export async function Header() {
   const links = [...NAV, ...(user ? [{ href: "/carteira", label: "Carteira" }, { href: "/organizar", label: "Organizar" }] : [])];
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-bg/85 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-3">
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3 sm:gap-4">
         <Link href="/" aria-label="PRiME ARENA MANAGER — início" className="shrink-0 focus-ring rounded">
-          <Logo className="h-10 w-auto" />
+          <Logo className="h-8 w-auto sm:h-10" />
         </Link>
         <nav aria-label="Principal" className="ml-2 hidden items-center gap-1 md:flex">
           {links.map((l) => (
@@ -67,10 +67,10 @@ export async function Header() {
             </>
           ) : (
             <>
-              <ButtonLink href="/entrar" variant="ghost">
+              <ButtonLink href="/entrar" variant="ghost" className="whitespace-nowrap px-3! sm:px-4!">
                 Entrar
               </ButtonLink>
-              <ButtonLink href="/cadastro">Criar conta</ButtonLink>
+              <ButtonLink href="/cadastro" className="whitespace-nowrap px-3! sm:px-4!">Criar conta</ButtonLink>
             </>
           )}
         </div>
@@ -91,7 +91,7 @@ export function Footer() {
     <footer className="mt-16 border-t border-line bg-surface/60">
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 md:grid-cols-[1.2fr_1fr_1fr]">
         <div>
-          <Logo className="h-10 w-auto" />
+          <Logo className="h-8 w-auto sm:h-10" />
           <p className="mt-3 max-w-sm text-sm text-muted">Campeonatos, chaves e desafios de esports em um só lugar — LoL, Valorant, CS2, Fortnite, Apex, Battlefield 6, Warzone, TFT, Street Fighter e EA FC.</p>
         </div>
         <div className="text-sm">
