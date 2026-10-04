@@ -18,7 +18,7 @@ export default async function AdminKyc() {
         <Card key={k.id} className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div><p className="font-bold">{k.fullName}</p><p className="text-xs text-muted">@{k.user.username} · {k.user.email} {k.user.emailVerifiedAt ? "(e-mail verificado)" : "(e-mail NÃO verificado)"} · conta de {formatDate(k.user.createdAt)}</p></div>
-            <div className="text-right text-sm"><p>CPF •••.•••.•••-{k.cpfLast4.slice(-2)} <span className="text-xs text-muted">(final {k.cpfLast4})</span></p><p className="text-xs text-muted">Nasc. {formatDate(k.birthDate, "UTC")} · {ageInYears(k.birthDate)} anos · enviado {formatDateTime(k.submittedAt)}</p></div>
+            <div className="text-left text-sm sm:text-right"><p>CPF •••.•••.•••-{k.cpfLast4.slice(-2)} <span className="text-xs text-muted">(final {k.cpfLast4})</span></p><p className="text-xs text-muted">Nasc. {formatDate(k.birthDate, "UTC")} · {ageInYears(k.birthDate)} anos · enviado {formatDateTime(k.submittedAt)}</p></div>
           </div>
           <div className="flex flex-wrap gap-3">
             <ActionForm action={reviewKycAction} className="" submit="Aprovar" submitClassName=""><input type="hidden" name="userId" value={k.userId} /><input type="hidden" name="decision" value="approve" /></ActionForm>

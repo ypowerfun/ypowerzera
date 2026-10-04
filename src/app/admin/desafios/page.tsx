@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { resolveChallengeAction } from "@/app/actions/admin";
 import { ActionForm } from "@/components/action-form";
-import { Alert, Badge, Card, Empty, Input, PageTitle } from "@/components/ui";
+import { Alert, Badge, Card, Empty, Input, PageTitle, Select } from "@/components/ui";
 import { getGame } from "@/games";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/dates";
@@ -27,8 +27,8 @@ export default async function AdminChallenges() {
           </dl>
           <ActionForm action={resolveChallengeAction} className="flex flex-wrap items-end gap-2" submit="Decidir" submitClassName="">
             <input type="hidden" name="challengeId" value={c.id} />
-            <select name="outcome" className="rounded-lg border border-line bg-bg px-3 py-2.5 text-sm" aria-label="Decisão"><option value="creator">Vence {c.creatorTeam.name}</option><option value="opponent">Vence {c.opponentTeam?.name}</option><option value="void">Anular (devolver as apostas)</option></select>
-            <Input name="note" required minLength={10} placeholder="Fundamento da decisão (as equipes verão)" className="w-96" />
+            <Select name="outcome" aria-label="Decisão" className="w-full sm:w-auto"><option value="creator">Vence {c.creatorTeam.name}</option><option value="opponent">Vence {c.opponentTeam?.name}</option><option value="void">Anular (devolver as apostas)</option></Select>
+            <Input name="note" required minLength={10} placeholder="Fundamento (as equipes verão)" className="w-full sm:w-96" />
           </ActionForm>
         </Card>
       ))}

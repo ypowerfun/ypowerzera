@@ -65,14 +65,12 @@ body::before {
   background: rgb(47 134 255 / 0.5);
 }
 
-a {
-  color: inherit;
-}
+/* links herdam a cor do pai: já é feito pelo preflight do Tailwind (@layer base); uma regra aqui, fora de camada, anularia todo text-* em <a> */
 
 /* barras de rolagem discretas */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #26397a transparent;
+  scrollbar-color: #4a63b8 transparent;
 }
 
 input,

@@ -25,9 +25,9 @@ export default async function WalletHome() {
         <div className="grid gap-4 md:grid-cols-2">
           {teams.map(({ team }) => (
             <Link key={team.id} href={`/carteira/${team.id}`} className="focus-ring rounded-xl">
-              <Card className="h-full transition hover:border-brand-soft/60 hover:shadow-glow">
+              <Card className="@container h-full transition hover:border-gold/50 hover:shadow-gold">
                 <div className="mb-3 flex items-center justify-between"><h2 className="font-bold">[{team.tag}] {team.name}</h2>{team.wallet?.frozenAt && <Badge tone="danger">congelada</Badge>}</div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 @md:grid-cols-2">
                   <Stat label="Disponível" value={formatMoney(team.wallet?.balanceCents ?? 0)} tone="ok" />
                   <Stat label="Em custódia" value={formatMoney(team.wallet?.lockedCents ?? 0)} />
                 </div>

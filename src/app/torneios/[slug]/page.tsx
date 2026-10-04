@@ -15,6 +15,7 @@ import { ActionForm } from "@/components/action-form";
 import { EliminationBracket, LeaderboardTable, RoundList, StandingsTable } from "@/components/bracket";
 import { RichText } from "@/components/rich-text";
 import { Alert, Badge, ButtonLink, Card, Empty, GameBadge, Table, Td, Th, cx } from "@/components/ui";
+import { ScrollTabs } from "@/components/scroll-tabs";
 import type { RosterMember } from "@/server/types";
 
 export const dynamic = "force-dynamic";
@@ -69,13 +70,13 @@ export default async function TournamentPage({ params, searchParams }: { params:
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="min-w-0 space-y-5">
-          <nav className="flex gap-1 overflow-x-auto border-b border-line" aria-label="Seções">
+          <ScrollTabs label="Seções" className="border-b border-line">
             {tabs.map(([k, label]) => (
               <Link key={k} href={`/torneios/${t.slug}?aba=${k}`} aria-current={tab === k ? "page" : undefined} className={cx("whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold", tab === k ? "border-brand text-brand-soft" : "border-transparent text-muted hover:text-ink")}>
                 {label}
               </Link>
             ))}
-          </nav>
+          </ScrollTabs>
 
           {tab === "visao-geral" && (
             <div className="space-y-5">
@@ -99,7 +100,7 @@ export default async function TournamentPage({ params, searchParams }: { params:
               </Card>
               {(t.prizePoolCents > 0 || prizes.length > 0) && (
                 <Card>
-                  <h2 className="mb-3 font-bold">Premiação <span className="text-accent">{formatMoney(t.prizePoolCents, t.currency)}</span></h2>
+                  <h2 className="mb-3 font-bold">Premiação <span className="font-black text-gold">{formatMoney(t.prizePoolCents, t.currency)}</span></h2>
                   {prizes.length > 0 ? (
                     <ul className="space-y-1.5 text-sm">{prizes.map((p) => <li key={p.id} className="flex justify-between"><span>{p.placement}º · {p.participant.name}</span><span className="font-bold">{formatMoney(p.amountCents, t.currency)} {p.status === "PAID" && <Badge tone="ok">pago</Badge>}</span></li>)}</ul>
                   ) : (
@@ -138,7 +139,7 @@ export default async function TournamentPage({ params, searchParams }: { params:
             {t.entryFeeCents > 0 && <p className="-mt-2 text-xs text-muted">+ {formatMoney(price.serviceFeeCents, t.currency)} de taxa de serviço = <b className="text-ink">{formatMoney(price.totalCents, t.currency)}</b></p>}
             <div>
               <div className="mb-1 flex justify-between text-xs text-muted"><span>Vagas</span><span>{slots}/{t.maxParticipants}{waitlist ? ` · ${waitlist} na fila` : ""}</span></div>
-              <div className="h-2 overflow-hidden rounded-full bg-elevated"><div className="h-full rounded-full bg-gradient-to-r from-brand to-accent" style={{ width: `${Math.min(100, (slots / t.maxParticipants) * 100)}%` }} /></div>
+              <div className="h-2 overflow-hidden rounded-full bg-elevated"><div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-soft" style={{ width: `${Math.min(100, (slots / t.maxParticipants) * 100)}%` }} /></div>
             </div>
             <Registration t={t} mine={mine} user={!!user} reg={reg} ci={ci} full={full} />
             {t.entryFeeCents > 0 && <p className="text-[11px] leading-snug text-muted">Reembolso automático ao desistir {refundsOnWithdrawal(t) ? "até o início do check-in" : "(janela encerrada)"}. Cancelamento pela organização devolve tudo.</p>}

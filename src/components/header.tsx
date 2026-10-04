@@ -3,6 +3,7 @@ import { logoutAction } from "@/app/actions/auth";
 import { getCurrentUser } from "@/server/session";
 import { unreadCount } from "@/server/notifications";
 import { Logo } from "./logo";
+import { ScrollTabs } from "./scroll-tabs";
 import { ButtonLink } from "./ui";
 
 const NAV = [
@@ -40,12 +41,12 @@ export async function Header() {
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.700 21a2 2 0 0 1-3.400 0" />
                 </svg>
-                {unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold text-bg">{unread > 9 ? "9+" : unread}</span>}
+                {unread > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-gold px-1 text-center text-[10px] font-bold text-[#1b1203]">{unread > 9 ? "9+" : unread}</span>}
               </Link>
               <details className="relative">
                 <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg border border-line bg-elevated px-3 py-2 text-sm font-semibold focus-ring">
                   <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-strong text-xs font-extrabold">{user.displayName.slice(0, 1).toUpperCase()}</span>
-                  <span className="hidden max-w-32 truncate sm:inline">{user.displayName}</span>
+                  <span className="hidden max-w-44 truncate sm:inline">{user.displayName}</span>
                 </summary>
                 <div className="absolute right-0 mt-2 w-56 rounded-xl border border-line bg-surface p-1.5 shadow-2xl">
                   {[
@@ -67,21 +68,21 @@ export async function Header() {
             </>
           ) : (
             <>
-              <ButtonLink href="/entrar" variant="ghost" className="whitespace-nowrap px-3! sm:px-4!">
+              <ButtonLink href="/entrar" variant="ghost" className="whitespace-nowrap px-3 sm:px-4">
                 Entrar
               </ButtonLink>
-              <ButtonLink href="/cadastro" className="whitespace-nowrap px-3! sm:px-4!">Criar conta</ButtonLink>
+              <ButtonLink href="/cadastro" className="whitespace-nowrap px-3 sm:px-4">Criar conta</ButtonLink>
             </>
           )}
         </div>
       </div>
-      <nav aria-label="Principal (mobile)" className="flex gap-1 overflow-x-auto border-t border-line-soft px-3 py-1.5 md:hidden">
+      <ScrollTabs label="Principal (mobile)" wrapperClassName="border-t border-line-soft md:hidden" className="px-3 py-1.5">
         {links.map((l) => (
           <Link key={l.href} href={l.href} className="whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-muted hover:bg-elevated hover:text-ink">
             {l.label}
           </Link>
         ))}
-      </nav>
+      </ScrollTabs>
       <div aria-hidden className="glow-line opacity-80" />
     </header>
   );

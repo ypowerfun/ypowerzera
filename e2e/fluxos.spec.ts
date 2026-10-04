@@ -240,3 +240,39 @@ test.describe("marca Prime Arena One", () => {
     expect(await art.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
   });
 });
+
+test.describe("regressões da revisão visual", () => {
+  const lum = (c: string) => { const [r, g, b] = c.match(/\d+/g)!.map(Number); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+
+  test("botão dourado tem texto escuro (a cor do link não sobrescreve o utilitário)", async ({ page }) => {
+    await page.goto("/");
+    const gold = page.getByRole("link", { name: "Criar um campeonato", exact: true }).first();
+    expect(lum(await gold.evaluate((e) => getComputedStyle(e).color))).toBeLessThan(60); // texto escuro sobre o ouro
+    // links com text-brand-soft realmente ficam azuis (não herdam o branco do pai)
+    const soft = page.getByRole("link", { name: /Ver todos/ }).first();
+    const [r, , b] = (await soft.evaluate((e) => getComputedStyle(e).color)).match(/\d+/g)!.map(Number);
+    expect(b).toBeGreaterThan(r + 60);
+  });
+
+  test("404 usa o tema escuro, com cabeçalho e caminhos de volta", async ({ page }) => {
+    const res = await page.goto("/pagina-que-nao-existe");
+    expect(res?.status()).toBe(404);
+    await expect(page.getByRole("heading", { name: "Página não encontrada" })).toBeVisible();
+    expect(lum(await page.evaluate(() => getComputedStyle(document.body).backgroundColor))).toBeLessThan(60);
+    await expect(page.getByRole("link", { name: "Voltar ao início" })).toBeVisible();
+  });
+
+  test("/jogos/cs2 leva ao endereço oficial do jogo", async ({ page }) => {
+    await page.goto("/jogos/cs2");
+    await expect(page).toHaveURL(/\/jogos\/counter-strike-2$/);
+    await expect(page.getByRole("heading", { name: "Counter-Strike 2", level: 1 })).toBeVisible();
+  });
+
+  test("barra do admin marca a página atual", async ({ page }) => {
+    await loginOk(page, "admin@primearena.local");
+    await page.goto("/admin/kyc");
+    const nav = page.getByRole("navigation", { name: "Administração" });
+    await expect(nav.locator("[aria-current='page']")).toHaveText("KYC");
+    await expect(nav.locator("[aria-current='page']")).toHaveCount(1);
+  });
+});

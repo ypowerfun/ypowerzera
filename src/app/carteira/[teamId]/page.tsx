@@ -69,12 +69,12 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
         <Stat label="Retido por segurança" value={formatMoney(Math.max(0, b.balanceCents - b.withdrawableCents))} tone="warn" hint="Depósito sem giro / recente / prêmio < 24h" />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid items-start gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-1 font-bold">Depositar via Pix</h2>
           <p className="mb-4 text-sm text-muted">1 crédito = R$ 1,00. Entre {formatMoney(cfg.depositMinCents)} e {formatMoney(cfg.depositMaxCents)} por Pix. O Pix precisa ser pago com o <b>seu CPF</b>.</p>
           {pixDeposit && pixDeposit.status === "PENDING" && (
-            <div className="mb-4 space-y-3 rounded-lg border border-accent/40 bg-accent/5 p-4">
+            <div className="mb-4 space-y-3 rounded-lg border border-gold/40 bg-gold/5 p-4">
               <meta httpEquiv="refresh" content="6" />
               <p className="text-sm font-semibold">Pague {formatMoney(pixDeposit.amountCents)} no Pix até {formatDateTime(pixDeposit.expiresAt)}</p>
               {pixDeposit.pixQrImage && /^[A-Za-z0-9+/=]+$/.test(pixDeposit.pixQrImage) && (
@@ -167,15 +167,15 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
       <section>
         <h2 className="mb-3 font-bold">Extrato</h2>
         {ledger.length === 0 ? <Empty title="Sem movimentações" /> : (
-          <Table>
-            <thead><tr><Th>Data</Th><Th>Movimento</Th><Th className="text-right">Disponível</Th><Th className="text-right">Custódia</Th><Th className="text-right">Saldo</Th></tr></thead>
+          <Table tableClassName="min-w-0 sm:min-w-[32rem]">
+            <thead><tr><Th>Data</Th><Th>Movimento</Th><Th className="text-right">Disp.</Th><Th className="hidden text-right sm:table-cell">Custódia</Th><Th className="text-right">Saldo</Th></tr></thead>
             <tbody>
               {ledger.map((e) => (
                 <tr key={e.id}>
-                  <Td className="text-muted">{formatDateTime(e.createdAt)}</Td>
+                  <Td className="whitespace-nowrap text-muted">{formatDateTime(e.createdAt)}</Td>
                   <Td>{ledgerLabel[e.type] ?? e.type}{e.memo && <span className="block text-xs text-muted">{e.memo}</span>}</Td>
                   <Td className={`text-right tabular-nums ${e.availableDeltaCents > 0 ? "text-ok" : e.availableDeltaCents < 0 ? "text-danger" : "text-muted"}`}>{e.availableDeltaCents ? formatMoney(e.availableDeltaCents) : "—"}</Td>
-                  <Td className="text-right tabular-nums text-muted">{e.lockedDeltaCents ? formatMoney(e.lockedDeltaCents) : "—"}</Td>
+                  <Td className="hidden text-right tabular-nums text-muted sm:table-cell">{e.lockedDeltaCents ? formatMoney(e.lockedDeltaCents) : "—"}</Td>
                   <Td className="text-right font-semibold tabular-nums">{formatMoney(e.balanceAfterCents)}</Td>
                 </tr>
               ))}

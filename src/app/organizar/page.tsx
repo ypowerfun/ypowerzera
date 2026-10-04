@@ -55,14 +55,14 @@ export default async function OrganizerHome() {
             {tournaments.length === 0 ? (
               <Empty title="Você ainda não criou campeonatos"><Link href="/organizar/novo" className="text-brand-soft hover:underline">Criar o primeiro</Link></Empty>
             ) : (
-              <Table>
-                <thead><tr><Th>Campeonato</Th><Th>Jogo</Th><Th>Início</Th><Th>Inscritos</Th><Th>Situação</Th></tr></thead>
+              <Table tableClassName="min-w-0 sm:min-w-[32rem]">
+                <thead><tr><Th>Campeonato</Th><Th className="hidden sm:table-cell">Jogo</Th><Th className="hidden sm:table-cell">Início</Th><Th>Inscritos</Th><Th>Situação</Th></tr></thead>
                 <tbody>
                   {tournaments.map((t) => (
                     <tr key={t.id}>
-                      <Td><Link href={`/organizar/${t.id}`} className="font-semibold hover:text-brand-soft">{t.name}</Link><span className="block text-xs text-muted">{t.org.name}</span></Td>
-                      <Td>{getGame(t.gameId)?.abbr}</Td>
-                      <Td className="text-muted">{formatDateTime(t.startsAt)}</Td>
+                      <Td><Link href={`/organizar/${t.id}`} className="font-semibold hover:text-brand-soft">{t.name}</Link><span className="block text-xs text-muted">{t.org.name}</span><span className="block text-xs text-muted sm:hidden">{getGame(t.gameId)?.abbr} · {formatDateTime(t.startsAt)}</span></Td>
+                      <Td className="hidden sm:table-cell">{getGame(t.gameId)?.abbr}</Td>
+                      <Td className="hidden text-muted sm:table-cell">{formatDateTime(t.startsAt)}</Td>
                       <Td>{t._count.participants}/{t.maxParticipants}</Td>
                       <Td><Badge tone={t.status === "LIVE" ? "accent" : t.status === "REGISTRATION" ? "ok" : t.status === "CANCELED" ? "danger" : "neutral"}>{STATUS_LABELS[t.status]}</Badge></Td>
                     </tr>

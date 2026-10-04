@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { getGameBySlug } from "@/games";
+import { notFound, redirect } from "next/navigation";
+import { getGame, getGameBySlug } from "@/games";
 import { describeStage } from "@/engine";
 import { db } from "@/lib/db";
 import { TournamentCard } from "@/components/tournament-card";
@@ -14,8 +14,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function GamePage({ params }: { params: Promise<{ slug: string }> }) {
-  const game = getGameBySlug((await params).slug);
-  if (!game) notFound();
+  const { slug } = await params;
+  const game = getGameBySlug(slug);
+  if (!game) {
+    const byId = getGame(slug); // aceita o id curto (ex.: /jogos/cs2) e leva ao endereço oficial
+    if (byId) redirect(`/jogos/${byId.slug}`);
+    notFound();
+  }
   const tournaments = await db.tournament.findMany({
     where: { gameId: game.id, visibility: "PUBLIC", status: { in: ["REGISTRATION", "CHECK_IN", "LIVE"] } },
     orderBy: { startsAt: "asc" },
@@ -26,14 +31,15 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
     <div className="space-y-10">
       <header className="flex flex-wrap items-center gap-4">
         <GameBadge abbr={game.abbr} accent={game.accent} size="lg" />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-3xl font-black">{game.name}</h1>
-          <p className="text-muted">{game.tagline}</p>
+        <div className="min-w-0 flex-1 basis-48">
+          <h1 className="break-words text-3xl font-black">{game.name}</h1>
+          <span aria-hidden className="mt-2 block h-0.5 w-12 rounded-full bg-gradient-to-r from-gold to-transparent" />
+          <p className="mt-2 text-muted">{game.tagline}</p>
         </div>
-        <ButtonLink href={`/organizar/novo?jogo=${game.id}`}>Criar campeonato de {game.abbr}</ButtonLink>
+        <ButtonLink href={`/organizar/novo?jogo=${game.id}`} className="w-full sm:w-auto">Criar campeonato de {game.abbr}</ButtonLink>
       </header>
 
-      <section className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <section className="grid items-start gap-6 lg:grid-cols-[1.4fr_1fr]">
         <Card>
           <h2 className="mb-2 font-bold">Sobre</h2>
           <p className="text-sm leading-relaxed text-muted">{game.description}</p>
@@ -70,7 +76,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
               <p className="mt-1 text-sm text-muted">{p.description}</p>
               <ol className="mt-3 space-y-1 text-xs">
                 {p.stages.map((s, i) => (
-                  <li key={i} className="flex gap-2"><span className="font-bold text-accent">{i + 1}.</span><span><b>{s.name}:</b> <span className="text-muted">{describeStage(s.settings)}</span></span></li>
+                  <li key={i} className="flex gap-2"><span className="font-bold text-gold">{i + 1}.</span><span><b>{s.name}:</b> <span className="text-muted">{describeStage(s.settings)}</span></span></li>
                 ))}
               </ol>
               <p className="mt-3 text-xs text-muted">{p.minParticipants === p.maxParticipants ? `${p.minParticipants} participantes` : `${p.minParticipants} a ${p.maxParticipants} participantes (ideal: ${p.suggestedParticipants})`}</p>
@@ -80,13 +86,13 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      <section className="grid items-start gap-6 lg:grid-cols-2">
         <Card>
           <h2 className="mb-2 font-bold">Configurações de partida</h2>
           <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">{game.matchSettings.map((m, i) => <li key={i}>{m}</li>)}</ul>
           {game.mapPool && (
             <div className="mt-4">
-              <h3 className="mb-1 text-sm font-bold">Pool de mapas {game.vetoSupported && <Badge tone="accent">veto na plataforma</Badge>}</h3>
+              <h3 className="mb-1 text-sm font-bold">Pool de mapas {game.vetoSupported && <Badge tone="brand">veto na plataforma</Badge>}</h3>
               <p className="mb-2 text-xs text-muted">{game.mapPool.label}</p>
               <div className="flex flex-wrap gap-1.5">{game.mapPool.maps.map((m) => <Badge key={m}>{m}</Badge>)}</div>
             </div>

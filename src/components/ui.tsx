@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
+import { cx } from "@/lib/cx";
+import { ScrollTable } from "./scroll-table";
 
-export const cx = (...c: Array<string | false | null | undefined>) => c.filter(Boolean).join(" ");
+export { cx };
 
 const btnBase =
   "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition focus-ring disabled:opacity-50 disabled:cursor-not-allowed";
@@ -88,7 +90,7 @@ export function Field({ label, hint, error, children, htmlFor }: { label: string
   );
 }
 
-const inputBase = "w-full rounded-lg border border-line bg-bg/70 px-3 py-2.5 text-sm text-ink placeholder:text-muted/60 focus-ring focus:border-brand-soft";
+const inputBase = "w-full max-w-full rounded-lg border border-line bg-bg/70 px-3 py-2.5 text-sm text-ink placeholder:text-muted/90 focus-ring focus:border-brand-soft";
 
 export function Input({ className, ...rest }: ComponentProps<"input">) {
   return <input className={cx(inputBase, className)} {...rest} />;
@@ -115,25 +117,25 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 
 export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "ok" | "warn" | "brand" | "gold" }) {
   return (
-    <div className="rounded-xl border border-line bg-elevated/60 p-4">
+    <div className="min-w-0 rounded-xl border border-line bg-elevated/60 p-4">
       <p className="text-xs uppercase tracking-wider text-muted">{label}</p>
-      <p className={cx("mt-1 text-2xl font-extrabold", tone === "ok" && "text-ok", tone === "warn" && "text-warn", tone === "brand" && "text-brand-soft", tone === "gold" && "text-gold")}>{value}</p>
+      <p className={cx("mt-1 text-xl font-extrabold sm:text-2xl", tone === "ok" && "text-ok", tone === "warn" && "text-warn", tone === "brand" && "text-brand-soft", tone === "gold" && "text-gold")}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );
 }
 
-export function Table({ children, className }: { children: ReactNode; className?: string }) {
+export function Table({ children, className, tableClassName }: { children: ReactNode; className?: string; tableClassName?: string }) {
   return (
-    <div className={cx("overflow-x-auto rounded-xl border border-line", className)}>
-      <table className="w-full min-w-[32rem] text-left text-sm">{children}</table>
-    </div>
+    <ScrollTable className={className} tableClassName={tableClassName}>
+      {children}
+    </ScrollTable>
   );
 }
 export const Th = ({ children, className }: { children?: ReactNode; className?: string }) => (
-  <th className={cx("bg-elevated/70 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted", className)}>{children}</th>
+  <th className={cx("bg-elevated/70 px-2 py-2 text-xs sm:px-3 font-semibold uppercase tracking-wider text-muted", className)}>{children}</th>
 );
-export const Td = ({ children, className }: { children?: ReactNode; className?: string }) => <td className={cx("border-t border-line-soft px-3 py-2.5 align-middle", className)}>{children}</td>;
+export const Td = ({ children, className }: { children?: ReactNode; className?: string }) => <td className={cx("border-t border-line-soft px-2 py-2.5 align-middle sm:px-3", className)}>{children}</td>;
 
 export function GameBadge({ abbr, accent, size = "md" }: { abbr: string; accent: string; size?: "sm" | "md" | "lg" }) {
   const dims = { sm: "h-7 min-w-7 text-[10px]", md: "h-10 min-w-10 text-xs", lg: "h-14 min-w-14 text-sm" }[size];
@@ -148,11 +150,11 @@ export function GameBadge({ abbr, accent, size = "md" }: { abbr: string; accent:
 export function SectionTitle({ id, children, action }: { id?: string; children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-4 flex items-end justify-between gap-3">
-      <h2 id={id} className="flex items-center gap-2.5 text-lg font-black uppercase italic tracking-wide sm:text-xl">
+      <h2 id={id} className="flex min-w-0 items-center gap-2.5 text-lg font-black uppercase italic tracking-wide sm:text-xl">
         <span aria-hidden className="h-4 w-1.5 -skew-x-12 rounded-[2px] bg-gradient-to-b from-gold to-gold-deep" />
         {children}
       </h2>
-      {action}
+      {action && <div className="shrink-0 whitespace-nowrap text-right">{action}</div>}
     </div>
   );
 }

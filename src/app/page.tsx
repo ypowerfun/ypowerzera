@@ -65,12 +65,12 @@ export default async function Home() {
       </section>
 
       <section aria-labelledby="jogos">
-        <SectionTitle id="jogos" action={<Link href="/jogos" className="text-sm text-brand-soft hover:underline">Ver formatos de cada jogo →</Link>}>Jogos suportados</SectionTitle>
+        <SectionTitle id="jogos" action={<Link href="/jogos" className="text-sm text-brand-soft hover:underline"><span className="hidden sm:inline">Ver formatos de cada jogo</span><span className="sm:hidden">Ver formatos</span> →</Link>}>Jogos suportados</SectionTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {GAMES.map((g) => (
             <Link key={g.id} href={`/jogos/${g.slug}`} className="flex min-w-0 items-center gap-3 rounded-xl border border-line bg-surface/80 p-3 transition hover:-translate-y-0.5 hover:border-gold/50 hover:shadow-gold focus-ring">
               <GameBadge abbr={g.abbr} accent={g.accent} />
-              <span className="min-w-0"><span className="block truncate text-sm font-bold">{g.name}</span><span className="block truncate text-xs text-muted">{g.category}</span></span>
+              <span className="min-w-0"><span className="block text-sm font-bold leading-tight">{g.name}</span><span className="block truncate text-xs text-muted">{g.category}</span></span>
             </Link>
           ))}
         </div>

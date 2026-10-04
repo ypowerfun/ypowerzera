@@ -235,6 +235,30 @@ describe("depósitos Pix", () => {
     expect((await reconcileAll()).ok).toBe(true);
   });
 
+  it("PIX_REQUIRE_PAYER_DOC: sem CPF do pagador o depósito fica retido para o admin; sem a chave, credita", async () => {
+    const l = await makeLeader();
+    const before = process.env.PIX_REQUIRE_PAYER_DOC;
+    try {
+      process.env.PIX_REQUIRE_PAYER_DOC = "true";
+      const { dep } = await fund(l, 5_000, { payerCpf: null });
+      const held = await db.deposit.findUniqueOrThrow({ where: { id: dep.id } });
+      expect(held.status).toBe("HELD");
+      expect(held.holdReason).toMatch(/não informou/);
+      expect((await balances(l.walletId)).available).toBe(0);
+      await resolveHeldDeposit(await admin(), dep.id, "credit", "Conferi no painel do banco: pagador é o titular");
+      expect((await balances(l.walletId)).available).toBe(5_000);
+
+      process.env.PIX_REQUIRE_PAYER_DOC = "false";
+      const { dep: dep2 } = await fund(l, 3_000, { payerCpf: null });
+      expect((await db.deposit.findUniqueOrThrow({ where: { id: dep2.id } })).status).toBe("CONFIRMED");
+      expect((await balances(l.walletId)).available).toBe(8_000);
+      expect((await reconcileAll()).ok).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.PIX_REQUIRE_PAYER_DOC;
+      else process.env.PIX_REQUIRE_PAYER_DOC = before;
+    }
+  });
+
   it("pagamento tardio (Pix expirado) ainda é creditado", async () => {
     const l = await makeLeader();
     const dep = await createDeposit(l.user, { teamId: l.team.id, amountCents: 10_000 });

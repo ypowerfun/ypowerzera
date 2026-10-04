@@ -77,6 +77,8 @@ export async function confirmDeposit(chargeId: string): Promise<ConfirmResult> {
   const payerHash = info.payerDocument ? hmacHex(onlyDigits(info.payerDocument), "cpf") : null;
   if (info.amountCents !== dep.amountCents) {
     hold = `Valor pago (${formatMoney(info.amountCents)}) diverge do valor da cobrança (${formatMoney(dep.amountCents)}).`;
+  } else if (!payerHash && getEnv().pixRequirePayerDoc) {
+    hold = "O provedor não informou o CPF de quem pagou. Confira no painel do banco se foi o titular e libere manualmente.";
   } else if (payerHash) {
     const kyc = await db.kycProfile.findUnique({ where: { userId: dep.userId } });
     if (!kyc || kyc.cpfHash !== payerHash) hold = "O CPF de quem pagou não confere com o titular da conta (terceiros não podem depositar).";

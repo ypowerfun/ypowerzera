@@ -27,7 +27,7 @@ export default async function FinancePage({ params }: { params: Promise<{ id: st
         <Stat label="Arrecadado (líquido de cupons)" value={formatMoney(f.gross)} tone="ok" hint={`${f.paidCount} pedido(s) pagos`} />
         <Stat label="Reembolsado" value={formatMoney(f.refunded)} />
         <Stat label="Taxa de serviço (plataforma)" value={formatMoney(f.fees)} hint="paga pelo jogador, não sai da sua receita" />
-        <Stat label="Premiação definida" value={formatMoney(t.prizePoolCents)} tone="brand" />
+        <Stat label="Premiação definida" value={formatMoney(t.prizePoolCents)} tone="gold" />
       </section>
 
       <section>

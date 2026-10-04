@@ -101,6 +101,8 @@ Nenhum sistema é "à prova de fraude". O desenho reduz a superfície e faz as f
 
 ## Produção
 
+> **Pix real (depósito e saque com liberação do admin):** guia completo em [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md), da conta no provedor até o QR Code e o saque funcionando, e o que precisa ser resolvido antes (conformidade do provedor).
+
 1. **Banco**: troque o `provider` em `prisma/schema.prisma` para `postgresql` (recomendado — SQLite é só para dev) e use `DATABASE_URL` de um Postgres com backup.
 2. **Segredos** (veja `.env.example`): `APP_SECRET` (≥ 32), `DATA_ENCRYPTION_KEY` (**faça backup**: sem ela os CPFs cifrados não se recuperam), `CRON_SECRET`, chaves do provedor de pagamento e de Pix.
 3. **Proxy**: defina `TRUST_PROXY=true` apenas atrás de um proxy/CDN que **sobrescreve** `x-forwarded-for`; caso contrário `false`.

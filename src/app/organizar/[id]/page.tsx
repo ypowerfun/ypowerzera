@@ -91,7 +91,7 @@ export default async function ManagePage({ params, searchParams }: { params: Pro
           </ol>
           <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-4 text-sm">
             <div><dt className="text-xs text-muted">Inscrição</dt><dd className="font-semibold">{t.entryFeeCents ? formatMoney(t.entryFeeCents) : "Grátis"}</dd></div>
-            <div><dt className="text-xs text-muted">Premiação</dt><dd className="font-semibold">{t.prizePoolCents ? formatMoney(t.prizePoolCents) : "—"}</dd></div>
+            <div><dt className="text-xs text-muted">Premiação</dt><dd className={t.prizePoolCents ? "font-black text-gold" : "font-semibold"}>{t.prizePoolCents ? formatMoney(t.prizePoolCents) : "—"}</dd></div>
           </dl>
         </Card>
       </div>

@@ -40,6 +40,8 @@ export function getEnv() {
     asaasTransferAuthToken: process.env.ASAAS_TRANSFER_AUTH_TOKEN ?? "",
     walletEnabled: bool(process.env.WALLET_ENABLED, true),
     payoutsPaused: bool(process.env.PAYOUTS_PAUSED, false),
+    /** Com `true`, depósito cujo pagador o provedor não informou (ex.: Asaas) fica retido para o admin em vez de creditar. */
+    pixRequirePayerDoc: bool(process.env.PIX_REQUIRE_PAYER_DOC, false),
     /** Só confie em x-forwarded-for se houver um proxy/CDN seu na frente que SOBRESCREVE o cabeçalho. */
     trustProxy: process.env.TRUST_PROXY === undefined || process.env.TRUST_PROXY === "" ? null : bool(process.env.TRUST_PROXY),
   };

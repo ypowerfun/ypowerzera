@@ -21,7 +21,7 @@ export default function GamesPage() {
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     <Badge tone="brand">{g.category}</Badge>
                     {g.modes.map((m) => <Badge key={m.id}>{m.label}</Badge>)}
-                    <Badge tone="accent">{g.presets.length} formatos</Badge>
+                    <Badge tone="gold">{g.presets.length} formatos</Badge>
                   </div>
                 </div>
               </div>
