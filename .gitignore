@@ -1,0 +1,27 @@
+node_modules/
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+
+# local database
+prisma/*.db
+prisma/*.db-journal
+prisma/data/
+
+# dev mailbox
+.dev-mail/
+
+# tests
+test-results/
+playwright-report/
+.test-db/
+
+.DS_Store

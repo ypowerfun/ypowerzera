@@ -1,0 +1,900 @@
+// Ypowerzera — plataforma de campeonatos de esports.
+//
+// Desenvolvimento: SQLite. Produção: troque `provider` para "postgresql" e ajuste DATABASE_URL.
+// Todos os valores monetários são inteiros em centavos.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum Role {
+  USER
+  ORGANIZER
+  ADMIN
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum TournamentStatus {
+  DRAFT
+  REGISTRATION
+  CHECK_IN
+  LIVE
+  COMPLETED
+  CANCELED
+}
+
+enum Visibility {
+  PUBLIC
+  UNLISTED
+}
+
+enum SeedingMethod {
+  MANUAL
+  RANDOM
+  RATING
+}
+
+enum StageStatus {
+  PENDING
+  LIVE
+  COMPLETED
+}
+
+enum ParticipantStatus {
+  PENDING_PAYMENT
+  REGISTERED
+  CHECKED_IN
+  WAITLIST
+  DISQUALIFIED
+  WITHDRAWN
+}
+
+enum MatchStatus {
+  PENDING
+  READY
+  REPORTED
+  DISPUTED
+  COMPLETED
+  BYE
+  SKIPPED
+}
+
+enum TeamRole {
+  CAPTAIN
+  PLAYER
+  SUB
+  COACH
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+}
+
+enum TokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+  EXPIRED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PrizeStatus {
+  PENDING
+  PAID
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum WalletKind {
+  TEAM
+  PLATFORM
+}
+
+enum LedgerType {
+  DEPOSIT
+  DEPOSIT_REVERSAL
+  WITHDRAWAL_HOLD
+  WITHDRAWAL_RELEASE
+  WITHDRAWAL_PAID
+  STAKE_LOCK
+  /// Stake devolvida (desafio cancelado, expirado ou anulado): não conta como "jogado".
+  STAKE_REFUND
+  /// Stake perdida: sai da carteira do perdedor.
+  STAKE_LOSS
+  /// Stake própria devolvida ao vencedor após o desafio ser jogado.
+  STAKE_RETURN
+  PRIZE_WIN
+  FEE
+  ADJUSTMENT
+}
+
+enum DepositStatus {
+  PENDING
+  CONFIRMED
+  /// Pago, mas retido para revisão (ex.: CPF do pagador não confere). Não foi creditado.
+  HELD
+  FAILED
+  EXPIRED
+  /// Creditado e depois estornado (MED/chargeback).
+  REVERSED
+  /// Retido e devolvido ao pagador. Nunca foi creditado.
+  REFUNDED
+}
+
+enum WithdrawalStatus {
+  PENDING_CONFIRMATION
+  UNDER_REVIEW
+  APPROVED
+  PROCESSING
+  PAID
+  REJECTED
+  CANCELED
+  FAILED
+}
+
+enum ChallengeStatus {
+  OPEN
+  ACCEPTED
+  REPORTED
+  DISPUTED
+  SETTLED
+  CANCELED
+  EXPIRED
+  VOID
+}
+
+// ───────────────────────── Usuários e autenticação ─────────────────────────
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  username        String    @unique
+  displayName     String
+  passwordHash    String
+  role            Role      @default(USER)
+  country         String?
+  bio             String?
+  emailVerifiedAt DateTime?
+  bannedAt        DateTime?
+  banReason       String?
+  /// Saques bloqueados até esta data (após troca/redefinição de senha, etc.).
+  withdrawalLockedUntil DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  kyc            KycProfile?
+
+  sessions       Session[]
+  tokens         AuthToken[]
+  gameAccounts   GameAccount[]
+  orgMemberships OrgMember[]
+  teamMemberships TeamMember[]
+  ownedTeams     Team[]          @relation("TeamOwner")
+  participants   Participant[]
+  orders         Order[]
+  notifications  Notification[]
+  rosterEntries  RosterEntry[]
+  invitesSent    TeamInvite[]    @relation("InviteSender")
+  invitesReceived TeamInvite[]   @relation("InviteRecipient")
+}
+
+model Session {
+  /// SHA-256 do token opaco guardado no cookie (o token em si nunca é armazenado).
+  id         String   @id
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  userAgent  String?
+  ip         String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      TokenType
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, type])
+}
+
+/// Limitador de taxa persistente (tentativas de login, cadastros, etc.).
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+}
+
+/// Conta do jogador em um jogo (Riot ID, SteamID, EA ID...). `data` guarda os campos do catálogo.
+model GameAccount {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameId    String
+  /// Valor do campo principal (nick exibido).
+  handle    String
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, gameId])
+}
+
+// ───────────────────────── Organizações e times ─────────────────────────
+
+model Organization {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  members     OrgMember[]
+  tournaments Tournament[]
+  coupons     Coupon[]
+}
+
+model OrgMember {
+  id     String       @id @default(cuid())
+  orgId  String
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId String
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   OrgRole      @default(STAFF)
+
+  @@unique([orgId, userId])
+  @@index([userId])
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  tag         String
+  /// Jogo principal do time (opcional).
+  gameId      String?
+  description String?
+  ownerId     String
+  owner       User     @relation("TeamOwner", fields: [ownerId], references: [id])
+  createdAt   DateTime @default(now())
+
+  members      TeamMember[]
+  invites      TeamInvite[]
+  participants Participant[]
+  wallet       Wallet?
+  challengesCreated  Challenge[] @relation("ChallengeCreator")
+  challengesReceived Challenge[] @relation("ChallengeOpponent")
+}
+
+model TeamMember {
+  id     String   @id @default(cuid())
+  teamId String
+  team   Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   TeamRole @default(PLAYER)
+  joinedAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@index([userId])
+}
+
+model TeamInvite {
+  id          String       @id @default(cuid())
+  teamId      String
+  team        Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedById String
+  invitedBy   User         @relation("InviteSender", fields: [invitedById], references: [id])
+  /// Usuário convidado (quando o convite é por nome de usuário).
+  userId      String?
+  user        User?        @relation("InviteRecipient", fields: [userId], references: [id])
+  role        TeamRole     @default(PLAYER)
+  token       String       @unique
+  status      InviteStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  expiresAt   DateTime
+
+  @@index([teamId])
+  @@index([userId])
+}
+
+// ───────────────────────── Campeonatos ─────────────────────────
+
+model Tournament {
+  id          String           @id @default(cuid())
+  orgId       String
+  org         Organization     @relation(fields: [orgId], references: [id])
+  slug        String           @unique
+  name        String
+  gameId      String
+  modeId      String
+  /// Preset de formato usado na criação (informativo).
+  presetId    String?
+  status      TournamentStatus @default(DRAFT)
+  visibility  Visibility       @default(PUBLIC)
+  summary     String?
+  description String?
+  rules       String?
+  region      String?
+  platform    String?
+  timezone    String           @default("America/Sao_Paulo")
+  coverUrl    String?
+  streamUrl   String?
+  discordUrl  String?
+
+  startsAt             DateTime
+  registrationOpensAt  DateTime?
+  registrationClosesAt DateTime?
+  checkInOpensAt       DateTime?
+  checkInClosesAt      DateTime?
+
+  minParticipants Int @default(2)
+  maxParticipants Int
+  /// Titulares por inscrição (1 = individual) e reservas permitidos.
+  teamSize        Int @default(1)
+  maxSubs         Int @default(0)
+
+  entryFeeCents   Int    @default(0)
+  currency        String @default("BRL")
+  prizePoolCents  Int    @default(0)
+  /// [{ placement: 1, label: "Campeão", percent: 60 }, ...]
+  prizeSplit      Json?
+
+  allowPlayerReporting Boolean @default(true)
+  requireCheckIn       Boolean @default(true)
+  seedingMethod        SeedingMethod @default(RANDOM)
+  /// Semente do sorteio (guardada para auditoria e reprodução).
+  seedSalt             String
+
+  /// [{ key, label, type: "text"|"select"|"checkbox", required, private, options? }]
+  customFields Json?
+  /// Pool de mapas do veto (substitui o padrão do jogo).
+  mapPool      Json?
+
+  publishedAt DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  stages       Stage[]
+  participants Participant[]
+  orders       Order[]
+  coupons      Coupon[]
+  prizeAwards  PrizeAward[]
+
+  @@index([status, startsAt])
+  @@index([gameId])
+  @@index([orgId])
+}
+
+model Stage {
+  id           String      @id @default(cuid())
+  tournamentId String
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  order        Int
+  name         String
+  /// StageType do motor (SINGLE_ELIMINATION, SWISS, LEADERBOARD...).
+  type         String
+  /// StageSettings do motor (JSON).
+  settings     Json
+  status       StageStatus @default(PENDING)
+  /// Ids dos participantes que entraram no estágio, em ordem de seed.
+  seedOrder    Json?
+  /// Grupos (lista de listas de ids) para fases de grupos.
+  groups       Json?
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  matches Match[]
+  brGames BrGame[]
+
+  @@unique([tournamentId, order])
+}
+
+model Participant {
+  id           String            @id @default(cuid())
+  tournamentId String
+  tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  /// Quem fez a inscrição (capitão ou jogador individual).
+  userId       String
+  user         User              @relation(fields: [userId], references: [id])
+  teamId       String?
+  team         Team?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  name         String
+  tag          String?
+  status       ParticipantStatus @default(REGISTERED)
+  seed         Int?
+  rating       Int?
+  /// [{ userId, displayName, handle, role: "starter"|"sub"|"coach", identity: {...} }]
+  roster       Json
+  customAnswers Json?
+  /// Vaga reservada até este instante enquanto o pagamento está pendente.
+  reservedUntil DateTime?
+  registeredAt DateTime          @default(now())
+  checkedInAt  DateTime?
+  withdrawnAt  DateTime?
+  dqReason     String?
+  finalPlacement Int?
+
+  matchesA   Match[]    @relation("MatchA")
+  matchesB   Match[]    @relation("MatchB")
+  brResults  BrResult[]
+  orders     Order[]
+  prizeAwards PrizeAward[]
+  rosterEntries RosterEntry[]
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId, status])
+}
+
+/// Jogadores de cada inscrição. A unicidade (campeonato, usuário) impede o mesmo jogador
+/// de aparecer em duas inscrições do mesmo campeonato.
+model RosterEntry {
+  id            String      @id @default(cuid())
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  tournamentId  String
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "starter" | "sub"
+  role          String
+
+  @@unique([tournamentId, userId])
+  @@index([participantId])
+}
+
+model Match {
+  id       String      @id @default(cuid())
+  stageId  String
+  stage    Stage       @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  /// Chave estável dentro do estágio (W1-1, L2-3, GF-1, G1-R2-1, S3-4...).
+  key      String
+  bracket  String
+  round    Int
+  position Int
+  group    Int?
+  bestOf   Int         @default(1)
+  /// Origens das vagas (SlotSource do motor).
+  slotA    Json
+  slotB    Json
+  onlyIfWinner Json?
+
+  status         MatchStatus @default(PENDING)
+  participantAId String?
+  participantA   Participant? @relation("MatchA", fields: [participantAId], references: [id], onDelete: SetNull)
+  participantBId String?
+  participantB   Participant? @relation("MatchB", fields: [participantBId], references: [id], onDelete: SetNull)
+  scoreA         Int?
+  scoreB         Int?
+  /// "a" | "b" | "draw"
+  winnerSide     String?
+  forfeit        String?
+  scheduledAt    DateTime?
+  /// Relatos de placar de cada lado: { scoreA, scoreB, byUserId, at }.
+  reportA        Json?
+  reportB        Json?
+  notes          String?
+  /// Estado do veto de mapas (VetoState do motor).
+  vetoState      Json?
+  /// Mapas jogados (resultado do veto) e placar por mapa, informativo.
+  games          Json?
+  completedAt    DateTime?
+
+  disputes MatchDispute[]
+
+  @@unique([stageId, key])
+  @@index([stageId, round])
+  @@index([participantAId])
+  @@index([participantBId])
+}
+
+/// Uma partida de leaderboard (battle royale): uma rodada em um lobby.
+model BrGame {
+  id             String   @id @default(cuid())
+  stageId        String
+  stage          Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  round          Int
+  lobby          Int      @default(1)
+  /// Ids dos participantes escalados neste lobby.
+  participantIds Json
+  /// Código/lobby da partida (informado pela organização).
+  code           String?
+  scheduledAt    DateTime?
+  completedAt    DateTime?
+
+  results BrResult[]
+
+  @@unique([stageId, round, lobby])
+}
+
+model BrResult {
+  id            String      @id @default(cuid())
+  gameId        String
+  game          BrGame      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  placement     Int
+  kills         Int         @default(0)
+
+  @@unique([gameId, participantId])
+  @@index([participantId])
+}
+
+model MatchDispute {
+  id         String        @id @default(cuid())
+  matchId    String
+  match      Match         @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  openedById String
+  reason     String
+  status     DisputeStatus @default(OPEN)
+  resolution String?
+  resolvedById String?
+  resolvedAt DateTime?
+  createdAt  DateTime      @default(now())
+
+  @@index([matchId])
+  @@index([status])
+}
+
+// ───────────────────────── Pagamentos ─────────────────────────
+
+model Order {
+  id             String      @id @default(cuid())
+  /// Número legível: YP-AAAAMM-XXXXXX
+  number         String      @unique
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+  tournamentId   String
+  tournament     Tournament  @relation(fields: [tournamentId], references: [id])
+  participantId  String?
+  participant    Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  status         OrderStatus @default(PENDING)
+  currency       String      @default("BRL")
+  /// Valor da inscrição (vai para o organizador).
+  subtotalCents  Int
+  /// Taxa de serviço da plataforma, paga pelo jogador por cima.
+  serviceFeeCents Int        @default(0)
+  discountCents  Int         @default(0)
+  totalCents     Int
+  couponId       String?
+  coupon         Coupon?     @relation(fields: [couponId], references: [id])
+  /// "mock" | "stripe"
+  provider       String
+  providerSessionId String?
+  providerPaymentId String?
+  /// "card" | "pix" | "free"
+  method         String?
+  paidAt         DateTime?
+  expiresAt      DateTime
+  refundedCents  Int         @default(0)
+  failureReason  String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  refunds Refund[]
+
+  @@index([userId])
+  @@index([tournamentId, status])
+  @@index([providerSessionId])
+}
+
+model Refund {
+  id                String   @id @default(cuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amountCents       Int
+  reason            String
+  providerRefundId  String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model Coupon {
+  id             String        @id @default(cuid())
+  code           String        @unique
+  orgId          String?
+  org            Organization? @relation(fields: [orgId], references: [id])
+  /// Se preenchido, vale só para este campeonato.
+  tournamentId   String?
+  tournament     Tournament?   @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  percentOff     Int?
+  amountOffCents Int?
+  maxRedemptions Int?
+  redeemed       Int           @default(0)
+  expiresAt      DateTime?
+  active         Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+
+  orders Order[]
+}
+
+/// Garante idempotência dos webhooks de pagamento.
+model PaymentEvent {
+  id        String   @id @default(cuid())
+  provider  String
+  eventId   String
+  type      String
+  createdAt DateTime @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model PrizeAward {
+  id            String      @id @default(cuid())
+  tournamentId  String
+  tournament    Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  placement     Int
+  label         String
+  amountCents   Int
+  status        PrizeStatus @default(PENDING)
+  paidAt        DateTime?
+  note          String?
+
+  @@unique([tournamentId, participantId])
+  @@index([tournamentId])
+}
+
+// ───────────────────────── Auditoria e notificações ─────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String
+  title     String
+  body      String
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+
+// ───────────────────────── KYC, carteira e razão contábil ─────────────────────────
+
+/// Identidade verificada do jogador. Só guardamos hash (comparação) e cifra (pagamento de saque) do CPF.
+model KycProfile {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName     String
+  /// HMAC-SHA256 do CPF: impede o mesmo CPF em duas contas e permite conferir o CPF do pagador.
+  cpfHash      String    @unique
+  /// CPF cifrado (AES-256-GCM): usado apenas para pagar saques via Pix na chave CPF do titular.
+  cpfEnc       String
+  cpfLast4     String
+  birthDate    DateTime
+  status       KycStatus @default(PENDING)
+  submittedAt  DateTime  @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+  rejectReason String?
+}
+
+/// Carteira de créditos (1 crédito = R$ 1,00; valores em centavos). Uma por equipe, mais a da plataforma.
+model Wallet {
+  id           String     @id @default(cuid())
+  kind         WalletKind @default(TEAM)
+  teamId       String?    @unique
+  team         Team?      @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  /// Saldo disponível.
+  balanceCents Int        @default(0)
+  /// Saldo bloqueado (stake em desafios abertos/em andamento e saques em andamento).
+  lockedCents  Int        @default(0)
+  /// Dívida (ex.: estorno de depósito sem saldo para cobrir).
+  debtCents    Int        @default(0)
+  version      Int        @default(0)
+  frozenAt     DateTime?
+  frozenReason String?
+  createdAt    DateTime   @default(now())
+
+  ledger      LedgerEntry[]
+  deposits    Deposit[]
+  withdrawals Withdrawal[]
+}
+
+/// Lançamento IMUTÁVEL. A soma dos deltas de uma carteira deve ser sempre igual ao saldo dela.
+model LedgerEntry {
+  id                  String     @id @default(cuid())
+  walletId            String
+  wallet              Wallet     @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  type                LedgerType
+  availableDeltaCents Int
+  lockedDeltaCents    Int        @default(0)
+  balanceAfterCents   Int
+  lockedAfterCents    Int
+  refType             String
+  refId               String
+  /// Chave de idempotência: o mesmo evento nunca é lançado duas vezes.
+  idempotencyKey      String     @unique
+  memo                String?
+  actorId             String?
+  createdAt           DateTime   @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([refType, refId])
+}
+
+model Deposit {
+  id               String        @id @default(cuid())
+  walletId         String
+  wallet           Wallet        @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  teamId           String
+  userId           String
+  amountCents      Int
+  status           DepositStatus @default(PENDING)
+  provider         String
+  providerChargeId String?       @unique
+  pixCopyPaste     String?
+  pixQrImage       String?
+  expiresAt        DateTime
+  confirmedAt      DateTime?
+  /// HMAC do CPF do pagador informado pelo provedor (deve bater com o KYC de quem depositou).
+  payerDocHash     String?
+  holdReason       String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([walletId, status])
+  @@index([userId, createdAt])
+}
+
+model Withdrawal {
+  id                  String           @id @default(cuid())
+  walletId            String
+  wallet              Wallet           @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  teamId              String
+  requestedById       String
+  amountCents         Int
+  feeCents            Int              @default(0)
+  netCents            Int
+  status              WithdrawalStatus @default(PENDING_CONFIRMATION)
+  destinationCpfLast4 String
+  /// Identificador gerado no formulário para impedir envio duplicado.
+  requestNonce        String
+  otpHash             String?
+  otpExpiresAt        DateTime?
+  otpAttempts         Int              @default(0)
+  confirmedAt         DateTime?
+  riskScore           Int              @default(0)
+  riskFlags           Json?
+  reviewedById        String?
+  reviewedAt          DateTime?
+  reviewNote          String?
+  /// Só é enviado ao provedor depois deste instante (janela para o usuário cancelar).
+  processAfter        DateTime?
+  provider            String?
+  providerTransferId  String?          @unique
+  endToEndId          String?
+  paidAt              DateTime?
+  failureReason       String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([requestedById, requestNonce])
+  @@index([status, processAfter])
+  @@index([walletId, createdAt])
+}
+
+/// Desafio equipe vs equipe valendo créditos. Os dois lados têm a stake travada (escrow) até o fim.
+model Challenge {
+  id              String          @id @default(cuid())
+  gameId          String
+  modeId          String
+  bestOf          Int             @default(1)
+  stakeCents      Int
+  feeBps          Int
+  feeCents        Int             @default(0)
+  status          ChallengeStatus @default(OPEN)
+  creatorTeamId   String
+  creatorTeam     Team            @relation("ChallengeCreator", fields: [creatorTeamId], references: [id])
+  creatorUserId   String
+  opponentTeamId  String?
+  opponentTeam    Team?           @relation("ChallengeOpponent", fields: [opponentTeamId], references: [id])
+  opponentUserId  String?
+  /// Convite direto: só este time pode aceitar.
+  invitedTeamId   String?
+  creatorLineup   Json
+  opponentLineup  Json?
+  notes           String?
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  /// Lado que reportou o resultado ("a" = criador, "b" = oponente) e o vencedor alegado.
+  reportedBy      String?
+  reportedWinner  String?
+  reportedAt      DateTime?
+  /// Depois deste instante, sem contestação, o resultado reportado é efetivado (apenas stakes baixas).
+  autoSettleAt    DateTime?
+  evidenceA       String?
+  evidenceB       String?
+  disputeReason   String?
+  winnerTeamId    String?
+  settledAt       DateTime?
+  resolvedById    String?
+  resolutionNote  String?
+  riskFlags       Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([creatorTeamId])
+  @@index([opponentTeamId])
+}
+
+/// Estado do provedor Pix SIMULADO (somente desenvolvimento e testes).
+model MockPixCharge {
+  id                String   @id @default(cuid())
+  amountCents       Int
+  status            String   @default("PENDING")
+  payerDoc          String?
+  externalReference String
+  createdAt         DateTime @default(now())
+}
+
+model MockPixTransfer {
+  id                String   @id @default(cuid())
+  amountCents       Int
+  status            String   @default("PENDING")
+  pixKey            String
+  externalReference String   @unique
+  endToEndId        String?
+  createdAt         DateTime @default(now())
+}
