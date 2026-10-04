@@ -40,6 +40,8 @@ export function getEnv() {
     asaasTransferAuthToken: process.env.ASAAS_TRANSFER_AUTH_TOKEN ?? "",
     walletEnabled: bool(process.env.WALLET_ENABLED, true),
     payoutsPaused: bool(process.env.PAYOUTS_PAUSED, false),
+    /** Só confie em x-forwarded-for se houver um proxy/CDN seu na frente que SOBRESCREVE o cabeçalho. */
+    trustProxy: process.env.TRUST_PROXY === undefined || process.env.TRUST_PROXY === "" ? null : bool(process.env.TRUST_PROXY),
   };
 }
 
@@ -50,6 +52,9 @@ export function assertProductionConfig() {
   const problems: string[] = [];
   if (env.appSecret.length < 32 || env.appSecret.includes("troque") || env.appSecret.includes("dev-only")) {
     problems.push("APP_SECRET precisa ter pelo menos 32 caracteres e não pode ser o valor de exemplo.");
+  }
+  if (env.trustProxy === null) {
+    problems.push("Defina TRUST_PROXY=true (atrás de proxy/CDN que sobrescreve x-forwarded-for) ou TRUST_PROXY=false. Sem isso o IP de origem poderia ser forjado para burlar os limites de tentativas.");
   }
   if (env.paymentsProvider === "mock" && !env.allowMockPayments) {
     problems.push("PAYMENTS_PROVIDER=mock é recusado em produção (use stripe ou defina ALLOW_MOCK_PAYMENTS=true, não recomendado).");

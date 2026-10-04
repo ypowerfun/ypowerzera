@@ -1,0 +1,28 @@
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
+import { Footer, Header } from "@/components/header";
+
+export const metadata: Metadata = {
+  title: { default: "PRiME ARENA MANAGER — campeonatos de esports", template: "%s · PRiME ARENA MANAGER" },
+  description: "Crie e dispute campeonatos de LoL, Valorant, CS2, Fortnite, Apex, Battlefield 6, Warzone, TFT, Street Fighter e EA FC, com chaves automáticas, carteira por equipe e desafios.",
+  applicationName: "PRiME ARENA MANAGER",
+};
+
+export const viewport: Viewport = { themeColor: "#050a18", colorScheme: "dark" };
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="pt-BR">
+      <body className="flex min-h-screen flex-col antialiased">
+        <a href="#conteudo" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-brand-strong focus:px-4 focus:py-2">
+          Pular para o conteúdo
+        </a>
+        <Header />
+        <main id="conteudo" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+          {children}
+        </main>
+        <Footer />
+      </body>
+    </html>
+  );
+}

@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+/* PRiME ARENA MANAGER — tema AZUL DARK */
+@theme {
+  --color-bg: #050a18;
+  --color-surface: #09112a;
+  --color-elevated: #0e1936;
+  --color-line: #1a2a55;
+  --color-line-soft: #14214a;
+  --color-ink: #e8eeff;
+  --color-muted: #8ea2d8;
+  --color-brand: #3b82f6;
+  --color-brand-strong: #2563eb;
+  --color-brand-soft: #60a5fa;
+  --color-accent: #22d3ee;
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --shadow-glow: 0 0 0 1px rgb(59 130 246 / 0.25), 0 8px 30px -8px rgb(37 99 235 / 0.45);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-bg);
+}
+
+body {
+  min-height: 100vh;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(1100px 520px at 12% -8%, rgb(37 99 235 / 0.22), transparent 60%),
+    radial-gradient(900px 480px at 100% 0%, rgb(34 211 238 / 0.08), transparent 55%),
+    var(--color-bg);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgb(59 130 246 / 0.45);
+}
+
+a {
+  color: inherit;
+}
+
+/* barras de rolagem discretas */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #26397a transparent;
+}
+
+input,
+select,
+textarea {
+  color-scheme: dark;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-brand-soft);
+  outline-offset: 2px;
+}
+
+/* chaves (brackets) */
+.bracket-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 0.75rem;
+  min-width: 15rem;
+}

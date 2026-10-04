@@ -160,6 +160,16 @@ describe("campeonato individual gratuito (SF6, eliminação simples)", () => {
     expect(wo.forfeit).toBe("a");
   });
 
+  it("validação ao editar: nome, links e limites", async () => {
+    const { owner, t } = await setup("sf6", "1v1", "sf6.single-elim");
+    await expect(updateTournament(owner, t.id, { name: "ab" })).rejects.toThrow(/nome/i);
+    await expect(updateTournament(owner, t.id, { streamUrl: "javascript:alert(1)" })).rejects.toThrow(/link válido/);
+    await expect(updateTournament(owner, t.id, { discordUrl: "não é url" })).rejects.toThrow(/link válido/);
+    const ok = await updateTournament(owner, t.id, { name: "Novo nome da copa", streamUrl: "https://twitch.tv/canal", summary: "" });
+    expect(ok.name).toBe("Novo nome da copa");
+    expect(ok.summary).toBeNull();
+  });
+
   it("controle de acesso: só a organização opera o campeonato", async () => {
     const { owner, t } = await setup("sf6", "1v1", "sf6.single-elim");
     const stranger = await makeUser();

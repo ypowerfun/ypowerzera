@@ -39,7 +39,8 @@ const identityFor: Record<string, (n: string) => Record<string, string>> = {
   apex: (n) => ({ eaId: `EA${n}`.slice(0, 16), platform: "PC" }),
 };
 
-let steam = 0;
+// semente aleatória por arquivo: o banco de teste é compartilhado e o ID de jogo é único na plataforma
+let steam = Math.floor(Math.random() * 80_000_000);
 export async function linkGame(user: Actor, gameId: string) {
   const n = `${++steam}`;
   let identity: Record<string, string>;

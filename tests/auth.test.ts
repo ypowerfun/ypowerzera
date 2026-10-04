@@ -90,7 +90,7 @@ describe("cadastro e login", () => {
     const r1 = await login({ identifier: "ana@example.com", password: valid.password });
     const r2 = await login({ identifier: "ANA_GAMER", password: valid.password });
     expect(r1.token).not.toBe(r2.token);
-    const sessions = await db.session.findMany();
+    const sessions = await db.session.findMany({ where: { user: { email: { endsWith: "@example.com" } } } });
     expect(sessions.length).toBe(2);
     expect(sessions.every((s) => s.id !== r1.token && s.id !== r2.token)).toBe(true);
     const me = await getUserBySessionToken(r1.token);

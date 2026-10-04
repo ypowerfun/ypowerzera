@@ -211,6 +211,26 @@ export type UpdateTournamentInput = Partial<
   >
 >;
 
+function validateTextPatch(patch: UpdateTournamentInput) {
+  if (patch.name !== undefined && (patch.name.trim().length < 4 || patch.name.length > 80)) throw new AppError("O nome deve ter de 4 a 80 caracteres.");
+  if (patch.summary && patch.summary.length > 200) throw new AppError("O resumo pode ter até 200 caracteres.");
+  if (patch.description && patch.description.length > 8000) throw new AppError("A descrição é muito longa.");
+  if (patch.rules && patch.rules.length > 20000) throw new AppError("O regulamento é muito longo.");
+  for (const k of ["streamUrl", "discordUrl"] as const) {
+    const v = patch[k];
+    if (v) {
+      let ok = false;
+      try {
+        const u = new URL(v);
+        ok = (u.protocol === "https:" || u.protocol === "http:") && v.length <= 200;
+      } catch {
+        ok = false;
+      }
+      if (!ok) throw new AppError("Informe um link válido (http/https).");
+    }
+  }
+}
+
 export async function updateTournament(actorIn: Actor | null, id: string, patch: UpdateTournamentInput) {
   const actor = requireActor(actorIn);
   const t = await loadManaged(actor, id, "admin");
@@ -218,6 +238,8 @@ export async function updateTournament(actorIn: Actor | null, id: string, patch:
   const started = t.status === "LIVE";
   const structural: Array<keyof UpdateTournamentInput> = ["stages", "entryFeeCents", "maxParticipants", "minParticipants", "seedingMethod", "requireCheckIn"];
   if (started) for (const k of structural) if (patch[k] !== undefined) throw new AppError("O campeonato já começou: formato, vagas e taxa não podem ser alterados.");
+
+  validateTextPatch(patch);
 
   const participants = await db.participant.count({ where: { tournamentId: id, status: { in: ["REGISTERED", "CHECKED_IN", "PENDING_PAYMENT", "WAITLIST"] } } });
   if (patch.entryFeeCents !== undefined && patch.entryFeeCents !== t.entryFeeCents) {
