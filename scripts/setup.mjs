@@ -1,7 +1,12 @@
 // Prepara o ambiente local em qualquer sistema (Windows, macOS, Linux): .env, banco SQLite e dados de demonstração.
-// Uso: npm install && npm run setup && npm run dev
-import { copyFileSync, existsSync } from "node:fs";
+//   npm run setup               → prepara tudo (seguro rodar de novo)
+//   node scripts/setup.mjs --if-needed → usado pelo `npm run dev`: só age se faltar o .env ou o banco
+import { appendFileSync, copyFileSync, existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
+
+const ifNeeded = process.argv.includes("--if-needed");
+const DEFAULT_DB_URL = 'DATABASE_URL="file:./dev.db?connection_limit=1&socket_timeout=30"';
 
 const [major, minor] = process.versions.node.split(".").map(Number);
 if (major < 22 || (major === 22 && minor < 13)) {
@@ -9,9 +14,29 @@ if (major < 22 || (major === 22 && minor < 13)) {
   process.exit(1);
 }
 
+function databaseUrl() {
+  if (!existsSync(".env")) return "";
+  return readFileSync(".env", "utf8").match(/^\s*DATABASE_URL\s*=\s*"?([^"\r\n]*)"?/m)?.[1]?.trim() ?? "";
+}
+
+function needsSetup() {
+  const url = databaseUrl();
+  if (!url) return true; // sem .env, ou .env sem DATABASE_URL
+  if (!url.startsWith("file:")) return false; // banco externo (Postgres…): não é com este script
+  return !existsSync(path.resolve("prisma", url.slice("file:".length).split("?")[0])); // SQLite é relativo à pasta do schema
+}
+
+if (ifNeeded) {
+  if (!needsSetup()) process.exit(0);
+  console.log("\n• Primeira execução neste computador: preparando o ambiente (leva menos de um minuto)…");
+}
+
 if (!existsSync(".env")) {
   copyFileSync(".env.example", ".env");
   console.log("✔ Criado .env a partir do .env.example (os padrões servem para desenvolvimento).");
+} else if (!databaseUrl()) {
+  appendFileSync(".env", `\n${DEFAULT_DB_URL}\n`);
+  console.log("✔ Adicionado DATABASE_URL ao .env existente.");
 } else {
   console.log("• .env já existe — mantido como está.");
 }
@@ -29,5 +54,5 @@ run("Gerando o cliente do banco", "npx", ["prisma", "generate"]);
 run("Criando as tabelas (SQLite em prisma/dev.db)", "npx", ["prisma", "db", "push", "--skip-generate"]);
 run("Carregando dados de demonstração", "npx", ["tsx", "prisma/seed.ts"]);
 
-console.log("\n✔ Pronto. Agora rode:  npm run dev   e abra  http://localhost:3000");
+console.log(ifNeeded ? "\n✔ Ambiente pronto — iniciando o site…\n" : "\n✔ Pronto. Agora rode:  npm run dev   e abra  http://localhost:3000");
 console.log("  Logins (senha Prime#Arena2026): admin@primearena.local · organizador@primearena.local · lider1@primearena.local · jogador1@primearena.local");

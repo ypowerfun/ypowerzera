@@ -33,7 +33,7 @@ npm run setup             # cria o .env, o banco SQLite (prisma/dev.db) e carreg
 npm run dev               # http://localhost:3000
 ```
 
-`npm run setup` funciona igual no **Windows (PowerShell ou Prompt de Comando), macOS e Linux** e é seguro rodar de novo (não duplica os dados). Se aparecer erro de versão, instale o Node 22.13+ em https://nodejs.org. Para rodar de forma manual: `cp .env.example .env` (no Windows: `copy .env.example .env`), `npm run db:push` e `npm run db:seed`.
+`npm run setup` funciona igual no **Windows (PowerShell ou Prompt de Comando), macOS e Linux** e é seguro rodar de novo (não duplica os dados). Se você esquecer dele, o `npm run dev` percebe que falta o `.env` ou o banco e prepara tudo sozinho na primeira vez (nas seguintes não faz nada). Se aparecer erro de versão, instale o Node 22.13+ em https://nodejs.org. Para rodar de forma manual: `cp .env.example .env` (no Windows: `copy .env.example .env`), `npm run db:push` e `npm run db:seed`.
 
 Logins do seed (senha `Prime#Arena2026`): `admin@primearena.local`, `organizador@primearena.local`, `lider1..4@primearena.local` (equipes com saldo), `jogador1..6@primearena.local`.
 
