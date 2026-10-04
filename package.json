@@ -1,8 +1,8 @@
 {
-  "name": "prime-arena-manager",
+  "name": "prime-arena-one",
   "version": "0.1.0",
   "private": true,
-  "description": "PRiME ARENA MANAGER — plataforma de campeonatos de esports com carteira por equipe e desafios (inspirada no Battlefy)",
+  "description": "Prime Arena One — plataforma de campeonatos de esports com carteira por equipe e desafios (inspirada no Battlefy)",
   "engines": {
     "node": ">=22.13"
   },

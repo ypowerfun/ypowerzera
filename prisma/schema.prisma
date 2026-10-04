@@ -1,4 +1,4 @@
-// Ypowerzera — plataforma de campeonatos de esports.
+// Prime Arena One — plataforma de campeonatos de esports.
 //
 // Desenvolvimento: SQLite. Produção: troque `provider` para "postgresql" e ajuste DATABASE_URL.
 // Todos os valores monetários são inteiros em centavos.

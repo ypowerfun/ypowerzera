@@ -6,8 +6,8 @@ test.describe.configure({ mode: "serial" });
 test.describe("público", () => {
   test("home, catálogo com os 10 jogos e torneios do seed", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/PRiME ARENA MANAGER/i);
-    await expect(page.locator("img[alt*='PRiME'], svg[aria-label*='PRiME']").first()).toBeVisible();
+    await expect(page).toHaveTitle(/Prime Arena One/i);
+    await expect(page.locator("img[alt*='Prime Arena One']").first()).toBeVisible();
 
     await page.goto("/jogos");
     for (const g of ["League of Legends", "VALORANT", "Counter-Strike 2", "Fortnite", "Apex Legends", "Battlefield 6", "Street Fighter 6", "Call of Duty: Warzone", "EA SPORTS FC", "Teamfight Tactics"]) {
@@ -15,8 +15,8 @@ test.describe("público", () => {
     }
 
     await page.goto("/torneios");
-    await expect(page.getByText("Copa PRiME de Street Fighter 6")).toBeVisible();
-    await expect(page.getByText("PRiME Valorant Cup #1")).toBeVisible();
+    await expect(page.getByText("Copa Prime Arena One de Street Fighter 6")).toBeVisible();
+    await expect(page.getByText("Prime Arena One Valorant Cup #1")).toBeVisible();
   });
 
   test("tema azul escuro aplicado (fundo escuro, texto claro)", async ({ page }) => {
@@ -197,7 +197,7 @@ test.describe("responsividade", () => {
     }
     // o nome do campeonato aparece inteiro no cartão (não truncado ao lado do selo)
     await page.goto("/torneios");
-    await expect(page.getByRole("heading", { name: "Copa PRiME de Street Fighter 6" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Copa Prime Arena One de Street Fighter 6" })).toBeVisible();
 
     await loginOk(page, "lider1@primearena.local");
     for (const p of ["/carteira", "/desafios/novo", "/times", "/conta"]) {
@@ -205,5 +205,38 @@ test.describe("responsividade", () => {
       expect(await overflow(), `overflow em ${p}`).toBeLessThanOrEqual(0);
     }
     await ctx.close();
+  });
+});
+
+test.describe("marca Prime Arena One", () => {
+  test("nome, ícones, imagem de compartilhamento e arte oficial são servidos", async ({ page, request }) => {
+    await page.goto("/");
+    await expect(page).toHaveTitle(/Prime Arena One/);
+    await expect(page.getByRole("link", { name: /Prime Arena One — início/ })).toBeVisible();
+    await expect(page.getByText("PRiME ARENA MANAGER")).toHaveCount(0); // nome antigo não aparece mais
+
+    // favicon e ícone de celular vêm da logo (arquivos icon.png / apple-icon.png do Next)
+    const icons = await page.locator("link[rel='icon'], link[rel='apple-touch-icon']").evaluateAll((els) => els.map((e) => (e as HTMLLinkElement).href));
+    expect(icons.length).toBeGreaterThan(0);
+    for (const href of icons) {
+      const r = await request.get(href);
+      expect(r.status(), href).toBe(200);
+      expect(r.headers()["content-type"]).toContain("image/");
+    }
+
+    // imagem de compartilhamento (Open Graph) e a arte oficial da logo
+    const og = await page.locator("meta[property='og:image']").getAttribute("content");
+    expect(og).toBeTruthy();
+    expect((await request.get(og!)).status()).toBe(200);
+    for (const src of ["/brand/prime-arena-one-512.webp", "/brand/prime-arena-one-1024.webp", "/brand/prime-arena-one-128.webp"]) {
+      const r = await request.get(src);
+      expect(r.status(), src).toBe(200);
+      expect(r.headers()["content-type"]).toContain("image/webp");
+    }
+
+    // a arte do destaque carregou de verdade (não é imagem quebrada)
+    const art = page.getByRole("img", { name: "Prime Arena One" }).first();
+    await expect(art).toBeVisible();
+    expect(await art.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
   });
 });

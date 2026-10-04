@@ -111,7 +111,7 @@ export async function requestWithdrawal(
 
   await sendMail({
     to: user.email,
-    subject: "Código de confirmação de saque — PRiME ARENA MANAGER",
+    subject: "Código de confirmação de saque — Prime Arena One",
     text: `Você pediu o saque de ${formatMoney(input.amountCents)} da equipe ${team.name}.\n\nCódigo de confirmação: ${code}\n(válido por ${cfg.otpTtlMinutes} minutos)\n\nSe NÃO foi você, ignore este e-mail e troque sua senha agora: o saque não será concluído sem este código.`,
   });
   return { withdrawalId: wd.id };
@@ -166,7 +166,7 @@ export async function confirmWithdrawal(actorIn: Actor | null, withdrawalId: str
   await audit(actor.id, "withdrawal.confirm", "Withdrawal", w.id, { score: risk.score, flags: risk.flags, review });
   await sendMail({
     to: user.email,
-    subject: "Saque solicitado — PRiME ARENA MANAGER",
+    subject: "Saque solicitado — Prime Arena One",
     text: review
       ? `Seu saque de ${formatMoney(w.amountCents)} foi enviado para análise de segurança. Você será avisado quando for decidido.\nNão reconhece? Cancele em Carteira e troque sua senha.`
       : `Seu saque de ${formatMoney(w.amountCents)} será enviado por Pix para o CPF final ${w.destinationCpfLast4} em ~${cfg.withdrawDelayMinutes} minutos.\nNão foi você? Cancele agora em Carteira e troque sua senha.`,
@@ -302,7 +302,7 @@ export async function processWithdrawal(id: string, now = new Date()): Promise<"
 
   const provider = getPixProvider();
   try {
-    const out = await provider.sendPix({ externalReference: w.id, amountCents: w.netCents, pixKey: cpf, description: "Saque PRiME ARENA MANAGER" });
+    const out = await provider.sendPix({ externalReference: w.id, amountCents: w.netCents, pixKey: cpf, description: "Saque Prime Arena One" });
     await db.withdrawal.update({ where: { id }, data: { provider: provider.name, providerTransferId: out.transferId } });
     if (out.status === "DONE") await markPaid(id, out.endToEndId ?? null);
     else if (out.status === "FAILED") await markFailed(id, "Recusado pelo provedor.");

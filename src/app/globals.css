@@ -1,23 +1,33 @@
 @import "tailwindcss";
 
-/* PRiME ARENA MANAGER — tema AZUL DARK */
+/*
+  Prime Arena One — tema AZUL DARK.
+  Paleta tirada da logo: azul elétrico (P), ouro e prata (A, coroa e ARENA), violeta neon da arquibancada
+  e o preto-azulado do fundo. O violeta é só decorativo (brilhos); texto usa azul, ouro, prata e cinza-azulado.
+*/
 @theme {
-  --color-bg: #050a18;
-  --color-surface: #09112a;
-  --color-elevated: #0e1936;
-  --color-line: #1a2a55;
-  --color-line-soft: #14214a;
-  --color-ink: #e8eeff;
-  --color-muted: #8ea2d8;
-  --color-brand: #3b82f6;
-  --color-brand-strong: #2563eb;
-  --color-brand-soft: #60a5fa;
+  --color-bg: #040815;
+  --color-surface: #08102a;
+  --color-elevated: #0e1a3f;
+  --color-line: #1c2d66;
+  --color-line-soft: #132050;
+  --color-ink: #eaf0ff;
+  --color-muted: #94a7dc;
+  --color-brand: #2f86ff;
+  --color-brand-strong: #1664e6;
+  --color-brand-soft: #66b6ff;
   --color-accent: #22d3ee;
+  --color-gold: #ffc247;
+  --color-gold-strong: #f5a30b;
+  --color-gold-deep: #b45f12;
+  --color-violet: #7c4dff;
+  --color-silver: #dfe6f5;
   --color-ok: #34d399;
-  --color-warn: #fbbf24;
+  --color-warn: #fb923c;
   --color-danger: #f87171;
   --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --shadow-glow: 0 0 0 1px rgb(59 130 246 / 0.25), 0 8px 30px -8px rgb(37 99 235 / 0.45);
+  --shadow-glow: 0 0 0 1px rgb(47 134 255 / 0.35), 0 10px 34px -10px rgb(22 100 230 / 0.65);
+  --shadow-gold: 0 0 0 1px rgb(255 194 71 / 0.4), 0 10px 30px -10px rgb(245 163 11 / 0.55);
 }
 
 :root {
@@ -32,15 +42,27 @@ body {
   min-height: 100vh;
   color: var(--color-ink);
   font-family: var(--font-sans);
+  /* luzes da arena: azul à esquerda, violeta à direita, um brilho dourado embaixo */
   background:
-    radial-gradient(1100px 520px at 12% -8%, rgb(37 99 235 / 0.22), transparent 60%),
-    radial-gradient(900px 480px at 100% 0%, rgb(34 211 238 / 0.08), transparent 55%),
+    radial-gradient(1100px 560px at 8% -10%, rgb(22 100 230 / 0.3), transparent 60%),
+    radial-gradient(900px 520px at 100% -5%, rgb(124 77 255 / 0.2), transparent 58%),
+    radial-gradient(900px 420px at 50% 115%, rgb(245 163 11 / 0.1), transparent 60%),
     var(--color-bg);
   background-attachment: fixed;
 }
 
+/* feixes diagonais sutis, ecoando as linhas angulares da logo */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: repeating-linear-gradient(115deg, transparent 0 56px, rgb(130 165 255 / 0.03) 56px 57px);
+}
+
 ::selection {
-  background: rgb(59 130 246 / 0.45);
+  background: rgb(47 134 255 / 0.5);
 }
 
 a {
@@ -62,6 +84,90 @@ textarea {
 .focus-ring:focus-visible {
   outline: 2px solid var(--color-brand-soft);
   outline-offset: 2px;
+}
+
+/* ───────── Utilitários da marca ───────── */
+
+/* títulos de exibição: itálico pesado em caixa alta, como o logotipo */
+@utility display {
+  font-style: italic;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+
+/* prata metálico (PRIME) */
+@utility text-metal {
+  background-image: linear-gradient(180deg, #ffffff 0%, #dfe6f5 42%, #8d9bc6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ouro metálico (coroa, ARENA) */
+@utility text-gold-metal {
+  background-image: linear-gradient(180deg, #fff3bd 0%, #ffc247 48%, #c9791a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* filete de luz azul → violeta → ouro */
+@utility glow-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #2f86ff 22%, #7c4dff 50%, #ffc247 78%, transparent);
+}
+
+/* cantoneiras douradas em cartões de destaque */
+@utility corners {
+  position: relative;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    pointer-events: none;
+    border: 2px solid var(--color-gold);
+    opacity: 0.85;
+  }
+
+  &::before {
+    top: -1px;
+    left: -1px;
+    border-right: 0;
+    border-bottom: 0;
+    border-top-left-radius: 16px;
+  }
+
+  &::after {
+    right: -1px;
+    bottom: -1px;
+    border-left: 0;
+    border-top: 0;
+    border-bottom-right-radius: 16px;
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@utility float-slow {
+  animation: float-slow 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float-slow {
+    animation: none;
+  }
 }
 
 /* chaves (brackets) */

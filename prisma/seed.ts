@@ -65,9 +65,9 @@ async function main() {
     return;
   }
 
-  const admin = await user("admin@primearena.local", "Admin PRiME", "ADMIN");
-  const organizer = await user("organizador@primearena.local", "Organizador PRiME", "ORGANIZER");
-  const org = await createOrganization(organizer, { name: "PRiME Arena Oficial", description: "Campeonatos oficiais da plataforma." });
+  const admin = await user("admin@primearena.local", "Admin Prime", "ADMIN");
+  const organizer = await user("organizador@primearena.local", "Organizador Prime", "ORGANIZER");
+  const org = await createOrganization(organizer, { name: "Prime Arena One Oficial", description: "Campeonatos oficiais da plataforma." });
 
   // Jogadores avulsos (verificados, com contas de jogo) para torneios individuais
   const players: Actor[] = [];
@@ -104,7 +104,7 @@ async function main() {
   // Torneios
   const free = await createTournament(organizer, {
     orgId: org.id, gameId: "sf6", modeId: "1v1", presetId: "sf6.single-elim",
-    name: "Copa PRiME de Street Fighter 6", summary: "Eliminação simples, melhor de 3. Inscrição gratuita.",
+    name: "Copa Prime Arena One de Street Fighter 6", summary: "Eliminação simples, melhor de 3. Inscrição gratuita.",
     description: "Torneio aberto da comunidade. Check-in 30 minutos antes.", startsAt: hours(72), maxParticipants: 16, requireCheckIn: true,
     prizePoolCents: 100_000,
   });
@@ -113,7 +113,7 @@ async function main() {
 
   const paid = await createTournament(organizer, {
     orgId: org.id, gameId: "valorant", modeId: "5v5", presetId: "valorant.double-elim",
-    name: "PRiME Valorant Cup #1", summary: "Chave dupla. Inscrição por equipe.",
+    name: "Prime Arena One Valorant Cup #1", summary: "Chave dupla. Inscrição por equipe.",
     startsAt: hours(120), maxParticipants: 16, entryFeeCents: 5_000, prizePoolCents: 400_000, requireCheckIn: true,
   });
   await publishTournament(organizer, paid.id);

@@ -1,4 +1,4 @@
-# PRiME ARENA MANAGER
+# Prime Arena One
 
 Gerenciador de campeonatos de esports (inspirado no Battlefy) com **carteira por equipe** e **desafios equipe × equipe valendo créditos** (1 crédito = R$ 1,00). Tema azul escuro, interface em português do Brasil.
 
@@ -21,7 +21,7 @@ Jogos: **League of Legends, VALORANT, Counter-Strike (CS2 e CS:GO), Fortnite, Ap
 - **Carteira da equipe** (só o **líder** movimenta): depósito por Pix, saque por Pix para o CPF verificado, extrato imutável.
 - **Desafios equipe × equipe**: a aposta fica em custódia, o vencedor leva o pote menos 10%.
 - **Admin**: fila de KYC, saques em análise e presos, depósitos retidos, disputas, congelar/liberar carteira, ajuste auditado e conciliação do razão.
-- **Marca**: logo PRiME ARENA MANAGER (`public/logo.svg`, `public/logo-mark.svg`).
+- **Marca**: logo Prime Arena One (`public/brand/`, gerada a partir da arte oficial).
 
 ## Rodando em desenvolvimento
 

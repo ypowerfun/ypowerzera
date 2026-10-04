@@ -25,7 +25,7 @@ async function call(method: "GET" | "POST", path: string, body?: Record<string, 
   if (!asaasApiKey) throw new AppError("Provedor Pix não configurado.");
   const res = await fetch(`${base()}${path}`, {
     method,
-    headers: { "Content-Type": "application/json", access_token: asaasApiKey, "User-Agent": "prime-arena-manager" },
+    headers: { "Content-Type": "application/json", access_token: asaasApiKey, "User-Agent": "prime-arena-one" },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15_000),
   });
@@ -77,7 +77,7 @@ export const asaasPix: PixProvider = {
         value: toReais(amountCents),
         dueDate: expiresAt.toISOString().slice(0, 10),
         externalReference,
-        description: "Créditos PRiME ARENA MANAGER",
+        description: "Créditos Prime Arena One",
       }),
     );
     const qr = qrSchema.parse(await call("GET", `/payments/${payment.id}/pixQrCode`));

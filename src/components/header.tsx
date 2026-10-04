@@ -16,10 +16,10 @@ export async function Header() {
   const unread = user ? await unreadCount(user.id) : 0;
   const links = [...NAV, ...(user ? [{ href: "/carteira", label: "Carteira" }, { href: "/organizar", label: "Organizar" }] : [])];
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-bg/85 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-line bg-bg/80 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3 sm:gap-4">
-        <Link href="/" aria-label="PRiME ARENA MANAGER — início" className="shrink-0 focus-ring rounded">
-          <Logo className="h-8 w-auto sm:h-10" />
+        <Link href="/" aria-label="Prime Arena One — início" className="shrink-0 focus-ring rounded">
+          <Logo size="md" />
         </Link>
         <nav aria-label="Principal" className="ml-2 hidden items-center gap-1 md:flex">
           {links.map((l) => (
@@ -28,7 +28,7 @@ export async function Header() {
             </Link>
           ))}
           {user?.role === "ADMIN" && (
-            <Link href="/admin" className="rounded-lg px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/10 focus-ring">
+            <Link href="/admin" className="rounded-lg px-3 py-2 text-sm font-semibold text-gold hover:bg-gold/10 focus-ring">
               Admin
             </Link>
           )}
@@ -82,20 +82,22 @@ export async function Header() {
           </Link>
         ))}
       </nav>
+      <div aria-hidden className="glow-line opacity-80" />
     </header>
   );
 }
 
 export function Footer() {
   return (
-    <footer className="mt-16 border-t border-line bg-surface/60">
+    <footer className="mt-16 bg-surface/60">
+      <div aria-hidden className="glow-line" />
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-10 md:grid-cols-[1.2fr_1fr_1fr]">
         <div>
-          <Logo className="h-8 w-auto sm:h-10" />
+          <Logo size="lg" />
           <p className="mt-3 max-w-sm text-sm text-muted">Campeonatos, chaves e desafios de esports em um só lugar — LoL, Valorant, CS2, Fortnite, Apex, Battlefield 6, Warzone, TFT, Street Fighter e EA FC.</p>
         </div>
         <div className="text-sm">
-          <p className="mb-2 font-semibold">Plataforma</p>
+          <p className="mb-2 font-bold uppercase italic tracking-wide text-gold">Plataforma</p>
           <ul className="space-y-1.5 text-muted">
             <li><Link href="/torneios" className="hover:text-ink">Torneios</Link></li>
             <li><Link href="/jogos" className="hover:text-ink">Jogos e formatos</Link></li>
@@ -104,11 +106,11 @@ export function Footer() {
           </ul>
         </div>
         <div className="text-sm">
-          <p className="mb-2 font-semibold">Uso responsável</p>
+          <p className="mb-2 font-bold uppercase italic tracking-wide text-gold">Uso responsável</p>
           <p className="text-muted">Depósitos, saques e desafios valendo créditos são exclusivos para maiores de 18 anos com identidade verificada. Jogue com responsabilidade e nunca aposte valores de que precisa.</p>
         </div>
       </div>
-      <div className="border-t border-line-soft py-4 text-center text-xs text-muted">© {new Date().getFullYear()} PRiME ARENA MANAGER. Todas as marcas citadas pertencem aos seus respectivos donos.</div>
+      <div className="border-t border-line-soft py-4 text-center text-xs text-muted">© {new Date().getFullYear()} Prime Arena One. Todas as marcas citadas pertencem aos seus respectivos donos.</div>
     </footer>
   );
 }
