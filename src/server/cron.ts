@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { safeEqual } from "@/lib/crypto";
 import { runChallengeMaintenance } from "./challenges";
-import { expireDeposits } from "./deposits";
+import { expireDeposits, reconcilePendingDeposits } from "./deposits";
 import { expireStaleReservations } from "./orders";
 import { runReconciliation } from "./admin-wallet";
 import { purgeExpiredRateLimits } from "./rate-limit";
@@ -27,6 +27,8 @@ export async function purgeExpired(): Promise<{ rateLimits: number; sessions: nu
 
 /** Tarefas periódicas (a cada 1–5 min): saques devidos, conciliação, expirações, desafios e reservas. */
 export async function runWalletCron() {
+  // antes de expirar: um Pix pago cujo webhook se perdeu ainda é creditado
+  const pixChecked = await reconcilePendingDeposits();
   const [deposits, withdrawals, expiredConfirmations, reconciled, challenges, reservations] = await Promise.all([
     expireDeposits(),
     processDueWithdrawals(),
@@ -38,5 +40,5 @@ export async function runWalletCron() {
   const ledger = await runReconciliation();
   const purged = await purgeExpired();
   await markCronRun(); // é assim que o admin vê, em Configurações, que o agendador está rodando
-  return { deposits, withdrawals, expiredConfirmations, reconciled, challenges, reservations, purged, ledgerOk: ledger.ok, mismatches: ledger.mismatches.slice(0, 5) };
+  return { pixChecked, deposits, withdrawals, expiredConfirmations, reconciled, challenges, reservations, purged, ledgerOk: ledger.ok, mismatches: ledger.mismatches.slice(0, 5) };
 }

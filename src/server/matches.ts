@@ -108,6 +108,7 @@ const TX = { timeout: 30000 };
 /** Relato de placar feito por um dos lados (capitão). Dois relatos iguais fecham a partida; divergentes abrem disputa. */
 export async function reportMatch(actorIn: Actor | null, matchId: string, scoreA: number, scoreB: number): Promise<"reported" | "completed" | "disputed"> {
   const actor = requireActor(actorIn);
+  await rateLimit(`report:${actor.id}`, 40, 3600, "Muitos relatos de placar seguidos. Aguarde um pouco.");
   return db.$transaction(async (tx) => {
     const m = await loadMatch(tx, matchId);
     const t = m.stage.tournament;
@@ -125,7 +126,10 @@ export async function reportMatch(actorIn: Actor | null, matchId: string, scoreA
     if (!other) {
       await tx.match.update({ where: { id: m.id }, data: { ...data, status: "REPORTED" } });
       const opp = side === "a" ? m.participantB : m.participantA;
-      if (opp) await notify(opp.userId, "match.reported", "Confirme o placar", `${side === "a" ? m.participantA?.name : m.participantB?.name} reportou ${scoreA} × ${scoreB}. Confirme ou conteste.`, `/partidas/${m.id}`, tx);
+      // repetir o mesmo placar não avisa o adversário de novo (senão dá para inundá-lo de notificações)
+      const prev = (side === "a" ? m.reportA : m.reportB) as { scoreA: number; scoreB: number } | null;
+      const repeated = !!prev && prev.scoreA === scoreA && prev.scoreB === scoreB;
+      if (opp && !repeated) await notify(opp.userId, "match.reported", "Confirme o placar", `${side === "a" ? m.participantA?.name : m.participantB?.name} reportou ${scoreA} × ${scoreB}. Confirme ou conteste.`, `/partidas/${m.id}`, tx);
       return "reported" as const;
     }
     if (other.scoreA === scoreA && other.scoreB === scoreB) {
@@ -177,6 +181,7 @@ export async function openDispute(actorIn: Actor | null, matchId: string, reason
 /** A organização define o resultado final (resolve disputas e permite correções). */
 export async function setMatchResult(actorIn: Actor | null, matchId: string, scoreA: number, scoreB: number, note?: string) {
   const actor = requireActor(actorIn);
+  if ((note ?? "").length > 500) throw new AppError("A observação pode ter até 500 caracteres.");
   await db.$transaction(async (tx) => {
     const m = await loadMatch(tx, matchId);
     await assertTournamentAccess(actor, m.stage.tournament, "staff", tx);
@@ -198,6 +203,7 @@ export async function forfeitMatch(actorIn: Actor | null, matchId: string, loser
     if (m.status === "COMPLETED") await assertEditable(tx, m);
     else if (!["READY", "REPORTED", "DISPUTED"].includes(m.status)) throw new AppError("Esta partida ainda não pode receber resultado.");
     if (reason.trim().length < 3) throw new AppError("Informe o motivo do W.O.");
+    if (reason.length > 500) throw new AppError("O motivo pode ter até 500 caracteres.");
     const sc = forfeitScore(m.bestOf, loserSide === "a" ? "b" : "a");
     await writeResult(tx, m, sc.scoreA, sc.scoreB, { forfeit: loserSide, note: `W.O.: ${reason.trim()}` });
     await audit(actor.id, "match.forfeit", "Match", m.id, { loserSide, reason }, tx);

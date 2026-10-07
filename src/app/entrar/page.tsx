@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { loginAction } from "@/app/actions/auth";
@@ -7,7 +8,7 @@ import { Alert, Card, Field, Input } from "@/components/ui";
 export const metadata: Metadata = { title: "Entrar" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; "senha-redefinida"?: string }> }) {
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   return (
     <div className="mx-auto max-w-md">
       <Card className="p-7">

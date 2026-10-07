@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { adminDeleteTeamAction } from "@/app/actions/admin";
@@ -12,7 +13,7 @@ export const metadata: Metadata = { title: "Admin · Equipes", robots: { index: 
 export const dynamic = "force-dynamic";
 
 export default async function AdminTeams({ searchParams }: { searchParams: Promise<{ q?: string; situacao?: string }> }) {
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   await requireAdmin();
   const q = (sp.q ?? "").trim().slice(0, 60);
   const situacao = sp.situacao === "excluidas" ? "excluidas" : sp.situacao === "ativas" ? "ativas" : "";

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "./audit";
+import { rateLimit } from "./rate-limit";
 import { confirmDeposit, reverseDeposit } from "./deposits";
 import { getPixProvider } from "./pix";
 import { authorizeTransfer, handleTransferEvent } from "./withdrawals";
@@ -26,7 +27,11 @@ export async function handlePixWebhook(headers: Headers, rawBody: string): Promi
   }
   if (!provider.verifyWebhook(headers, rawBody)) {
     console.warn("[pix-webhook] assinatura/token inválido");
-    await audit(null, "security.webhook_rejected", "Webhook", provider.name, { reason: "invalid_signature" }).catch(() => undefined);
+    // Qualquer pessoa da internet pode chamar este endereço sem assinatura: no máximo 5 registros a cada 10 minutos,
+    // senão cada requisição forjada gravaria uma linha no banco (disco enchendo).
+    await rateLimit("webhook-rejected-audit", 5, 600)
+      .then(() => audit(null, "security.webhook_rejected", "Webhook", provider.name, { reason: "invalid_signature" }))
+      .catch(() => undefined);
     return { status: 401, body: { error: "unauthorized" } };
   }
   let events;
@@ -78,7 +83,9 @@ export async function handleTransferAuthorization(headers: Headers, rawBody: str
     return { status: 503, body: { error: "unavailable" } };
   }
   if (!provider.verifyTransferAuthorization(headers, rawBody)) {
-    await audit(null, "security.transfer_auth_rejected", "Webhook", provider.name, { reason: "invalid_signature" }).catch(() => undefined);
+    await rateLimit("transfer-auth-rejected-audit", 5, 600)
+      .then(() => audit(null, "security.transfer_auth_rejected", "Webhook", provider.name, { reason: "invalid_signature" }))
+      .catch(() => undefined);
     return { status: 401, body: { error: "unauthorized" } };
   }
   let req;

@@ -41,15 +41,24 @@ export async function submitKyc(actorIn: Actor | null, input: { fullName: string
   const digits = onlyDigits(cpf);
   const hash = cpfHash(digits);
   const clash = await db.kycProfile.findUnique({ where: { cpfHash: hash } });
-  if (clash && clash.userId !== actor.id) throw new AppError("Este CPF já está vinculado a outra conta.", "CONFLICT");
+  // Só um cadastro JÁ VERIFICADO pelo admin é dono do CPF. Um envio ainda pendente (ou recusado) de outra conta não pode bloquear
+  // o titular de verdade: quem digita o CPF de outra pessoa só para "reservá-lo" perde o lugar quando o titular aparece.
+  if (clash && clash.userId !== actor.id && clash.status === "VERIFIED") throw new AppError("Este CPF já está vinculado a outra conta.", "CONFLICT");
+  const displacedUserId = clash && clash.userId !== actor.id ? clash.userId : null;
   const existing = await db.kycProfile.findUnique({ where: { userId: actor.id } });
   if (existing?.status === "VERIFIED") throw new AppError("Seus dados já foram verificados. Para alterá-los, fale com o suporte.", "CONFLICT");
 
   const data = { fullName, cpfHash: hash, cpfEnc: encryptField(digits), cpfLast4: digits.slice(-4), birthDate, status: "PENDING" as const, submittedAt: new Date(), reviewedAt: null, reviewedById: null, rejectReason: null };
-  const profile = existing
-    ? await db.kycProfile.update({ where: { userId: actor.id }, data })
-    : await db.kycProfile.create({ data: { userId: actor.id, ...data } });
+  const profile = await db.$transaction(async (tx) => {
+    if (displacedUserId) await tx.kycProfile.delete({ where: { userId: displacedUserId } });
+    return existing ? tx.kycProfile.update({ where: { userId: actor.id }, data }) : tx.kycProfile.create({ data: { userId: actor.id, ...data } });
+  });
   await audit(actor.id, "kyc.submit", "User", actor.id, { cpfLast4: profile.cpfLast4 });
+  if (displacedUserId) {
+    await audit(actor.id, "kyc.displaced", "User", displacedUserId, { cpfLast4: profile.cpfLast4 });
+    await notify(displacedUserId, "kyc.displaced", "Verificação precisa ser refeita", "Outra conta enviou o mesmo CPF e o seu envio pendente foi retirado. Se o CPF é seu, envie novamente; a equipe confere antes de verificar.", "/carteira/verificacao");
+    await notify(await adminUserIds(), "kyc.pending", "CPF enviado por duas contas", `O CPF final ${profile.cpfLast4} foi enviado por outra conta, e o envio pendente anterior foi retirado. Confira os dados antes de aprovar.`, "/admin/kyc");
+  }
   await notify(await adminUserIds(), "kyc.pending", "KYC aguardando análise", `${fullName} enviou os dados para verificação.`, "/admin/kyc");
   return { status: profile.status, fullName: profile.fullName, cpfLast4: profile.cpfLast4 };
 }

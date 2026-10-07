@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { flatParams } from "@/lib/url";
 import { resetPasswordAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/action-form";
 import { Alert, Card, Field, Input } from "@/components/ui";
@@ -7,7 +8,7 @@ export const metadata: Metadata = { title: "Nova senha", robots: { index: false 
 
 export default async function ResetPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ admin?: string }> }) {
   const { token } = await params;
-  const { admin } = await searchParams;
+  const { admin } = flatParams(await searchParams);
   return (
     <div className="mx-auto max-w-md">
       <Card className="p-7">

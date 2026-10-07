@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -21,7 +22,7 @@ const statusTone = { OPEN: "ok", ACCEPTED: "brand", REPORTED: "warn", DISPUTED: 
 
 export default async function ChallengePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ time?: string }> }) {
   const { id } = await params;
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const c = await db.challenge.findUnique({ where: { id }, include: { creatorTeam: true, opponentTeam: true } });
   if (!c) notFound();
   const user = await getCurrentUser();

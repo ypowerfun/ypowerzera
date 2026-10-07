@@ -154,10 +154,11 @@ Abra `https://meusite.com.br`. Se aparecer o site com o cadeado, deu certo.
 
 ## 6. Crie o administrador
 
-1. Acesse `https://meusite.com.br/cadastro` e crie a conta **com o mesmo e-mail que você colocou em `ADMIN_EMAILS`**.
-2. Abra o e-mail de confirmação que chegou e clique no link. (**O cargo de administrador só vale depois de o e-mail confirmado.**)
-3. Entre no site: aparece o menu **Admin**. Nada de senha padrão: não existe conta de administrador pré-criada.
-4. Em **Admin → Usuários** você promove organizadores. Em **Admin → Configurações** fica a **"Verificação do site"** (um checklist: endereço, e-mail, agendador, pagamentos, segredos, proxy) e o botão **"Enviar e-mail de teste para mim"**.
+1. Acesse `https://meusite.com.br/cadastro` e crie a conta **com o mesmo e-mail que você colocou em `ADMIN_EMAILS`**. Faça isso **logo depois de subir o site**, antes de divulgar o endereço.
+2. Abra o e-mail de confirmação que chegou e clique no link. **O cargo de administrador só vale depois de o e-mail confirmado.**
+3. Como é o e-mail de administrador, o site pede para **criar a senha agora** (a que você digitou no cadastro é descartada). Isso garante que só quem lê aquela caixa de entrada vira administrador, mesmo que alguém tenha se cadastrado com o seu e-mail antes de você. Crie a senha, entre e pronto: aparece o menu **Admin**. Nada de senha padrão: não existe conta de administrador pré-criada.
+   - *Se a página disser só "e-mail confirmado" e a sua senha do cadastro não funcionar* (alguns leitores de e-mail abrem o link antes de você), use **Esqueci minha senha** na tela de entrada: o link chega no mesmo e-mail e você cria a senha.
+4. Em **Admin → Usuários** você promove organizadores e também pode **suspender uma conta** (golpe, trapaça, assédio): a pessoa é desconectada na hora e não consegue mais entrar; dá para reativar depois. Tudo fica registrado. Em **Admin → Configurações** fica a **"Verificação do site"** (um checklist: endereço, e-mail, agendador, pagamentos, segredos, proxy) e o botão **"Enviar e-mail de teste para mim"**.
 
 Se o e-mail não chegou: [`CONFIGURAR_EMAIL.md`](CONFIGURAR_EMAIL.md), seção 7.
 

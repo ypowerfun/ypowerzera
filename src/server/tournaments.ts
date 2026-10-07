@@ -9,7 +9,7 @@ import { orderSeeds, validateStage, type SeedingMethod as EngineSeeding, type St
 import { finalizeRules, getGame, getPreset, type PresetStage } from "@/games";
 import { audit } from "./audit";
 import { notify } from "./notifications";
-import { expireStaleReservations, refundOrder } from "./orders";
+import { expireStaleReservations, refundOrder, tryAutoRefund } from "./orders";
 import { assertTournamentAccess, assertOrgAccess, requireActor, requireVerified } from "./permissions";
 import { startStage, syncStage } from "./stage-runner";
 import { uniqueSlug } from "./orgs";
@@ -342,8 +342,10 @@ export async function startTournament(actorIn: Actor | null, id: string) {
   const first = t.stages[0];
   if (!first) throw new AppError("Defina ao menos uma fase.");
 
+  const dropped: Array<{ id: string; userId: string; was: string }> = [];
   await db.$transaction(
     async (tx) => {
+      dropped.length = 0; // a transação pode ser repetida
       await expireStaleReservations(tx, id);
       const all = await tx.participant.findMany({ where: { tournamentId: id } });
       const eligible = all.filter((p) => (t.requireCheckIn ? p.status === "CHECKED_IN" : p.status === "REGISTERED" || p.status === "CHECKED_IN"));
@@ -360,6 +362,7 @@ export async function startTournament(actorIn: Actor | null, id: string) {
         });
         await tx.order.updateMany({ where: { participantId: p.id, status: "PENDING" }, data: { status: "CANCELED" } });
         await tx.rosterEntry.deleteMany({ where: { participantId: p.id } });
+        dropped.push({ id: p.id, userId: p.userId, was: p.status });
       }
 
       const method = t.seedingMethod.toLowerCase() as EngineSeeding;
@@ -378,7 +381,28 @@ export async function startTournament(actorIn: Actor | null, id: string) {
     },
     { timeout: 60000 },
   );
+  await settleDropped(t, dropped);
   return db.tournament.findUniqueOrThrow({ where: { id } });
+}
+
+/**
+ * Quem ficou de fora no início (sem check-in, pagamento pendente ou lista de espera) é avisado. Se já tinha PAGO e o organizador
+ * começou antes de o check-in encerrar, a pessoa não teve chance justa de confirmar presença: o valor é devolvido sozinho.
+ * Com a janela de check-in encerrada, a regra do campeonato vale (quem não confirmou presença perde a vaga).
+ */
+async function settleDropped(t: Pick<Tournament, "name" | "slug" | "checkInClosesAt">, dropped: Array<{ id: string; userId: string; was: string }>): Promise<void> {
+  const windowClosed = t.checkInClosesAt !== null && t.checkInClosesAt <= new Date();
+  for (const d of dropped) {
+    let refunded = false;
+    if (d.was === "REGISTERED" && !windowClosed) {
+      const paid = await db.order.findFirst({ where: { participantId: d.id, status: { in: ["PAID", "PARTIALLY_REFUNDED"] } } });
+      if (paid) {
+        refunded = await tryAutoRefund(paid.id);
+      }
+    }
+    const why = d.was === "REGISTERED" ? "você não fez o check-in a tempo" : d.was === "PENDING_PAYMENT" ? "o pagamento não foi concluído" : "não abriu vaga para você";
+    await notify(d.userId, "participant.dropped", "Você ficou de fora da chave", `${t.name} começou e ${why}.${refunded ? " O valor da sua inscrição foi reembolsado." : ""}`, `/torneios/${t.slug}`).catch(() => undefined);
+  }
 }
 
 /** Inicia a próxima fase (depois que a anterior terminou). */
@@ -410,6 +434,7 @@ export async function cancelTournament(actorIn: Actor | null, id: string, reason
   const t = await loadManaged(actor, id, "admin");
   if (t.status === "COMPLETED" || t.status === "CANCELED") throw new AppError("Este campeonato já foi encerrado.");
   if (reason.trim().length < 3) throw new AppError("Informe o motivo do cancelamento.");
+  if (reason.length > 500) throw new AppError("O motivo pode ter até 500 caracteres.");
   await db.tournament.update({ where: { id }, data: { status: "CANCELED" } });
   const orders = await db.order.findMany({ where: { tournamentId: id, status: { in: ["PAID", "PARTIALLY_REFUNDED"] } } });
   const failures: string[] = [];

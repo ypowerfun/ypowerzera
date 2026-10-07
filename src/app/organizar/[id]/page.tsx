@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cancelTournamentAction, deleteDraftAction, nextStageAction, openCheckInAction, publishAction, seedingAction, startAction } from "@/app/actions/organizer";
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ManagePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ criado?: string }> }) {
   const { id } = await params;
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const { t, admin } = await loadManaged(id);
   const counts = await db.participant.groupBy({ by: ["status"], where: { tournamentId: id }, _count: true });
   const n = (s: string) => counts.find((c) => c.status === s)?._count ?? 0;

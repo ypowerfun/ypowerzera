@@ -18,6 +18,19 @@ const COMMON_PASSWORDS = new Set([
   "corinthians", "flamengo123", "123123123", "qwerty123", "mudar123", "trocar123",
 ]);
 
+/**
+ * Só as letras da senha (sem números e símbolos): "Senha@2026", "senha123" e "SENHA!!" têm a mesma base, "senha".
+ * Se a base é uma palavra comum, trocar o final por um ano ou símbolo não torna a senha segura.
+ */
+const COMMON_STEMS = new Set([
+  "password", "passwd", "senha", "senhas", "qwerty", "qwertyuiop", "qwertyuio", "asdfgh", "asdfghjkl", "zxcvbn", "zxcvbnm", "qazwsx", "abc", "abcdef", "abcdefgh",
+  "brasil", "brazil", "flamengo", "corinthians", "palmeiras", "saopaulo", "santos", "gremio", "cruzeiro", "vasco", "botafogo", "futebol", "football", "soccer",
+  "admin", "administrador", "administrator", "root", "letmein", "welcome", "bemvindo", "iloveyou", "teamo", "tequiero", "amor", "deus", "jesus", "familia",
+  "mudar", "trocar", "mude", "troque", "teste", "test", "testing", "usuario", "user", "login", "master", "dragon", "monkey", "shadow", "sunshine", "princess",
+  "superman", "batman", "naruto", "pokemon", "minecraft", "fortnite", "valorant", "freefire", "csgo", "counterstrike", "leagueoflegends", "league", "gamer", "gamers",
+  "jogador", "jogo", "campeao", "campeonato", "primearena", "prime", "arena", "primearenaone", "esports", "playstation", "xbox", "nintendo", "samsung", "iphone",
+]);
+
 export const passwordSchema = z
   .string()
   .min(8, "A senha deve ter pelo menos 8 caracteres.")
@@ -29,6 +42,9 @@ export function checkPasswordStrength(password: string, context: { email?: strin
   const lower = password.toLowerCase();
   if (COMMON_PASSWORDS.has(lower)) return "Essa senha é muito comum. Escolha outra.";
   if (/^(.)\1+$/.test(password)) return "A senha não pode ter um único caractere repetido.";
+  if (/^\d+$/.test(password) && password.length < 12) return "A senha não pode ser só números. Misture letras.";
+  const stem = lower.normalize("NFKD").replace(/[^a-z]/g, "");
+  if (stem.length >= 3 && COMMON_STEMS.has(stem) && password.length < 16) return "Essa senha é muito comum (uma palavra conhecida com números ou símbolos). Escolha outra.";
   if (context.username && lower.includes(context.username.toLowerCase()) && context.username.length >= 4) return "A senha não pode conter o seu nome de usuário.";
   if (context.email && lower === context.email.toLowerCase()) return "A senha não pode ser igual ao e-mail.";
   return null;

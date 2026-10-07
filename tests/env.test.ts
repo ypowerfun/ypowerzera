@@ -39,6 +39,13 @@ describe("configuração de produção", () => {
     expect(() => assertProductionConfig()).not.toThrow();
   });
 
+  it("recusa chave de TESTE da Stripe em um site público", () => {
+    prod({ STRIPE_SECRET_KEY: "sk_test_abcdefghijklmnop" });
+    expect(() => assertProductionConfig()).toThrow(/chave de TESTE/);
+    prod({ STRIPE_SECRET_KEY: "sk_live_abcdefghijklmnop" });
+    expect(() => assertProductionConfig()).not.toThrow();
+  });
+
   it("exige MAIL_FROM de verdade (o padrão @primearena.local é recusado pelos provedores de e-mail)", () => {
     prod();
     delete process.env.MAIL_FROM;

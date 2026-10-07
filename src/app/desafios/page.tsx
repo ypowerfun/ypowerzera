@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Alert, Badge, ButtonLink, Card, Empty, GameBadge, PageTitle, Select, buttonClass } from "@/components/ui";
@@ -17,7 +18,7 @@ const statusLabel = { OPEN: "Aberto", ACCEPTED: "Em andamento", REPORTED: "Aguar
 const statusTone = { OPEN: "ok", ACCEPTED: "brand", REPORTED: "warn", DISPUTED: "danger", SETTLED: "neutral", CANCELED: "neutral", EXPIRED: "neutral", VOID: "neutral" } as const;
 
 export default async function ChallengesPage({ searchParams }: { searchParams: Promise<{ jogo?: string }> }) {
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const user = await getCurrentUser();
   if (!(await isWalletOn())) return <WalletUnavailable />;
   const open = await listOpenChallenges({ gameId: sp.jogo || undefined });

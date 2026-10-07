@@ -14,3 +14,13 @@ export function clampPage(value: unknown): number {
   const n = Math.trunc(Number(value));
   return Number.isFinite(n) ? Math.min(10_000, Math.max(1, n)) : 1;
 }
+
+/**
+ * Parâmetros da URL (?q=a&q=b) chegam como lista quando o nome se repete; as páginas esperam texto. Fica o primeiro valor,
+ * então um parâmetro repetido não derruba a página com erro 500.
+ */
+export function flatParams<T extends object>(params: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(params)) out[k] = Array.isArray(v) ? v[0] : v;
+  return out as T;
+}

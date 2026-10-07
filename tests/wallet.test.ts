@@ -54,6 +54,8 @@ describe("KYC", () => {
     expect(JSON.stringify(row)).not.toContain(cpf);
     expect(decryptField(row.cpfEnc)).toBe(cpf);
     expect(row.status).toBe("PENDING");
+    // CPF já VERIFICADO pelo admin: ninguém mais o toma (um envio apenas pendente cede o lugar ao titular; veja security-money.test.ts)
+    await reviewKyc(await newAdmin(), u.id, "approve");
     const other = await makeUser();
     await expect(submitKyc(other, { fullName: "Outra Pessoa", cpf, birthDate: "1991-02-02" })).rejects.toThrow(/outra conta/);
     // formatação diferente do mesmo CPF também é detectada

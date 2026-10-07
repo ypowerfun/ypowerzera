@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import { safeHttpUrl } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -35,7 +36,7 @@ const tabs = [
 
 export default async function TournamentPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ aba?: string; inscrito?: string }> }) {
   const { slug } = await params;
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const user = await getCurrentUser();
   const data = await tournamentPage(slug, user ? toActor(user) : undefined);
   if (!data) notFound();

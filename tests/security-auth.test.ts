@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { safeNext } from "@/lib/action-helpers";
 import { hashPassword } from "@/lib/crypto";
 import { normalizeClientIp } from "@/lib/ip";
-import { cleanDisplayName, effectiveRole, getUserBySessionToken, login, registerUser, requestPasswordReset, resetPassword, verifyEmail } from "@/server/auth";
+import { checkPasswordStrength, cleanDisplayName, effectiveRole, getUserBySessionToken, login, registerUser, requestPasswordReset, resetPassword, verifyEmail } from "@/server/auth";
 import { purgeExpired } from "@/server/cron";
 import { lastMailTo, testOutbox } from "@/server/mailer";
 import { rateLimit } from "@/server/rate-limit";
@@ -221,5 +221,14 @@ describe("limpeza periódica", () => {
     expect(await db.rateLimit.findUnique({ where: { key: "velho" } })).toBeNull();
     expect(await db.session.findUnique({ where: { id: "sess-nova" } })).not.toBeNull();
     expect(await db.authToken.findUnique({ where: { tokenHash: "hash-velho" } })).toBeNull();
+  });
+});
+
+describe("política de senha: palavras comuns com número no fim não valem", () => {
+  it.each(["Senha@2026", "senha123456", "SENHA!!", "Brasil2024!", "Flamengo#10", "Admin@12345", "qwerty!!99", "Fortnite2026", "Prime#Arena2026", "20262026", "123456789012".slice(0, 9)])("recusa %s", (pw) => {
+    expect(checkPasswordStrength(pw)).not.toBeNull();
+  });
+  it.each(["SenhaBoa#2026", "Tigre-Azul-Corre-77", "Minha.Frase.Longa.9"])("aceita %s", (pw) => {
+    expect(checkPasswordStrength(pw)).toBeNull();
   });
 });

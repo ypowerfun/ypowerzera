@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { Role } from "@prisma/client";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 const parseRole = (v?: string): Role | undefined => (v === "USER" || v === "ORGANIZER" || v === "ADMIN" ? v : undefined);
 
 export default async function AdminUsers({ searchParams }: { searchParams: Promise<{ q?: string; role?: string; page?: string }> }) {
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const me = await requireAdmin();
   const { users, total, page, pages } = await listUsers(toActor(me), { q: sp.q, role: parseRole(sp.role), page: Number(sp.page) || 1 });
   const qs = (p: number) => {

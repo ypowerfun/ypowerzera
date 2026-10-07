@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createTournamentAction } from "@/app/actions/organizer";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewTournamentPage({ searchParams }: { searchParams: Promise<{ org?: string; jogo?: string; modo?: string }> }) {
   const user = await requireUser("/organizar/novo");
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   if (user.role === "USER") {
     return <div className="mx-auto max-w-lg"><Alert tone="warn"><b>Seu cargo é Jogador.</b> Só organizadores criam campeonatos. Peça a um administrador da plataforma para liberar o seu acesso. <Link href="/torneios" className="underline">Ver torneios</Link></Alert></div>;
   }

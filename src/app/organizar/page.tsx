@@ -85,7 +85,7 @@ export default async function OrganizerHome() {
                         <summary className="cursor-pointer text-sm text-brand-soft">Remover membro</summary>
                         <ActionForm action={removeOrgMemberAction} className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]" submit="Remover" submitVariant="danger" submitClassName="" confirm="Remover esta pessoa da organização? Ela perde o acesso aos campeonatos agora.">
                           <input type="hidden" name="orgId" value={o.id} />
-                          <Field label="Usuário" htmlFor={`rm-${o.id}`}><Input id={`rm-${o.id}`} name="username" required placeholder="usuario" /></Field>
+                          <Field label="Quem sai da organização (@login)" htmlFor={`rm-${o.id}`}><Input id={`rm-${o.id}`} name="username" required placeholder="login da pessoa" /></Field>
                         </ActionForm>
                       </details>
                     )}

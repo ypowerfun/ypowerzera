@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GAMES } from "@/games";
@@ -9,7 +10,7 @@ export const metadata: Metadata = { title: "Torneios" };
 export const dynamic = "force-dynamic";
 
 export default async function TournamentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const filters: ListFilters = {
     gameId: sp.jogo || undefined,
     status: (["abertos", "andamento", "encerrados"].includes(sp.status ?? "") ? sp.status : undefined) as ListFilters["status"],

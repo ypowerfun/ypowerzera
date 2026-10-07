@@ -14,6 +14,7 @@ Quando alguém cria uma conta no site, o site manda um e-mail com um link: **"Co
 | O envio falha (SMTP fora do ar, senha errada) | A conta **é criada mesmo assim**, o usuário entra normalmente e o erro vai para os logs (`docker compose logs app`), **sem a sua senha**. O usuário pode pedir outro e-mail em **Minha conta → Reenviar e-mail de confirmação** (limite de 3 por hora). |
 | Usuário clica no link | O e-mail fica confirmado. Clicar de novo no mesmo link não dá erro. |
 | E-mail não confirmado | O usuário usa o site, mas **não consegue se inscrever em campeonatos**. Também não vira administrador por `ADMIN_EMAILS` até confirmar. |
+| E-mail de **administrador** (`ADMIN_EMAILS`) | Ao clicar no link de confirmação, o site pede para **criar a senha** (a do cadastro é descartada). É proposital: só quem lê aquela caixa de entrada vira administrador. |
 | "Esqueci minha senha" | Envia um link que vale **1 hora**. A resposta na tela é a mesma exista a conta ou não (ninguém descobre quais e-mails estão cadastrados). |
 | Produção sem `SMTP_URL` | O site **se recusa a subir** e diz o motivo (para você não lançar um site que não manda e-mail). |
 

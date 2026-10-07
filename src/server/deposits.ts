@@ -125,6 +125,16 @@ export async function confirmDeposit(chargeId: string): Promise<ConfirmResult> {
 export async function reverseDeposit(chargeId: string): Promise<"reversed" | "already" | "ignored"> {
   const dep = await db.deposit.findUnique({ where: { providerChargeId: chargeId } });
   if (!dep) return "ignored";
+  if (dep.status === "HELD") {
+    // Estornado ENQUANTO retido: nenhum crédito foi dado, então o valor já "voltou" ao pagador. Vai para REFUNDED (como um retido
+    // devolvido pelo admin: sem lançamento no razão, a conciliação continua fechando) e o admin não pode mais liberá-lo.
+    const held = await getPixProvider().getCharge(chargeId);
+    if (held.status !== "REVERSED") return "ignored";
+    const r = await db.deposit.updateMany({ where: { id: dep.id, status: "HELD" }, data: { status: "REFUNDED", holdReason: `${dep.holdReason ?? ""} | Estornado pelo provedor enquanto retido.` } });
+    if (r.count === 0) return "already";
+    await audit(null, "deposit.reversed_while_held", "Deposit", dep.id, { amountCents: dep.amountCents });
+    return "reversed";
+  }
   if (dep.status !== "CONFIRMED") return "already";
   const info = await getPixProvider().getCharge(chargeId);
   if (info.status !== "REVERSED") return "ignored";
@@ -144,6 +154,30 @@ export async function reverseDeposit(chargeId: string): Promise<"reversed" | "al
   });
 }
 
+/**
+ * Rede de segurança para o webhook perdido: o provedor pode falhar ao entregar (ou o site estar fora do ar naquele minuto) e um Pix
+ * PAGO nunca seria creditado. A cada ciclo do agendador reconsulta, no provedor, as cobranças ainda pendentes com alguns minutos de
+ * vida; `confirmDeposit` credita só o que o provedor confirma como pago (mesmas conferências do webhook).
+ */
+export async function reconcilePendingDeposits(now = new Date(), limit = 20): Promise<{ checked: number; credited: number }> {
+  const due = await db.deposit.findMany({
+    where: { status: "PENDING", providerChargeId: { not: null }, createdAt: { lt: new Date(now.getTime() - 3 * 60_000) }, expiresAt: { gt: new Date(now.getTime() - 30 * 60_000) } },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { providerChargeId: true },
+  });
+  let credited = 0;
+  for (const d of due) {
+    try {
+      const r = await confirmDeposit(d.providerChargeId!);
+      if (r === "credited") credited++;
+    } catch (e) {
+      console.error(`[depósitos] Não consegui reconsultar a cobrança ${d.providerChargeId}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  return { checked: due.length, credited };
+}
+
 /** Marca como expirados os Pix que passaram do prazo (um pagamento tardio ainda pode ser confirmado). */
 export async function expireDeposits(now = new Date()): Promise<number> {
   const r = await db.deposit.updateMany({ where: { status: "PENDING", expiresAt: { lt: now } }, data: { status: "EXPIRED" } });
@@ -158,6 +192,11 @@ export async function resolveHeldDeposit(actorIn: Actor | null, depositId: strin
   if (!dep || dep.status !== "HELD") throw new AppError("Depósito não está retido.", "NOT_FOUND");
   const team = await db.team.findUnique({ where: { id: dep.teamId }, include: { members: true } });
   if (team?.members.some((m) => m.userId === actor.id) || dep.userId === actor.id) throw new AppError("Conflito de interesse: você pertence a esta equipe.", "FORBIDDEN");
+  if (decision === "credit" && dep.providerChargeId) {
+    // Liberar é creditar dinheiro: confirma de novo, no provedor, que o Pix continua pago (não foi estornado nem cancelado).
+    const info = await getPixProvider().getCharge(dep.providerChargeId);
+    if (info.status !== "PAID") throw new AppError("O provedor não mostra este Pix como pago (estornado ou cancelado). Não é possível creditar; devolva o valor.");
+  }
   await db.$transaction(async (tx) => {
     const res = await tx.deposit.updateMany({
       where: { id: dep.id, status: "HELD" },

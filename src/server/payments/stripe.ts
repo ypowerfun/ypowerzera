@@ -65,6 +65,7 @@ export const stripeProvider: PaymentProvider = {
   name: "stripe",
   async createCheckout({ order, tournament, customerEmail, successUrl, cancelUrl }) {
     const minExpiry = Date.now() + 31 * 60_000;
+    const expiresAt = new Date(Math.max(order.expiresAt.getTime(), minExpiry));
     const session = await stripePost(
       "/checkout/sessions",
       buildCheckoutParams({
@@ -76,9 +77,11 @@ export const stripeProvider: PaymentProvider = {
         customerEmail,
         successUrl,
         cancelUrl,
-        expiresAt: new Date(Math.max(order.expiresAt.getTime(), minExpiry)),
+        expiresAt,
       }),
-      `checkout-${order.id}`,
+      // A expiração muda a cada clique em "Pagar" (a Stripe exige 30 min no futuro): a chave de idempotência precisa mudar junto,
+      // senão o segundo clique recebe "chave reutilizada com parâmetros diferentes" e o pagamento nunca abre.
+      `checkout-${order.id}-${Math.floor(expiresAt.getTime() / 1000)}`,
     );
     return { redirectUrl: String(session.url), sessionId: String(session.id) };
   },

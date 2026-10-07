@@ -1,10 +1,12 @@
 import { Prisma, type Challenge } from "@prisma/client";
 import { db, type Tx } from "@/lib/db";
 import { AppError } from "@/lib/errors";
+import { getEnv } from "@/lib/env";
 import { formatMoney } from "@/lib/money";
 import { getGame } from "@/games";
 import { audit } from "./audit";
 import { requireKyc } from "./kyc";
+import { safeMailError, sendMail } from "./mailer";
 import { moneyConfig, isWholeCredits } from "./money-config";
 import { notify } from "./notifications";
 import { requireActor, requireVerified } from "./permissions";
@@ -257,6 +259,33 @@ async function voidTx(tx: Prisma.TransactionClient, id: string, by: { actorId: s
  */
 export async function reportChallengeResult(actorIn: Actor | null, challengeId: string, outcome: "WON" | "LOST" | "NO_SHOW"): Promise<"settled" | "reported" | "disputed"> {
   const actor = requireActor(actorIn);
+  const result = await reportChallengeResultTx(actor, challengeId, outcome);
+  // A notificação dentro do site pode passar despercebida e o resultado é efetivado sozinho se o adversário não responder:
+  // o líder do outro lado também recebe um e-mail (melhor esforço; falha de SMTP não desfaz o relato).
+  if (result === "reported") await emailOpponentOfClaim(challengeId, actor.id);
+  return result;
+}
+
+async function emailOpponentOfClaim(challengeId: string, reporterId: string): Promise<void> {
+  try {
+    const c = await db.challenge.findUnique({ where: { id: challengeId } });
+    if (!c?.opponentTeamId) return;
+    const teams = await db.team.findMany({ where: { id: { in: [c.creatorTeamId, c.opponentTeamId] } }, select: { ownerId: true } });
+    const owners = await db.user.findMany({ where: { id: { in: teams.map((t) => t.ownerId).filter((id) => id !== reporterId) } }, select: { email: true } });
+    const minutes = moneyConfig().autoSettleWindowMinutes;
+    for (const o of owners) {
+      await sendMail({
+        to: o.email,
+        subject: "Confirme o resultado do seu desafio — Prime Arena",
+        text: `A outra equipe informou que venceu o desafio.\n\nConfirme ou conteste em: ${getEnv().appUrl}/desafios/${challengeId}\n\nEm desafios de valor baixo, se ninguém responder em ${minutes} minutos o resultado é efetivado e os créditos são movimentados. Se o resultado estiver errado, abra a disputa agora.`,
+      });
+    }
+  } catch (e) {
+    console.error(`[mail] Não consegui avisar o adversário do desafio ${challengeId}: ${safeMailError(e)}`);
+  }
+}
+
+async function reportChallengeResultTx(actor: Actor, challengeId: string, outcome: "WON" | "LOST" | "NO_SHOW"): Promise<"settled" | "reported" | "disputed"> {
   const cfg = moneyConfig();
   return db.$transaction(async (tx) => {
     const c = await tx.challenge.findUniqueOrThrow({ where: { id: challengeId } }).catch(() => {

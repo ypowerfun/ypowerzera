@@ -111,6 +111,10 @@ Nenhum sistema é "à prova de fraude". O desenho reduz a superfície e faz as f
 | Força bruta / enumeração | Limite de tentativas por IP e conta, respostas genéricas, hash scrypt, sessões com token em hash, cookies `HttpOnly`/`SameSite` (+`Secure` em produção) |
 | Falha ambígua do provedor | Saque fica em “enviando” para conciliação **humana** — nunca reenvia nem devolve sozinho (evita pagar duas vezes) |
 | Erro de configuração | Em produção o app **recusa subir** com segredos fracos, provedores simulados ou sem chave de criptografia (`src/instrumentation.ts`) |
+| Roubo da conta de administrador | O e-mail de `ADMIN_EMAILS` só vale confirmado, e ao confirmar a senha escolhida no cadastro é descartada: só quem lê a caixa de entrada cria a senha (impede cadastrar o e-mail do dono antes dele) |
+| Rajada de tentativas de login | Limite atômico (reserva a tentativa **antes** do scrypt), por IP, por conta+IP e por conta; fila limitada de hashes; IPv6 por /64; ninguém bloqueia a conta de outra pessoa de fora |
+| Abuso interno e contas problemáticas | Admin suspende/reativa contas (desconecta na hora); remover inscrição paga exige admin da organização; premiação anunciada só pode aumentar depois de haver inscritos; cupom e disputa com limites |
+| Links de usuário | Só `http(s)` (javascript:/data: viravam XSS); redirecionamento após login só para dentro do site |
 | Web | Cabeçalhos de segurança (CSP restritiva, HSTS em produção, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy), Server Actions com checagem de papel no servidor, validação com zod |
 
 ## Produção

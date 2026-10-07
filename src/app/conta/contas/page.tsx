@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import { removeGameAccountAction, saveGameAccountAction } from "@/app/actions/account";
 import { ActionForm } from "@/components/action-form";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function GameAccountsPage({ searchParams }: { searchParams: Promise<{ jogo?: string; next?: string }> }) {
   const user = await requireUser("/conta/contas");
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const accounts = await listGameAccounts(user.id);
   const byGame = new Map(accounts.map((a) => [a.gameId, a]));
   const ordered = [...GAMES].sort((a, b) => (a.id === sp.jogo ? -1 : b.id === sp.jogo ? 1 : 0));

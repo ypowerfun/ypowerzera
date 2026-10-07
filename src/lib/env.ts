@@ -48,7 +48,9 @@ export function getEnv() {
     walletEnabled: bool(process.env.WALLET_ENABLED, true),
     payoutsPaused: bool(process.env.PAYOUTS_PAUSED, false),
     /** Com `true`, depósito cujo pagador o provedor não informou (ex.: Asaas) fica retido para o admin em vez de creditar. */
-    pixRequirePayerDoc: bool(process.env.PIX_REQUIRE_PAYER_DOC, false),
+    // O Asaas não informa quem pagou o Pix: em produção, por padrão, TODO depósito sem o CPF do pagador fica retido para o admin
+    // conferir (a regra "o pagador é o titular" não pode ficar desligada por esquecimento). Defina PIX_REQUIRE_PAYER_DOC=false para desligar.
+    pixRequirePayerDoc: bool(process.env.PIX_REQUIRE_PAYER_DOC, process.env.NODE_ENV === "production" && (process.env.PIX_PROVIDER ?? "mock") === "asaas"),
     /** Só confie em x-forwarded-for se houver um proxy/CDN seu na frente que SOBRESCREVE o cabeçalho. */
     trustProxy: process.env.TRUST_PROXY === undefined || process.env.TRUST_PROXY === "" ? null : bool(process.env.TRUST_PROXY),
   };
@@ -85,6 +87,9 @@ export function assertProductionConfig() {
   }
   if (env.paymentsProvider === "stripe" && (!env.stripeSecretKey || !env.stripeWebhookSecret)) {
     problems.push("STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENTS_PROVIDER=stripe.");
+  }
+  if (env.paymentsProvider === "stripe" && /^sk_test_/.test(env.stripeSecretKey)) {
+    problems.push("STRIPE_SECRET_KEY é uma chave de TESTE (sk_test_…): um site público não receberia dinheiro de verdade. Use a chave sk_live_… da Stripe.");
   }
   if (!["mock", "asaas"].includes(env.pixProvider)) {
     problems.push(`PIX_PROVIDER="${env.pixProvider}" não existe: use asaas (ou, só para testes, mock).`);

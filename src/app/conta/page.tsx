@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { changePasswordAction, resendVerificationAction, updateProfileAction } from "@/app/actions/auth";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ "boas-vindas"?: string }> }) {
   const user = await requireUser("/conta");
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const kyc = await getKyc(user.id);
   return (
     <div className="mx-auto max-w-3xl space-y-6">

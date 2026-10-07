@@ -6,12 +6,13 @@ import { audit } from "./audit";
 import { notify } from "./notifications";
 import {
   activeCount,
-  autoRefundOnWithdrawal,
   createRegistrationOrder,
   expireStaleReservations,
   findValidCoupon,
   promoteWaitlist,
+  releaseCoupon,
   releaseParticipant,
+  tryAutoRefund,
 } from "./orders";
 import { assertTournamentAccess, requireActor, requireVerified } from "./permissions";
 import { rateLimit } from "./rate-limit";
@@ -201,6 +202,8 @@ export async function withdrawRegistration(actorIn: Actor | null, participantId:
   const p = await db.participant.findUnique({ where: { id: participantId }, include: { tournament: true, orders: true } });
   if (!p) throw new AppError("Inscrição não encontrada.", "NOT_FOUND");
   const mine = p.userId === actor.id;
+  // Quem foi desclassificado não pode "desistir" para apagar a punição e se inscrever de novo (a desistência apaga o registro).
+  if (mine && p.status === "DISQUALIFIED") throw new AppError("Sua inscrição foi desclassificada. Só a organização pode removê-la.", "FORBIDDEN");
   const paid = p.orders.find((o) => o.status === "PAID" || o.status === "PARTIALLY_REFUNDED");
   // Remover uma inscrição PAGA devolve o dinheiro (reembolso total): é decisão de admin da organização, como o reembolso manual,
   // e não da equipe de apoio (senão um membro desonesto esvazia o campeonato e reembolsa todo mundo).
@@ -211,14 +214,16 @@ export async function withdrawRegistration(actorIn: Actor | null, participantId:
   const refundable = !mine || refundsOnWithdrawal(p.tournament);
   await db.$transaction(async (tx) => {
     for (const o of p.orders.filter((x) => x.status === "PENDING")) {
-      await tx.order.update({ where: { id: o.id }, data: { status: "CANCELED" } });
-      if (o.couponId) await tx.coupon.update({ where: { id: o.couponId }, data: { redeemed: { decrement: 1 } } }).catch(() => undefined);
+      const done = await tx.order.updateMany({ where: { id: o.id, status: "PENDING" }, data: { status: "CANCELED" } });
+      if (done.count === 1 && o.couponId) await releaseCoupon(tx, o.couponId);
     }
+    // Inscrição gratuita por cupom de 100% (pedido pago de R$ 0): ao desistir o uso do cupom volta (senão um usuário esgota um cupom limitado)
+    if (paid && paid.totalCents === 0 && paid.couponId) await releaseCoupon(tx, paid.couponId);
     await releaseParticipant(tx, p.id);
     await promoteWaitlist(tx, p.tournamentId);
     await audit(actor.id, mine ? "participant.withdraw" : "participant.remove", "Tournament", p.tournamentId, { participantId: p.id }, tx);
   });
-  if (paid && refundable) await autoRefundOnWithdrawal(paid.id);
+  if (paid && refundable) await tryAutoRefund(paid.id);
   if (!mine) await notify(p.userId, "participant.removed", "Inscrição removida", `A organização removeu sua inscrição em ${p.tournament.name}.`, `/torneios/${p.tournament.slug}`);
 }
 
@@ -266,6 +271,7 @@ export async function disqualifyParticipant(actorIn: Actor | null, participantId
   if (!p) throw new AppError("Inscrição não encontrada.", "NOT_FOUND");
   await assertTournamentAccess(actor, p.tournament, "staff");
   if (reason.trim().length < 3) throw new AppError("Informe o motivo da desclassificação.");
+  if (reason.length > 500) throw new AppError("O motivo pode ter até 500 caracteres.");
   if (p.status === "DISQUALIFIED") return;
   await db.$transaction(
     async (tx) => {

@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -27,7 +28,7 @@ const ledgerLabel: Record<string, string> = { DEPOSIT: "Depósito", DEPOSIT_REVE
 
 export default async function TeamWalletPage({ params, searchParams }: { params: Promise<{ teamId: string }>; searchParams: Promise<{ pix?: string; confirmar?: string; saque?: string }> }) {
   const { teamId } = await params;
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const user = await requireUser(`/carteira/${teamId}`);
   if (!(await isWalletOn())) return <WalletUnavailable />;
   const team = await db.team.findUnique({ where: { id: teamId }, include: { members: true } });

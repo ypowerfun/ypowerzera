@@ -197,6 +197,11 @@ export async function failOrder(orderId: string, reason: string): Promise<void> 
   await db.order.updateMany({ where: { id: orderId, status: "PENDING" }, data: { status: "FAILED", failureReason: reason.slice(0, 300) } });
 }
 
+/** Devolve um uso do cupom. Nunca deixa o contador negativo (um contador negativo liberaria usos além do limite). */
+export async function releaseCoupon(tx: Tx, couponId: string): Promise<void> {
+  await tx.coupon.updateMany({ where: { id: couponId, redeemed: { gt: 0 } }, data: { redeemed: { decrement: 1 } } });
+}
+
 /** Libera reservas vencidas: pedidos expiram e a vaga volta; a fila de espera é promovida. */
 export async function expireStaleReservations(tx: Tx = db, tournamentId?: string, now = new Date()): Promise<number> {
   const stale = await tx.participant.findMany({
@@ -206,8 +211,9 @@ export async function expireStaleReservations(tx: Tx = db, tournamentId?: string
   for (const p of stale) {
     const orders = await tx.order.findMany({ where: { participantId: p.id, status: "PENDING" } });
     for (const o of orders) {
-      await tx.order.update({ where: { id: o.id }, data: { status: "EXPIRED" } });
-      if (o.couponId) await tx.coupon.update({ where: { id: o.couponId }, data: { redeemed: { decrement: 1 } } }).catch(() => undefined);
+      // só quem fez a transição PENDING → EXPIRED devolve o cupom (duas chamadas ao mesmo tempo não devolvem duas vezes)
+      const done = await tx.order.updateMany({ where: { id: o.id, status: "PENDING" }, data: { status: "EXPIRED" } });
+      if (done.count === 1 && o.couponId) await releaseCoupon(tx, o.couponId);
     }
     await releaseParticipant(tx, p.id);
   }
@@ -261,8 +267,9 @@ export async function cancelPendingOrder(actorIn: Actor | null, orderId: string)
   if (!order || order.userId !== actor.id) throw new AppError("Pedido não encontrado.", "NOT_FOUND");
   if (order.status !== "PENDING") return;
   await db.$transaction(async (tx) => {
-    await tx.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
-    if (order.couponId) await tx.coupon.update({ where: { id: order.couponId }, data: { redeemed: { decrement: 1 } } }).catch(() => undefined);
+    const done = await tx.order.updateMany({ where: { id: order.id, status: "PENDING" }, data: { status: "CANCELED" } });
+    if (done.count === 0) return; // outra chamada já cancelou
+    if (order.couponId) await releaseCoupon(tx, order.couponId);
     if (order.participantId) await releaseParticipant(tx, order.participantId);
     await promoteWaitlist(tx, order.tournamentId);
   });
@@ -325,6 +332,32 @@ export async function autoRefundOnWithdrawal(orderId: string): Promise<void> {
   if (!order || (order.status !== "PAID" && order.status !== "PARTIALLY_REFUNDED")) return;
   const remaining = order.totalCents - order.refundedCents;
   if (remaining > 0) await refundOrderInternal(orderId, remaining, "Desistência antes do check-in (reembolso automático).", null);
+}
+
+/**
+ * Reembolso automático depois que a inscrição JÁ foi desfeita: se o provedor falhar, o erro não pode se perder (a pessoa ficaria
+ * sem a vaga e sem o dinheiro). Registra, avisa a organização e quem pagou, e a organização refaz em Financeiro → Reembolsar.
+ */
+export async function tryAutoRefund(orderId: string): Promise<boolean> {
+  try {
+    await autoRefundOnWithdrawal(orderId);
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "erro";
+    console.error(`[reembolso] Falhou o reembolso automático do pedido ${orderId}: ${msg}`);
+    try {
+      const o = await db.order.findUnique({ where: { id: orderId }, include: { tournament: { select: { id: true, orgId: true, name: true } } } });
+      await audit(null, "order.refund_failed", "Order", orderId, { error: msg.slice(0, 200) });
+      if (o) {
+        const staff = await db.orgMember.findMany({ where: { orgId: o.tournament.orgId, role: { in: ["OWNER", "ADMIN"] } }, select: { userId: true } });
+        await notify(staff.map((s) => s.userId), "order.refund_failed", "Reembolso pendente", `Não foi possível devolver o pedido ${o.number} de ${o.tournament.name} automaticamente. Faça o reembolso em Financeiro.`, `/organizar/${o.tournament.id}/financeiro`);
+        await notify(o.userId, "order.refund_pending", "Seu reembolso está em andamento", `A inscrição em ${o.tournament.name} foi desfeita e a organização vai concluir o reembolso do pedido ${o.number}.`, "/conta/pedidos");
+      }
+    } catch {
+      /* o aviso é melhor esforço */
+    }
+    return false;
+  }
 }
 
 export async function ordersOfUser(userId: string) {

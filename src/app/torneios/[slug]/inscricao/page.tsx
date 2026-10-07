@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RegistrationPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ time?: string }> }) {
   const { slug } = await params;
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const user = await requireUser(`/torneios/${slug}/inscricao`);
   const t = await db.tournament.findUnique({ where: { slug } });
   // Rascunho é só do organizador (a página do campeonato já dá 404): a tela de inscrição não pode entregar nome, taxa e campos.

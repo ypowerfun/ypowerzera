@@ -1,3 +1,4 @@
+import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createChallengeAction } from "@/app/actions/challenges";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function NewChallengePage({ searchParams }: { searchParams: Promise<{ time?: string; jogo?: string }> }) {
   const user = await requireUser("/desafios/novo");
   if (!(await isWalletOn())) return <WalletUnavailable />;
-  const sp = await searchParams;
+  const sp = flatParams(await searchParams);
   const [kyc, teams] = await Promise.all([getKyc(user.id), leaderTeams(user.id)]);
   const cfg = moneyConfig();
   const entry = teams.find((t) => t.team.id === sp.time);
