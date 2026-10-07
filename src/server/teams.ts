@@ -29,13 +29,14 @@ export async function createTeam(actorIn: Actor | null, input: unknown) {
   const parsed = teamSchema.safeParse(input);
   if (!parsed.success) throw new AppError(parsed.error.issues[0].message);
   const { name, tag, gameId, description } = parsed.data;
-  if (gameId && !getGame(gameId)) throw new AppError("Jogo inválido.");
+  const game = gameId ? getGame(gameId) : undefined;
+  if (gameId && !game) throw new AppError("Jogo inválido.");
   await rateLimit(`team-create:${actor.id}`, 10, 86400, "Você já criou vários times hoje.");
   const clash = await db.team.findFirst({ where: { name: { equals: name }, deletedAt: null }, select: { id: true } });
   if (clash) throw new AppError("Já existe um time com esse nome.", "CONFLICT");
   const slug = await uniqueSlug(name, async (s) => !!(await db.team.findUnique({ where: { slug: s } })));
   return db.team.create({
-    data: { name, tag, gameId: gameId || null, description, slug, ownerId: actor.id, members: { create: { userId: actor.id, role: "CAPTAIN" } } },
+    data: { name, tag, gameId: game?.id ?? null, description, slug, ownerId: actor.id, members: { create: { userId: actor.id, role: "CAPTAIN" } } },
   });
 }
 

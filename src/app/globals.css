@@ -189,6 +189,11 @@ textarea {
   .wall-dup {
     display: none;
   }
+
+  /* parada, a composição precisa caber na janela: sem o recuo negativo que o movimento usa para "entrar" pelo topo */
+  .wall-inner {
+    top: -1.5rem;
+  }
 }
 
 /* chaves (brackets) */

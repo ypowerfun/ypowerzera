@@ -109,7 +109,7 @@ export async function createChallenge(
     if (open >= cfg.maxOpenChallengesPerTeam) throw new AppError(`Sua equipe já tem ${open} desafios abertos. Cancele algum antes de criar outro.`);
     const c = await tx.challenge.create({
       data: {
-        gameId: input.gameId,
+        gameId: game.id,
         modeId: input.modeId,
         bestOf: input.bestOf,
         stakeCents: input.stakeCents,

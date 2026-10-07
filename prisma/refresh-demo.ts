@@ -1,6 +1,8 @@
 /**
  * Atualiza os NOMES dos dados de demonstração de bancos que já existem (a seed não roda de novo quando já há dados).
- * Só troca textos exatos que a própria seed criou; nada que alguém tenha criado ou renomeado é tocado. Seguro rodar sempre.
+ * Só troca textos EXATOS dos nomes que a própria seed criou (um campeonato ou organização renomeado por alguém, ou com outro
+ * nome, não é tocado). Quem criou à mão algo com exatamente o mesmo nome de demonstração também seria renomeado: é o custo
+ * de não precisar de marcador no banco, e vale só para esses poucos nomes. Seguro rodar sempre.
  * É chamado sozinho pelo `npm run dev` (scripts/setup.mjs --if-needed) e pode ser rodado à mão: npx tsx prisma/refresh-demo.ts
  */
 import { PrismaClient } from "@prisma/client";

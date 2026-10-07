@@ -51,16 +51,23 @@ export default async function FinancePage({ params }: { params: Promise<{ id: st
 
       {t.entryFeeCents > 0 && admin && (
         <section className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <h2 className="mb-3 font-bold">Novo cupom</h2>
-            <ActionForm action={createCouponAction} className="grid gap-3 sm:grid-cols-2" submit="Criar cupom" submitClassName="sm:col-span-2">
-              <input type="hidden" name="tournamentId" value={id} /><input type="hidden" name="orgId" value={t.orgId} />
-              <Field label="Código" htmlFor="code"><Input id="code" name="code" required placeholder="AMIGOS20" className="uppercase" /></Field>
-              <Field label="Limite de usos" htmlFor="max"><Input id="max" name="max" type="number" min={1} /></Field>
-              <Field label="Desconto (%)" htmlFor="percent"><Input id="percent" name="percent" type="number" min={1} max={100} /></Field>
-              <Field label="ou desconto fixo (R$)" htmlFor="amount"><Input id="amount" name="amount" inputMode="decimal" /></Field>
-            </ActionForm>
-          </Card>
+          {t.org.deletedAt ? (
+            <Card>
+              <h2 className="mb-3 font-bold">Novo cupom</h2>
+              <p className="text-sm text-muted">Esta organização foi excluída: não dá mais para criar cupons. O histórico de pedidos e reembolsos continua disponível.</p>
+            </Card>
+          ) : (
+            <Card>
+              <h2 className="mb-3 font-bold">Novo cupom</h2>
+              <ActionForm action={createCouponAction} className="grid gap-3 sm:grid-cols-2" submit="Criar cupom" submitClassName="sm:col-span-2">
+                <input type="hidden" name="tournamentId" value={id} /><input type="hidden" name="orgId" value={t.orgId} />
+                <Field label="Código" htmlFor="code"><Input id="code" name="code" required placeholder="AMIGOS20" className="uppercase" /></Field>
+                <Field label="Limite de usos" htmlFor="max"><Input id="max" name="max" type="number" min={1} /></Field>
+                <Field label="Desconto (%)" htmlFor="percent"><Input id="percent" name="percent" type="number" min={1} max={100} /></Field>
+                <Field label="ou desconto fixo (R$)" htmlFor="amount"><Input id="amount" name="amount" inputMode="decimal" /></Field>
+              </ActionForm>
+            </Card>
+          )}
           <Card>
             <h2 className="mb-3 font-bold">Cupons</h2>
             {f.coupons.length === 0 ? <p className="text-sm text-muted">Nenhum cupom.</p> : <ul className="space-y-2 text-sm">{f.coupons.map((c) => <li key={c.id} className="flex justify-between"><b className="font-mono">{c.code}</b><span className="text-muted">{c.percentOff ? `${c.percentOff}%` : formatMoney(c.amountOffCents ?? 0)} · {c.redeemed}{c.maxRedemptions ? `/${c.maxRedemptions}` : ""} uso(s)</span></li>)}</ul>}

@@ -426,14 +426,22 @@ test.describe("banner da home, logos dos jogos e organização", () => {
     await expect(hero.getByText("CRIE. DISPUTE")).toHaveCount(0);
     await expect(hero.getByRole("link", { name: /Escolher um jogo/ })).toHaveAttribute("href", "/jogos");
 
-    // 10 logos clicáveis (as cópias do laço contínuo ficam escondidas dos leitores de tela)
-    const tiles = page.locator(".wall").getByRole("link");
-    await expect(tiles).toHaveCount(10);
+    // a parede é decorativa para teclado e leitores de tela (alvos em movimento saem da janela recortada): escondida e sem foco
+    await expect(page.locator(".wall")).toHaveAttribute("aria-hidden", "true");
+    const tiles = page.locator(".wall a");
+    await expect(tiles).toHaveCount(30); // 10 jogos em 3 cópias (as cópias fazem o laço contínuo)
+    await expect(page.locator(".wall a:not([tabindex='-1'])")).toHaveCount(0);
+    for (let i = 0; i < 16; i++) {
+      await page.keyboard.press("Tab");
+      expect(await page.evaluate(() => !!document.activeElement?.closest(".wall")), `Tab ${i + 1} caiu na parede`).toBe(false);
+    }
+    // o caminho acessível: a lista "Jogos suportados" logo abaixo tem os 10 jogos, com logo
+    await expect(page.locator("section[aria-labelledby='jogos'] a[href^='/jogos/']")).toHaveCount(10);
     const broken = await page.locator(".wall img").evaluateAll((imgs) => imgs.filter((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth === 0).length);
     expect(broken).toBe(0);
     // cada logo aponta para a página do seu jogo (a parede anima, então confiro o endereço em vez de clicar num alvo em movimento)
     const hrefs = await tiles.evaluateAll((els) => els.map((e) => (e as HTMLAnchorElement).getAttribute("href")));
-    expect([...hrefs].sort()).toEqual(
+    expect([...new Set(hrefs)].sort()).toEqual(
       ["apex-legends", "battlefield-6", "call-of-duty-warzone", "counter-strike-2", "ea-sports-fc", "fortnite", "league-of-legends", "street-fighter", "teamfight-tactics", "valorant"].map((s) => `/jogos/${s}`).sort(),
     );
     await page.goto("/jogos/street-fighter");
@@ -445,6 +453,18 @@ test.describe("banner da home, logos dos jogos e organização", () => {
     await page.goto("/");
     expect(await page.locator(".wall-col").first().evaluate((e) => getComputedStyle(e).animationName)).toBe("none");
     expect(await page.locator(".wall-dup").first().evaluate((e) => getComputedStyle(e).display)).toBe("none");
+    // parada, a composição cabe na janela: quase todos os jogos aparecem (antes o primeiro ficava inteiro fora do recorte)
+    const visible = await page.evaluate(() => {
+      const wall = document.querySelector(".wall")!.getBoundingClientRect();
+      return [...document.querySelectorAll(".wall a")].filter((a) => {
+        const r = a.getBoundingClientRect();
+        if (!r.width) return false;
+        const ix = Math.max(0, Math.min(r.right, wall.right) - Math.max(r.left, wall.left));
+        const iy = Math.max(0, Math.min(r.bottom, wall.bottom) - Math.max(r.top, wall.top));
+        return (ix * iy) / (r.width * r.height) >= 0.5;
+      }).length;
+    });
+    expect(visible).toBeGreaterThanOrEqual(7);
   });
 
   test("catálogo: logo ao lado de cada jogo, sem CS:GO, 'Street Fighter' (e os endereços antigos continuam valendo)", async ({ page }) => {
@@ -518,6 +538,26 @@ test.describe("banner da home, logos dos jogos e organização", () => {
     await page.goto("/organizar");
     await expect(page.getByText("Editar organização")).toHaveCount(0);
     await expect(page.getByText("Excluir organização…")).toHaveCount(0);
+    await logout(page);
+  });
+
+  test("o admin da plataforma mantém editar/excluir mesmo numa organização de que é membro (equipe de apoio)", async ({ page }) => {
+    await loginOk(page, "organizador@primearena.local");
+    await page.goto("/organizar");
+    const official = () => page.locator("div").filter({ has: page.getByRole("heading", { name: "Prime Arena Oficial" }) }).filter({ has: page.getByText("Adicionar membro") }).last();
+    await official().getByText("Adicionar membro").click();
+    await official().getByLabel("Usuário").fill("admin");
+    await official().getByLabel("Função").selectOption("STAFF");
+    await official().getByRole("button", { name: "Adicionar" }).click();
+    await expect(page.getByText("Membro adicionado à organização.")).toBeVisible();
+    await logout(page);
+
+    await loginOk(page, "admin@primearena.local");
+    await page.goto("/organizar");
+    const card = page.locator("div").filter({ has: page.getByRole("heading", { name: "Prime Arena Oficial" }) }).filter({ has: page.getByText("Excluir organização…") }).last();
+    await expect(card.getByText("Equipe", { exact: true })).toBeVisible(); // o admin é membro como equipe de apoio
+    await expect(card.getByText("Editar organização")).toBeVisible();
+    await expect(card.getByText("Excluir organização…")).toBeVisible();
     await logout(page);
   });
 });

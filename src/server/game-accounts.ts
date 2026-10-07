@@ -21,8 +21,9 @@ export function validateIdentity(game: GameDef, input: Record<string, string | u
   return { data, handle };
 }
 
-export async function saveGameAccount(userId: string, gameId: string, input: Record<string, string | undefined>) {
-  const game = requireGame(gameId);
+export async function saveGameAccount(userId: string, gameIdIn: string, input: Record<string, string | undefined>) {
+  const game = requireGame(gameIdIn);
+  const gameId = game.id; // sempre o id canônico (um id antigo, como "csgo", vira o do jogo atual)
   const { data, handle } = validateIdentity(game, input);
   // O mesmo ID de jogo não pode ser vinculado a duas contas da plataforma (evita contas duplicadas/smurfs).
   const clash = await db.gameAccount.findFirst({ where: { gameId, handle, NOT: { userId } }, select: { id: true } });

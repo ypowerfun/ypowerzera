@@ -155,7 +155,7 @@ export async function createTournament(actorIn: Actor | null, rawInput: CreateTo
         orgId: input.orgId,
         slug,
         name: input.name,
-        gameId: input.gameId,
+        gameId: game.id, // sempre o id canônico do catálogo
         modeId: input.modeId,
         presetId,
         visibility: input.visibility,

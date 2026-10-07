@@ -32,7 +32,7 @@ export async function listUsers(actorIn: Actor | null, opts: { q?: string; role?
     }),
   ]);
   const ids = users.map((u) => u.id);
-  const orgs = await db.orgMember.groupBy({ by: ["userId"], where: { userId: { in: ids }, role: { in: ["OWNER", "ADMIN"] } }, _count: { _all: true } });
+  const orgs = await db.orgMember.groupBy({ by: ["userId"], where: { userId: { in: ids }, role: { in: ["OWNER", "ADMIN"] }, org: { deletedAt: null } }, _count: { _all: true } });
   const teams = await db.teamMember.groupBy({ by: ["userId"], where: { userId: { in: ids }, role: "CAPTAIN", team: { deletedAt: null } }, _count: { _all: true } });
   const orgCount = new Map(orgs.map((o) => [o.userId, o._count._all]));
   const teamCount = new Map(teams.map((t) => [t.userId, t._count._all]));
@@ -73,7 +73,7 @@ export async function setUserRole(actorIn: Actor | null, userId: string, role: R
     await audit(actor.id, "user.role", "User", target.id, { from: target.role, to: role }, tx);
     let impact: RoleChangeResult["impact"];
     if (role === "USER") {
-      const managed = await tx.orgMember.findMany({ where: { userId: target.id, role: { in: ["OWNER", "ADMIN"] } }, select: { orgId: true } });
+      const managed = await tx.orgMember.findMany({ where: { userId: target.id, role: { in: ["OWNER", "ADMIN"] }, org: { deletedAt: null } }, select: { orgId: true } });
       const activeTournaments = await tx.tournament.count({ where: { orgId: { in: managed.map((m) => m.orgId) }, status: { in: ["REGISTRATION", "CHECK_IN", "LIVE"] } } });
       impact = { orgs: managed.length, activeTournaments };
     }

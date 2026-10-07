@@ -35,6 +35,13 @@ function quiet(label, cmd, args) {
   }
 }
 
+/** Roda um script do projeto e, se falhar, só avisa (nunca encerra o setup). */
+function bestEffort(label, script) {
+  const r = spawnSync("npx", ["tsx", script], { shell: true, encoding: "utf8" });
+  if (r.status !== 0) console.warn(`\n⚠ Não foi possível ${label} (o site sobe normalmente):\n${(r.stderr || r.stdout || "").trim().split("\n").slice(-3).join("\n")}`);
+  else if (r.stdout?.trim()) console.log(r.stdout.trim());
+}
+
 if (ifNeeded) {
   if (!needsSetup()) {
     // Ambiente já existe: só mantém o banco e o cliente em dia com o esquema (atualizações do projeto adicionam tabelas/colunas).
@@ -42,11 +49,11 @@ if (ifNeeded) {
     if (databaseUrl().startsWith("file:")) {
       quiet("Atualizando o esquema do banco", "npx", ["prisma", "db", "push", "--skip-generate"]);
       quiet("Atualizando o cliente do banco", "npx", ["prisma", "generate"]);
-      // renomeia, só se existirem, os nomes antigos dos dados de demonstração (textos exatos da própria seed).
-      // É só cosmético: se falhar, avisa e segue — nunca impede o site de subir.
-      const r = spawnSync("npx", ["tsx", "prisma/refresh-demo.ts"], { shell: true, encoding: "utf8" });
-      if (r.status !== 0) console.warn(`\n⚠ Não foi possível atualizar os nomes dos dados de demonstração (o site sobe normalmente):\n${(r.stderr || r.stdout || "").trim().split("\n").slice(-3).join("\n")}`);
-      else if (r.stdout?.trim()) console.log(r.stdout.trim());
+      // Acertos de dados que não impedem nada: se falharem, avisam e seguem — o site sobe do mesmo jeito.
+      //  - renomeia, só se existirem, os nomes antigos dos dados de demonstração (textos exatos da própria seed);
+      //  - passa para o CS2 os registros que ainda guardam o id do CS:GO (jogo que saiu do catálogo).
+      bestEffort("atualizar os nomes dos dados de demonstração", "prisma/refresh-demo.ts");
+      bestEffort("migrar os registros antigos do CS:GO", "prisma/migrate-legacy.ts");
     }
     process.exit(0);
   }

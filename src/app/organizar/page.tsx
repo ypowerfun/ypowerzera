@@ -48,8 +48,9 @@ export default async function OrganizerHome() {
             <h2 className="mb-3 font-bold">{isAdmin ? "Todas as organizações" : "Suas organizações"}</h2>
             <div className="grid gap-4 md:grid-cols-2">
               {orgs.map((o) => {
-                const canEdit = canCreate && (o.role === "OWNER" || o.role === "ADMIN" || o.role === "PLATFORM");
-                const canDelete = canCreate && (o.role === "OWNER" || o.role === "PLATFORM");
+                // o admin da plataforma pode tudo em qualquer organização, mesmo naquelas de que também é membro (dono, admin ou equipe)
+                const canEdit = canCreate && (isAdmin || o.role === "OWNER" || o.role === "ADMIN");
+                const canDelete = canCreate && (isAdmin || o.role === "OWNER");
                 return (
                   <Card key={o.id} className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
