@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
-import { getEnv } from "@/lib/env";
+import { getEnv, isValidDataEncryptionKey } from "@/lib/env";
 import { audit } from "./audit";
 import { requireActor, requireAdmin } from "./permissions";
 import type { Actor } from "./types";
@@ -48,8 +48,8 @@ export function walletReadiness(): WalletReadiness {
     items.push({ key: "pix", label: "Provedor de Pix", ok, hint: ok ? "Simulador de Pix (somente testes, não movimenta dinheiro real)." : "Em produção use PIX_PROVIDER=asaas: o simulador não movimenta dinheiro real." });
   }
 
-  const keyOk = !env.isProd || env.dataEncryptionKey.length >= 32;
-  items.push({ key: "encryption", label: "Criptografia dos CPFs", ok: keyOk, hint: keyOk ? "Chave de criptografia definida." : "Defina DATA_ENCRYPTION_KEY (32 bytes) e guarde um backup dela." });
+  const keyOk = !env.isProd || isValidDataEncryptionKey(env.dataEncryptionKey);
+  items.push({ key: "encryption", label: "Criptografia dos CPFs", ok: keyOk, hint: keyOk ? "Chave de criptografia definida." : "Defina DATA_ENCRYPTION_KEY com 32 bytes (64 caracteres hex ou base64) e guarde um backup dela." });
 
   const cronOk = !env.isProd || env.cronSecret.length >= 24;
   items.push({ key: "cron", label: "Agendador dos saques", ok: cronOk, hint: cronOk ? "CRON_SECRET definido (o agendador chama /api/cron/wallet)." : "Defina CRON_SECRET (24+ caracteres) e agende a chamada de /api/cron/wallet." });

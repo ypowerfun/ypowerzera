@@ -11,6 +11,7 @@ import { requireActor, requireVerified } from "./permissions";
 import { rateLimit } from "./rate-limit";
 import { assertWalletOn } from "./settings";
 import { requireTeamLeader } from "./team-auth";
+import { adminUserIds } from "./admins";
 import { getOrCreateTeamWallet, getPlatformWallet, postLedger } from "./wallet";
 import type { Actor } from "./types";
 
@@ -298,8 +299,7 @@ async function notifyBoth(tx: Prisma.TransactionClient, c: Challenge, title: str
 }
 
 async function notifyAdmins(tx: Prisma.TransactionClient, c: Challenge) {
-  const admins = await tx.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
-  await notify(admins.map((a) => a.id), "challenge.disputed", "Desafio em disputa", `Desafio ${c.id} aguarda decisão.`, `/admin/desafios`, tx);
+  await notify(await adminUserIds(tx), "challenge.disputed", "Desafio em disputa", `Desafio ${c.id} aguarda decisão.`, `/admin/desafios`, tx);
 }
 
 export async function disputeChallenge(actorIn: Actor | null, challengeId: string, reason: string): Promise<void> {

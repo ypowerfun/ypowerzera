@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { PASSWORD, makeOrg, makeUser, uid } from "./factories";
 import { admin, balances, emailOf, fund, lastOtp, leaderWithWinnings, makeLeader, newAdmin } from "./wallet-helpers";
-import { createTeam, deleteTeam, inviteToTeam, myTeams } from "@/server/teams";
+import { createTeam, deleteTeam, inviteToTeam, myTeams, setMemberRole } from "@/server/teams";
 import { leaderDeletedTeams, leaderTeams } from "@/server/team-auth";
 import { listReleaseRequests, requestBalanceReview, reviewBalanceRequest } from "@/server/team-release";
 import { createDeposit, resolveHeldDeposit } from "@/server/deposits";
@@ -209,3 +209,62 @@ describe("saldo de time excluído: bloqueio, revisão e liberação pelo admin",
     await expect(createChallenge(l.user, { ...challengeInput(l), invitedTeamId: dead.team.id })).rejects.toThrow(/não encontrada/);
   });
 });
+
+describe("capitania gerida pelo admin", () => {
+  it("o admin transfere a capitania de verdade: o capitão anterior deixa de ser líder", async () => {
+    const l = await makeLeader();
+    const member = await makeUser();
+    await db.teamMember.create({ data: { teamId: l.team.id, userId: member.id, role: "PLAYER" } });
+    const a = await newAdmin(); // nem é do time
+    await setMemberRole(a, l.team.id, member.id, "CAPTAIN");
+    const rows = await db.teamMember.findMany({ where: { teamId: l.team.id } });
+    expect(rows.filter((m) => m.role === "CAPTAIN").map((m) => m.userId)).toEqual([member.id]); // um só líder
+    expect(rows.find((m) => m.userId === l.user.id)!.role).toBe("PLAYER");
+    expect((await db.team.findUniqueOrThrow({ where: { id: l.team.id } })).ownerId).toBe(member.id);
+    // o líder antigo já não movimenta o dinheiro
+    await expect(createDeposit(l.user, { teamId: l.team.id, amountCents: 1_000 })).rejects.toThrow(/líder/);
+  });
+
+  it("o admin não vira líder de time alheio, nem se convida; ninguém fica sem capitão", async () => {
+    const l = await makeLeader();
+    const a = await newAdmin();
+    await expect(inviteToTeam(a, l.team.id, (await db.user.findUniqueOrThrow({ where: { id: a.id } })).username)).rejects.toThrow(/a si mesmo/);
+    // mesmo que entre no time por outro caminho (membro comum), não pode se promover
+    await db.teamMember.create({ data: { teamId: l.team.id, userId: a.id, role: "PLAYER" } });
+    await expect(setMemberRole(a, l.team.id, a.id, "CAPTAIN")).rejects.toThrow(/Administradores não podem/);
+    expect((await db.teamMember.findFirstOrThrow({ where: { teamId: l.team.id, userId: l.user.id } })).role).toBe("CAPTAIN");
+    // rebaixar o único capitão sem transferir é recusado
+    await expect(setMemberRole(l.user, l.team.id, l.user.id, "PLAYER")).rejects.toThrow(/transfira/);
+  });
+});
+
+describe("liberação do saldo não apaga outras travas da carteira", () => {
+  async function requested() {
+    const l = await makeLeader();
+    await fund(l, 20_000);
+    return l;
+  }
+
+  it("recusa liberar quando a carteira já estava congelada por outro motivo antes da exclusão", async () => {
+    const l = await requested();
+    await db.wallet.update({ where: { id: l.walletId }, data: { frozenAt: new Date(Date.now() - 3600_000), frozenReason: "Suspeita de fraude no depósito" } });
+    await deleteTeam(l.user, l.team.id);
+    const req = await requestBalanceReview(l.user, l.team.id, "Encerramos o time; quero sacar o saldo para a minha conta.");
+    await expect(reviewBalanceRequest(await admin(), req.id, "approve", "Conferi os documentos do titular")).rejects.toThrow(/já estava congelada.*Suspeita de fraude/);
+    expect((await db.walletReleaseRequest.findUniqueOrThrow({ where: { id: req.id } })).status).toBe("PENDING"); // nada mudou
+    expect((await db.team.findUniqueOrThrow({ where: { id: l.team.id } })).balanceReleasedAt).toBeNull();
+    // o admin descongela de propósito (outro fluxo) e então a liberação passa
+    await db.wallet.update({ where: { id: l.walletId }, data: { frozenAt: null, frozenReason: null } });
+    expect((await reviewBalanceRequest(await admin(), req.id, "approve", "Fraude descartada; titular conferido")).approved).toBe(true);
+  });
+
+  it("recusa liberar com dívida de estorno na carteira", async () => {
+    const l = await requested();
+    await deleteTeam(l.user, l.team.id);
+    const req = await requestBalanceReview(l.user, l.team.id, "Encerramos o time; quero sacar o saldo para a minha conta.");
+    await db.wallet.update({ where: { id: l.walletId }, data: { debtCents: 5_000 } });
+    await expect(reviewBalanceRequest(await admin(), req.id, "approve", "Conferi os documentos do titular")).rejects.toThrow(/dívida de R\$\s5\d,00|dívida/);
+    expect((await db.walletReleaseRequest.findUniqueOrThrow({ where: { id: req.id } })).status).toBe("PENDING");
+  });
+});
+

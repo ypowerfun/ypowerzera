@@ -10,6 +10,12 @@ function int(v: string | undefined, def: number): number {
   return Number.isFinite(n) && v !== undefined && v !== "" ? Math.trunc(n) : def;
 }
 
+/** A chave de criptografia dos CPFs precisa render 32 bytes: 64 caracteres hex ou base64 que decodifique em 32+ bytes (igual a `masterSecret`). */
+export function isValidDataEncryptionKey(key: string): boolean {
+  const raw = /^[0-9a-f]{64}$/i.test(key) ? Buffer.from(key, "hex") : Buffer.from(key, "base64");
+  return raw.length >= 32;
+}
+
 export function getEnv() {
   const isProd = process.env.NODE_ENV === "production";
   const isTest = process.env.NODE_ENV === "test" || !!process.env.VITEST;
@@ -65,7 +71,7 @@ export function assertProductionConfig() {
     problems.push("STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENTS_PROVIDER=stripe.");
   }
   if (env.walletEnabled) {
-    if (env.dataEncryptionKey.length < 32) problems.push("DATA_ENCRYPTION_KEY (32 bytes em base64/hex) é obrigatório para proteger o CPF dos usuários.");
+    if (!isValidDataEncryptionKey(env.dataEncryptionKey)) problems.push("DATA_ENCRYPTION_KEY (32 bytes em base64/hex) é obrigatório para proteger o CPF dos usuários.");
     if (env.pixProvider === "mock" && !env.allowMockPix) problems.push("PIX_PROVIDER=mock é recusado em produção (use asaas).");
     if (env.pixProvider === "asaas" && (!env.asaasApiKey || !env.asaasWebhookToken || !env.asaasTransferAuthToken)) {
       problems.push("ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e ASAAS_TRANSFER_AUTH_TOKEN são obrigatórios com PIX_PROVIDER=asaas.");

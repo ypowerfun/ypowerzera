@@ -5,7 +5,7 @@ import { admin, balances, emailOf, fund, lastOtp, leaderWithWinnings, makeLeader
 import { assertWalletOn, isWalletOn, setWalletEnabled, setWithdrawalsNeedAdminApproval, walletReadiness, walletState, withdrawalsNeedAdminApproval } from "@/server/settings";
 import { createDeposit } from "@/server/deposits";
 import { acceptChallenge, createChallenge } from "@/server/challenges";
-import { confirmWithdrawal, requestWithdrawal, reviewWithdrawal } from "@/server/withdrawals";
+import { confirmWithdrawal, expireStaleWithdrawalConfirmations, requestWithdrawal, reviewWithdrawal } from "@/server/withdrawals";
 import { handlePixWebhook } from "@/server/pix-webhooks";
 import { mockPayCharge } from "@/server/pix/mock";
 import { reconcileAll } from "@/server/wallet";
@@ -133,5 +133,39 @@ describe("chave da Carteira (admin)", () => {
     await setWithdrawalsNeedAdminApproval(await admin(), true);
     expect(await withdrawalsNeedAdminApproval()).toBe(true);
     expect(await db.auditLog.count({ where: { action: "settings.withdraw_admin_approval" } })).toBeGreaterThanOrEqual(2);
+  });
+
+  it("saque que ficou sem o código volta ao saldo pelo agendador, mesmo com a carteira desativada", async () => {
+    const { winner } = await leaderWithWinnings(200_000, 50_000);
+    const before = await balances(winner.walletId);
+    const { withdrawalId } = await requestWithdrawal(winner.user, { teamId: winner.team.id, amountCents: 5_000, password: PASSWORD, nonce: nonce() });
+    expect((await balances(winner.walletId)).locked).toBe(before.locked + 5_000);
+
+    await setWalletEnabled(await admin(), false); // some a tela de confirmar: o usuário não tem como voltar lá
+    expect(await expireStaleWithdrawalConfirmations()).toBe(0); // o código ainda vale
+    await db.withdrawal.update({ where: { id: withdrawalId }, data: { otpExpiresAt: new Date(Date.now() - 60_000) } });
+    expect(await expireStaleWithdrawalConfirmations()).toBe(1);
+    expect((await db.withdrawal.findUniqueOrThrow({ where: { id: withdrawalId } })).status).toBe("CANCELED");
+    expect(await balances(winner.walletId)).toEqual(before); // o valor voltou inteiro
+    expect(await expireStaleWithdrawalConfirmations()).toBe(0); // idempotente
+    expect((await reconcileAll()).ok).toBe(true);
+  });
+
+  it("a chave de criptografia só passa na verificação se rende 32 bytes (a mesma regra de quem cifra o CPF)", async () => {
+    const env = process.env as Record<string, string>;
+    env.NODE_ENV = "production";
+    env.PIX_PROVIDER = "asaas";
+    env.ASAAS_API_KEY = "k";
+    env.ASAAS_WEBHOOK_TOKEN = "w".repeat(40);
+    env.ASAAS_TRANSFER_AUTH_TOKEN = "t".repeat(40);
+    env.CRON_SECRET = "c".repeat(32);
+    env.APP_URL = "https://arena.example.com";
+    env.DATA_ENCRYPTION_KEY = "a".repeat(32); // `openssl rand -hex 16`: 32 caracteres, só 24 bytes em base64
+    expect(walletReadiness().items.find((i) => i.key === "encryption")!.ok).toBe(false);
+    expect(walletReadiness().ready).toBe(false);
+    env.DATA_ENCRYPTION_KEY = "a".repeat(64); // 32 bytes em hex
+    expect(walletReadiness().items.find((i) => i.key === "encryption")!.ok).toBe(true);
+    env.DATA_ENCRYPTION_KEY = "a".repeat(44); // base64 de 33 bytes
+    expect(walletReadiness().ready).toBe(true);
   });
 });

@@ -33,7 +33,7 @@ export default async function RegistrationPage({ params, searchParams }: { param
   const solo = t.teamSize === 1;
 
   const myAccount = await db.gameAccount.findUnique({ where: { userId_gameId: { userId: user.id, gameId: t.gameId } } });
-  const teams = solo ? [] : await db.teamMember.findMany({ where: { userId: user.id, role: "CAPTAIN" }, include: { team: { include: { members: { include: { user: { include: { gameAccounts: { where: { gameId: t.gameId } } } } } } } } } });
+  const teams = solo ? [] : await db.teamMember.findMany({ where: { userId: user.id, role: "CAPTAIN", team: { deletedAt: null } }, include: { team: { include: { members: { include: { user: { include: { gameAccounts: { where: { gameId: t.gameId } } } } } } } } } });
   const chosen = teams.find((m) => m.team.id === sp.time)?.team;
 
   return (

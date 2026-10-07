@@ -7,11 +7,13 @@ import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import type { LineupMember } from "@/server/challenges";
+import { requireAdmin } from "@/server/session";
 
 export const metadata: Metadata = { title: "Admin · Desafios em disputa", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminChallenges() {
+  await requireAdmin(); // o layout sozinho não basta: uma navegação parcial (RSC) pula o layout e a página consultaria o banco sem guarda
   const rows = await db.challenge.findMany({ where: { status: "DISPUTED" }, orderBy: { updatedAt: "asc" }, include: { creatorTeam: true, opponentTeam: true } });
   return (
     <div className="space-y-4">

@@ -12,6 +12,7 @@ import { requireActor, requireVerified } from "./permissions";
 import { rateLimit } from "./rate-limit";
 import { assertWalletOn } from "./settings";
 import { requireTeamLeader } from "./team-auth";
+import { adminUserIds } from "./admins";
 import { freezeWallet, getOrCreateTeamWallet, postLedger } from "./wallet";
 import { requireKyc } from "./kyc";
 import type { Actor } from "./types";
@@ -114,8 +115,7 @@ export async function confirmDeposit(chargeId: string): Promise<ConfirmResult> {
 
   if (credited === "credited") await notify(dep.userId, "deposit.credited", "Depósito confirmado", `${formatMoney(dep.amountCents)} em créditos já estão na carteira da equipe.`, "/carteira");
   if (credited === "held") {
-    const admins = await db.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
-    await notify(admins.map((a) => a.id), "deposit.held", "Depósito retido para revisão", hold ?? "", "/admin/carteiras");
+    await notify(await adminUserIds(), "deposit.held", "Depósito retido para revisão", hold ?? "", "/admin/carteiras");
     await notify(dep.userId, "deposit.held", "Depósito em análise", "Recebemos o Pix, mas ele precisa de uma verificação antes de virar crédito.", "/carteira");
   }
   return credited;

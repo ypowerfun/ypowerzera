@@ -5,6 +5,7 @@ import { decryptField, encryptField, hmacHex } from "@/lib/crypto";
 import { ageInYears, isValidCpf, onlyDigits } from "@/lib/cpf";
 import { audit } from "./audit";
 import { notify } from "./notifications";
+import { adminUserIds } from "./admins";
 import { rateLimit } from "./rate-limit";
 import { requireActor, requireVerified } from "./permissions";
 import type { Actor } from "./types";
@@ -49,8 +50,7 @@ export async function submitKyc(actorIn: Actor | null, input: { fullName: string
     ? await db.kycProfile.update({ where: { userId: actor.id }, data })
     : await db.kycProfile.create({ data: { userId: actor.id, ...data } });
   await audit(actor.id, "kyc.submit", "User", actor.id, { cpfLast4: profile.cpfLast4 });
-  const admins = await db.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
-  await notify(admins.map((a) => a.id), "kyc.pending", "KYC aguardando análise", `${fullName} enviou os dados para verificação.`, "/admin/kyc");
+  await notify(await adminUserIds(), "kyc.pending", "KYC aguardando análise", `${fullName} enviou os dados para verificação.`, "/admin/kyc");
   return { status: profile.status, fullName: profile.fullName, cpfLast4: profile.cpfLast4 };
 }
 

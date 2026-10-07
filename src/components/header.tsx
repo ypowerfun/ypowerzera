@@ -15,7 +15,7 @@ export async function Header() {
   const [unread, walletOn, orgMemberships] = await Promise.all([
     user ? unreadCount(user.id) : 0,
     isWalletOn(),
-    user ? db.orgMember.count({ where: { userId: user.id } }) : 0,
+    user ? db.orgMember.count({ where: { userId: user.id, role: "STAFF" } }) : 0, // jogador só vê Organizar se for equipe de apoio
   ]);
   // Organizar: organizador, admin ou quem é equipe de apoio de alguma organização. Carteira/Desafios: só com a carteira ativa.
   const showOrganizer = !!user && (user.role !== "USER" || orgMemberships > 0);
@@ -36,7 +36,7 @@ export async function Header() {
   ];
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-bg/85 backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3 sm:gap-4">
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-2 sm:gap-4">
         <Link href="/" aria-label="Prime Arena — início" className="shrink-0 rounded focus-ring">
           <Logo size="md" />
         </Link>

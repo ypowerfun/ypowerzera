@@ -5,11 +5,13 @@ import { Card, Empty, Input, PageTitle } from "@/components/ui";
 import { ageInYears } from "@/lib/cpf";
 import { db } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/dates";
+import { requireAdmin } from "@/server/session";
 
 export const metadata: Metadata = { title: "Admin · KYC", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminKyc() {
+  await requireAdmin(); // o layout sozinho não basta: uma navegação parcial (RSC) pula o layout e a página consultaria o banco sem guarda
   const rows = await db.kycProfile.findMany({ where: { status: "PENDING" }, orderBy: { submittedAt: "asc" }, include: { user: { select: { id: true, username: true, email: true, createdAt: true, emailVerifiedAt: true } } } });
   return (
     <div className="space-y-4">

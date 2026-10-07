@@ -26,6 +26,7 @@ const MESSAGES: Record<string, string> = {
 };
 
 export function Flash() {
-  const msg = MESSAGES[useSearchParams().get("ok") ?? ""];
+  const code = useSearchParams().get("ok") ?? "";
+  const msg = Object.hasOwn(MESSAGES, code) ? MESSAGES[code] : undefined; // "__proto__"/"constructor" não são códigos
   return msg ? <Alert tone="ok" className="mb-4">{msg}</Alert> : null;
 }

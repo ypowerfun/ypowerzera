@@ -5,8 +5,11 @@ import { notify } from "./notifications";
 import { assertTournamentAccess, requireActor } from "./permissions";
 import type { Actor } from "./types";
 
-export async function organizerOverview(userId: string, isAdmin: boolean) {
-  const memberships = await db.orgMember.findMany({ where: { userId }, include: { org: true } });
+export async function organizerOverview(actor: Pick<Actor, "id" | "role">) {
+  const userId = actor.id;
+  const isAdmin = actor.role === "ADMIN";
+  // quem voltou a ser jogador só gerencia onde é equipe de apoio (STAFF): é a mesma regra de canManageOrg
+  const memberships = await db.orgMember.findMany({ where: { userId, ...(isAdmin || actor.role === "ORGANIZER" ? {} : { role: "STAFF" as const }) }, include: { org: true } });
   const orgIds = memberships.map((m) => m.orgId);
   // o admin gerencia TODAS as organizações; os demais, só aquelas de que fazem parte
   const orgs = isAdmin

@@ -17,6 +17,7 @@ import { rateLimit } from "./rate-limit";
 import { assessWithdrawalRisk, type RiskFlag } from "./risk";
 import { assertWalletOn, withdrawalsNeedAdminApproval } from "./settings";
 import { requireTeamLeader } from "./team-auth";
+import { adminUserIds } from "./admins";
 import { getOrCreateTeamWallet, getPlatformWallet, postLedger, withdrawableBreakdown } from "./wallet";
 import type { Actor } from "./types";
 
@@ -172,8 +173,7 @@ export async function confirmWithdrawal(actorIn: Actor | null, withdrawalId: str
       : `Seu saque de ${formatMoney(w.amountCents)} será enviado por Pix para o CPF final ${w.destinationCpfLast4} em ~${cfg.withdrawDelayMinutes} minutos.\nNão foi você? Cancele agora em Carteira e troque sua senha.`,
   });
   if (review) {
-    const admins = await db.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
-    await notify(admins.map((a) => a.id), "withdrawal.review", "Saque aguardando análise", `${formatMoney(w.amountCents)} — risco ${risk.score}`, "/admin/saques");
+    await notify(await adminUserIds(), "withdrawal.review", "Saque aguardando análise", `${formatMoney(w.amountCents)} — risco ${risk.score}`, "/admin/saques");
   }
   return review ? "under_review" : "approved";
 }
@@ -219,6 +219,17 @@ async function cancelInternal(id: string, reason: string, from: Withdrawal["stat
     await releaseHold(tx, w, reason);
     return true;
   });
+}
+
+/**
+ * Saques que pediram o código por e-mail e nunca foram confirmados: depois de expirado o código, devolve o valor ao saldo.
+ * Sem isto o dinheiro ficaria em custódia até o usuário voltar (e, com a carteira desativada, ele nem tem onde voltar).
+ */
+export async function expireStaleWithdrawalConfirmations(now = new Date(), limit = 50): Promise<number> {
+  const stale = await db.withdrawal.findMany({ where: { status: "PENDING_CONFIRMATION", otpExpiresAt: { lt: now } }, orderBy: { otpExpiresAt: "asc" }, take: limit, select: { id: true } });
+  let released = 0;
+  for (const w of stale) if (await cancelInternal(w.id, "Código de confirmação expirado.", ["PENDING_CONFIRMATION"])) released++;
+  return released;
 }
 
 /** O líder cancela enquanto o dinheiro ainda não foi enviado ao provedor. */

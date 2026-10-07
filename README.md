@@ -22,7 +22,7 @@ Jogos: **League of Legends, VALORANT, Counter-Strike (CS2 e CS:GO), Fortnite, Ap
 - **Carteira da equipe** (só o **líder** movimenta): depósito por Pix, saque por Pix para o CPF verificado, extrato imutável. O admin liga e desliga a aba em **Admin → Configurações**.
 - **Desafios equipe × equipe**: a aposta fica em custódia, o vencedor leva o pote menos 10%.
 - **Admin**: usuários e cargos, todas as equipes, saldos de times excluídos, configurações, fila de KYC, saques em análise e presos, depósitos retidos, disputas, congelar/liberar carteira, ajuste auditado e conciliação do razão.
-- **Marca**: logo Prime Arena (`public/brand/`, recortada e redimensionada a partir da arte oficial).
+- **Marca**: logo Prime Arena (`public/brand/`, a arte oficial enviada, só redimensionada: pequena no cabeçalho e maior no rodapé).
 
 ## Rodando em desenvolvimento
 

@@ -5,7 +5,7 @@ import { runChallengeMaintenance } from "./challenges";
 import { expireDeposits } from "./deposits";
 import { expireStaleReservations } from "./orders";
 import { runReconciliation } from "./admin-wallet";
-import { processDueWithdrawals, reconcileProcessing } from "./withdrawals";
+import { expireStaleWithdrawalConfirmations, processDueWithdrawals, reconcileProcessing } from "./withdrawals";
 
 export function cronAuthorized(authorization: string | null): boolean {
   const secret = getEnv().cronSecret;
@@ -16,13 +16,14 @@ export function cronAuthorized(authorization: string | null): boolean {
 
 /** Tarefas periódicas (a cada 1–5 min): saques devidos, conciliação, expirações, desafios e reservas. */
 export async function runWalletCron() {
-  const [deposits, withdrawals, reconciled, challenges, reservations] = await Promise.all([
+  const [deposits, withdrawals, expiredConfirmations, reconciled, challenges, reservations] = await Promise.all([
     expireDeposits(),
     processDueWithdrawals(),
+    expireStaleWithdrawalConfirmations(),
     reconcileProcessing(),
     runChallengeMaintenance(),
     expireStaleReservations(db),
   ]);
   const ledger = await runReconciliation();
-  return { deposits, withdrawals, reconciled, challenges, reservations, ledgerOk: ledger.ok, mismatches: ledger.mismatches.slice(0, 5) };
+  return { deposits, withdrawals, expiredConfirmations, reconciled, challenges, reservations, ledgerOk: ledger.ok, mismatches: ledger.mismatches.slice(0, 5) };
 }

@@ -4,11 +4,13 @@ import { ActionForm } from "@/components/action-form";
 import { Badge, Card, Input, PageTitle, Table, Td, Th } from "@/components/ui";
 import { db } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
+import { requireAdmin } from "@/server/session";
 
 export const metadata: Metadata = { title: "Admin · Carteiras", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminWallets() {
+  await requireAdmin(); // o layout sozinho não basta: uma navegação parcial (RSC) pula o layout e a página consultaria o banco sem guarda
   const wallets = await db.wallet.findMany({ orderBy: [{ frozenAt: "desc" }, { balanceCents: "desc" }], take: 60, include: { team: { select: { name: true, tag: true, slug: true } } } });
   const total = wallets.reduce((s, w) => s + w.balanceCents + w.lockedCents, 0);
   return (

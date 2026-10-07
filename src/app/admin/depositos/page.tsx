@@ -5,11 +5,13 @@ import { Alert, Card, Empty, Input, PageTitle } from "@/components/ui";
 import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import { requireAdmin } from "@/server/session";
 
 export const metadata: Metadata = { title: "Admin · Depósitos retidos", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminDeposits() {
+  await requireAdmin(); // o layout sozinho não basta: uma navegação parcial (RSC) pula o layout e a página consultaria o banco sem guarda
   const rows = await db.deposit.findMany({ where: { status: "HELD" }, orderBy: { createdAt: "asc" } });
   const teams = await db.team.findMany({ where: { id: { in: rows.map((d) => d.teamId) } } });
   const users = await db.user.findMany({ where: { id: { in: rows.map((d) => d.userId) } }, select: { id: true, username: true } });

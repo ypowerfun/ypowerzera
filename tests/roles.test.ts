@@ -7,6 +7,8 @@ import { createTournament, updateTournament } from "@/server/tournaments";
 import { effectiveRole, toSafeUser } from "@/server/auth";
 import { listUsers, setUserRole } from "@/server/users-admin";
 import { organizerOverview } from "@/server/organizer";
+import { adminUserIds } from "@/server/admins";
+import { tournamentPage } from "@/server/queries";
 import type { Actor } from "@/server/types";
 
 const future = (h: number) => new Date(Date.now() + h * 3600_000);
@@ -141,11 +143,48 @@ describe("três cargos: jogador, organizador e admin", () => {
     const org = await makeOrg(owner);
     const other = await makeOrg(await makeUser({ role: "ORGANIZER" }));
     const a = await admin();
-    const asAdmin = await organizerOverview(a.id, true);
+    const asAdmin = await organizerOverview(a);
     expect(asAdmin.orgs.map((o) => o.id)).toEqual(expect.arrayContaining([org.id, other.id]));
     expect(asAdmin.orgs.find((o) => o.id === org.id)?.role).toBe("PLATFORM");
-    const asOwner = await organizerOverview(owner.id, false);
+    const asOwner = await organizerOverview(owner);
     expect(asOwner.orgs.map((o) => o.id)).toEqual([org.id]);
     expect(asOwner.orgs[0].role).toBe("OWNER");
+  });
+
+  it("avisos para a fila do admin chegam também a quem é admin por ADMIN_EMAILS", async () => {
+    const before = process.env.ADMIN_EMAILS;
+    try {
+      const viaEnv = await makeUser();
+      const email = (await db.user.findUniqueOrThrow({ where: { id: viaEnv.id } })).email;
+      const unverified = await makeUser();
+      const unverifiedEmail = (await db.user.findUniqueOrThrow({ where: { id: unverified.id } })).email;
+      await db.user.update({ where: { id: unverified.id }, data: { emailVerifiedAt: null } });
+      process.env.ADMIN_EMAILS = `${email},${unverifiedEmail}`;
+      const ids = await adminUserIds();
+      expect(ids).toContain(viaEnv.id);
+      expect(ids).not.toContain(unverified.id); // e-mail não verificado não é admin
+      expect(ids).toContain((await admin()).id); // cargo ADMIN gravado no banco continua valendo
+    } finally {
+      if (before === undefined) delete process.env.ADMIN_EMAILS;
+      else process.env.ADMIN_EMAILS = before;
+    }
+  });
+
+  it("quem volta a ser jogador deixa de ser tratado como gestor: painel, página do campeonato e pedidos", async () => {
+    const owner = await makeUser({ role: "ORGANIZER" });
+    const org = await makeOrg(owner);
+    const t = await tournamentOf(owner, org.id);
+    const a = await admin();
+    expect((await tournamentPage(t.slug, await fresh(owner.id)))!.isManager).toBe(true);
+    expect((await tournamentPage(t.slug, a))!.isManager).toBe(true); // o admin gerencia tudo, sem ser membro
+    expect((await organizerOverview(await fresh(owner.id))).tournaments.map((x) => x.id)).toContain(t.id);
+
+    await setUserRole(a, owner.id, "USER");
+    const demoted = await fresh(owner.id);
+    expect((await tournamentPage(t.slug, demoted))!.isManager).toBe(false);
+    const view = await organizerOverview(demoted);
+    expect(view.orgs).toHaveLength(0); // o painel não lista mais a organização
+    expect(view.tournaments).toHaveLength(0); // nem rascunhos e campeonatos fora da lista
+    expect((await tournamentPage(t.slug))!.isManager).toBe(false); // visitante
   });
 });

@@ -53,6 +53,7 @@ export async function inviteToTeam(actorIn: Actor | null, teamId: string, userna
   const team = await requireCaptain(actor, teamId);
   const user = await db.user.findUnique({ where: { username: username.trim().toLowerCase() } });
   if (!user) throw new AppError("Usuário não encontrado.", "NOT_FOUND");
+  if (user.id === actor.id && !team.members.some((m) => m.userId === actor.id)) throw new AppError("Você não pode convidar a si mesmo para um time que não é seu.", "FORBIDDEN");
   if (team.members.some((m) => m.userId === user.id)) throw new AppError("Esta pessoa já está no time.", "CONFLICT");
   if (team.members.length >= 15) throw new AppError("O time atingiu o limite de 15 membros.");
   const pending = await db.teamInvite.findFirst({ where: { teamId, userId: user.id, status: "PENDING", expiresAt: { gt: new Date() } } });
@@ -102,12 +103,19 @@ export async function setMemberRole(actorIn: Actor | null, teamId: string, userI
   const team = await requireCaptain(actor, teamId);
   const target = team.members.find((m) => m.userId === userId);
   if (!target) throw new AppError("Membro não encontrado.", "NOT_FOUND");
+  const actorIsCaptain = team.members.some((m) => m.userId === actor.id && m.role === "CAPTAIN");
+  // O administrador gerencia qualquer time, mas não vira líder de um que não é dele: o líder é quem movimenta o dinheiro.
+  if (role === "CAPTAIN" && actor.role === "ADMIN" && userId === actor.id && !actorIsCaptain) {
+    throw new AppError("Administradores não podem se tornar líder de um time. Transfira a capitania para um integrante.", "FORBIDDEN");
+  }
+  if (role !== "CAPTAIN" && target.role === "CAPTAIN") throw new AppError("Para tirar a capitania, transfira-a para outro integrante.");
   await db.$transaction(async (tx) => {
     await tx.teamMember.update({ where: { id: target.id }, data: { role } });
-    if (role === "CAPTAIN" && userId !== actor.id) {
-      // transferência de capitania: o capitão anterior vira jogador
-      await tx.teamMember.updateMany({ where: { teamId, userId: actor.id }, data: { role: "PLAYER" } });
+    if (role === "CAPTAIN") {
+      // transferência de capitania: QUALQUER outro capitão vira jogador (quem transfere pode ser um admin que nem é do time)
+      await tx.teamMember.updateMany({ where: { teamId, role: "CAPTAIN", NOT: { userId } }, data: { role: "PLAYER" } });
       await tx.team.update({ where: { id: teamId }, data: { ownerId: userId } });
+      if (target.role !== "CAPTAIN") await audit(actor.id, "team.captain", "Team", teamId, { to: userId, byAdmin: actor.role === "ADMIN" && !actorIsCaptain }, tx);
     }
   });
 }

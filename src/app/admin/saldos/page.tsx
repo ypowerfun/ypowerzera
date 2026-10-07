@@ -53,6 +53,8 @@ export default async function AdminBalances() {
                   <Stat label="Prêmios recebidos" value={formatMoney(x.prizes)} />
                   <Stat label="Já sacado" value={formatMoney(x.withdrawn)} />
                 </div>
+                {(r.team.wallet?.debtCents ?? 0) > 0 && <Alert tone="danger">A carteira tem uma <b>dívida de {formatMoney(r.team.wallet?.debtCents ?? 0)}</b> (estorno de depósito). O sistema não deixa liberar o saldo antes de resolvê-la.</Alert>}
+                {r.team.wallet?.frozenAt && r.team.deletedAt && r.team.wallet.frozenAt < r.team.deletedAt && <Alert tone="warn">Esta carteira já estava <b>congelada antes da exclusão</b> ({r.team.wallet.frozenReason ?? "sem motivo registrado"}). Para liberar, descongele-a antes em <Link href="/admin/carteiras" className="underline">Carteiras e conciliação</Link>.</Alert>}
                 {x.isMember ? (
                   <Alert tone="warn">Você é membro deste time: outro administrador precisa decidir este pedido.</Alert>
                 ) : (

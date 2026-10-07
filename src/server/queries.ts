@@ -12,6 +12,8 @@ import {
 import { getGame } from "@/games";
 import { loadStage } from "./stage-runner";
 import { activeCount, expireStaleReservations } from "./orders";
+import { canManageOrg } from "./permissions";
+import type { Actor } from "./types";
 
 export interface ListFilters {
   gameId?: string;
@@ -62,7 +64,8 @@ export async function upcomingTournaments(take = 6) {
   });
 }
 
-export async function tournamentPage(slug: string, viewerId?: string) {
+export async function tournamentPage(slug: string, viewer?: Actor) {
+  const viewerId = viewer?.id;
   const t = await db.tournament.findUnique({ where: { slug }, include: { org: true, stages: { orderBy: { order: "asc" } } } });
   if (!t) return null;
   await expireStaleReservations(db, t.id);
@@ -72,8 +75,8 @@ export async function tournamentPage(slug: string, viewerId?: string) {
     db.prizeAward.findMany({ where: { tournamentId: t.id }, include: { participant: { select: { name: true } } }, orderBy: { placement: "asc" } }),
   ]);
   const waitlist = await db.participant.count({ where: { tournamentId: t.id, status: "WAITLIST" } });
-  const manager = viewerId ? await db.orgMember.findUnique({ where: { orgId_userId: { orgId: t.orgId, userId: viewerId } } }) : null;
-  return { t, slots, waitlist, mine, prizes, isManager: !!manager, game: getGame(t.gameId) };
+  const isManager = viewer ? await canManageOrg(viewer, t.orgId, "staff") : false;
+  return { t, slots, waitlist, mine, prizes, isManager, game: getGame(t.gameId) };
 }
 
 export interface PNames {

@@ -6,7 +6,7 @@ import { finalizeRules } from "@/games";
 import { checkInWindow, registrationWindow, refundsOnWithdrawal, STATUS_LABELS } from "@/lib/phases";
 import { formatDateTime } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
-import { getCurrentUser } from "@/server/session";
+import { getCurrentUser, toActor } from "@/server/session";
 import { quote } from "@/server/orders";
 import { stageViews, tournamentPage, type StageView } from "@/server/queries";
 import { db } from "@/lib/db";
@@ -36,7 +36,7 @@ export default async function TournamentPage({ params, searchParams }: { params:
   const { slug } = await params;
   const sp = await searchParams;
   const user = await getCurrentUser();
-  const data = await tournamentPage(slug, user?.id);
+  const data = await tournamentPage(slug, user ? toActor(user) : undefined);
   if (!data) notFound();
   const { t, slots, waitlist, mine, prizes, isManager, game } = data;
   if (t.status === "DRAFT" && !isManager && user?.role !== "ADMIN") notFound();

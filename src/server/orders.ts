@@ -6,7 +6,7 @@ import { getEnv } from "@/lib/env";
 import { formatMoney, priceOrder, type PriceBreakdown } from "@/lib/money";
 import { audit } from "./audit";
 import { notify } from "./notifications";
-import { assertOrgAccess, requireActor } from "./permissions";
+import { assertOrgAccess, canManageOrg, requireActor } from "./permissions";
 import { getProvider } from "./payments";
 import type { Actor } from "./types";
 
@@ -112,10 +112,9 @@ export async function createRegistrationOrder(
 export async function getOrderForUser(actor: Actor, orderId: string) {
   const order = await db.order.findUnique({ where: { id: orderId }, include: { tournament: true, participant: true, coupon: true } });
   if (!order) throw new AppError("Pedido não encontrado.", "NOT_FOUND");
-  if (order.userId !== actor.id && actor.role !== "ADMIN") {
-    // organizadores do evento também podem ver
-    const member = await db.orgMember.findUnique({ where: { orgId_userId: { orgId: order.tournament.orgId, userId: actor.id } } });
-    if (!member) throw new AppError("Pedido não encontrado.", "NOT_FOUND");
+  if (order.userId !== actor.id && !(await canManageOrg(actor, order.tournament.orgId, "staff"))) {
+    // quem gerencia a organização do evento (e o admin) também vê; quem foi rebaixado a jogador, não
+    throw new AppError("Pedido não encontrado.", "NOT_FOUND");
   }
   return order;
 }

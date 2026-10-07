@@ -6,11 +6,13 @@ import { Card, PageTitle, Stat } from "@/components/ui";
 import { formatMoney } from "@/lib/money";
 import { adminOverview } from "@/server/admin-wallet";
 import { walletState } from "@/server/settings";
+import { requireAdmin } from "@/server/session";
 
 export const metadata: Metadata = { title: "Admin", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminHome() {
+  await requireAdmin(); // o layout sozinho não basta: uma navegação parcial (RSC) pula o layout e a página consultaria o banco sem guarda
   const [o, w] = await Promise.all([adminOverview(), walletState()]);
   const items = [
     ["KYC aguardando análise", o.kyc, "/admin/kyc"],

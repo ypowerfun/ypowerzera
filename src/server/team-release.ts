@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { formatMoney } from "@/lib/money";
 import { audit } from "./audit";
+import { adminUserIds } from "./admins";
 import { requireKyc } from "./kyc";
 import { notify } from "./notifications";
 import { requireActor, requireAdmin } from "./permissions";
@@ -39,8 +40,7 @@ export async function requestBalanceReview(actorIn: Actor | null, teamId: string
     if (open > 0) throw new AppError("Já existe um pedido de revisão em análise para este time.", "CONFLICT");
     const r = await tx.walletReleaseRequest.create({ data: { teamId, walletId: wallet.id, requestedById: actor.id, message: text, balanceCents: wallet.balanceCents } });
     await audit(actor.id, "team.release.request", "WalletReleaseRequest", r.id, { teamId, balanceCents: wallet.balanceCents }, tx);
-    const admins = await tx.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
-    await notify(admins.map((a) => a.id), "team.release.request", "Pedido de liberação de saldo", `${actor.displayName ?? "O ex-líder"} pediu a revisão de ${formatMoney(wallet.balanceCents)} do time excluído ${team.name}.`, "/admin/saldos", tx);
+    await notify(await adminUserIds(tx), "team.release.request", "Pedido de liberação de saldo", `${actor.displayName ?? "O ex-líder"} pediu a revisão de ${formatMoney(wallet.balanceCents)} do time excluído ${team.name}.`, "/admin/saldos", tx);
     return r;
   }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   return req;
@@ -70,6 +70,13 @@ export async function reviewBalanceRequest(actorIn: Actor | null, requestId: str
     let releasedCents = 0;
     if (approved) {
       const wallet = await tx.wallet.findUniqueOrThrow({ where: { id: req.walletId } });
+      const team = await tx.team.findUniqueOrThrow({ where: { id: req.teamId }, select: { deletedAt: true, balanceReleasedAt: true } });
+      if (team.balanceReleasedAt) throw new AppError("O saldo deste time já foi liberado.", "CONFLICT");
+      // Estas travas não nascem da exclusão: liberar o saldo não pode apagá-las por tabela. O admin as resolve antes, de propósito.
+      if (wallet.debtCents > 0) throw new AppError(`A carteira tem uma dívida de ${formatMoney(wallet.debtCents)} (estorno de depósito). Resolva-a antes de liberar o saldo.`);
+      if (wallet.frozenAt && team.deletedAt && wallet.frozenAt < team.deletedAt) {
+        throw new AppError(`A carteira já estava congelada antes de o time ser excluído (${wallet.frozenReason ?? "sem motivo registrado"}). Descongele-a em Carteiras e conciliação, se for o caso, e só então libere o saldo.`);
+      }
       releasedCents = wallet.balanceCents;
       await tx.walletReleaseRequest.update({ where: { id: req.id }, data: { releasedCents } });
       await tx.team.update({ where: { id: req.teamId }, data: { balanceReleasedAt: now } });

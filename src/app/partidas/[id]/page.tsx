@@ -9,7 +9,8 @@ import { getGame } from "@/games";
 import { formatDateTime } from "@/lib/dates";
 import { currentVeto, vetoAvailable } from "@/server/matches";
 import { matchPage } from "@/server/queries";
-import { getCurrentUser } from "@/server/session";
+import { canManageOrg } from "@/server/permissions";
+import { getCurrentUser, toActor } from "@/server/session";
 import { db } from "@/lib/db";
 import type { RosterMember } from "@/server/types";
 
@@ -25,7 +26,7 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
   if (t.status === "DRAFT") notFound();
   const game = getGame(t.gameId)!;
   const side = user ? (m.participantA?.userId === user.id ? "a" : m.participantB?.userId === user.id ? "b" : null) : null;
-  const manager = user ? !!(await db.orgMember.findUnique({ where: { orgId_userId: { orgId: t.orgId, userId: user.id } } })) || user.role === "ADMIN" : false;
+  const manager = user ? await canManageOrg(toActor(user), t.orgId, "staff") : false;
   const open = ["READY", "REPORTED", "DISPUTED"].includes(m.status) && t.status === "LIVE";
   const ra = m.reportA as { scoreA: number; scoreB: number } | null;
   const rb = m.reportB as { scoreA: number; scoreB: number } | null;

@@ -228,7 +228,7 @@ test.describe("marca Prime Arena", () => {
     const og = await page.locator("meta[property='og:image']").getAttribute("content");
     expect(og).toBeTruthy();
     expect((await request.get(og!)).status()).toBe(200);
-    for (const src of ["/brand/prime-arena-art-512.webp", "/brand/prime-arena-art-960.webp", "/brand/prime-arena-logo-h-104.webp", "/brand/prime-arena-logo-h-208.webp", "/brand/prime-arena-mark-128.webp"]) {
+    for (const src of ["/brand/prime-arena-art-512.webp", "/brand/prime-arena-art-960.webp", "/brand/prime-arena-art-128.webp", "/brand/prime-arena-art-256.webp", "/brand/prime-arena-mark-128.webp"]) {
       const r = await request.get(src);
       expect(r.status(), src).toBe(200);
       expect(r.headers()["content-type"]).toContain("image/webp");
@@ -402,4 +402,17 @@ test.describe("cargos, time excluído e chave da carteira", () => {
     await expect(nav.getByRole("link", { name: "Desafios" })).toBeVisible();
     await logout(page);
   });
+
+  test("navegação parcial (RSC) sem login não entrega dados do admin: a guarda está em cada página, não só no layout", async ({ request }) => {
+    // o cliente do Next manda o estado da árvore e o servidor PULA os layouts que ele diz já ter; sem guarda na página, vazava
+    const tree = JSON.stringify(["", { children: ["admin", { children: ["__PAGE__", {}] }] }]);
+    for (const path of ["/admin", "/admin/carteiras", "/admin/kyc", "/admin/saques", "/admin/depositos", "/admin/desafios", "/admin/usuarios", "/admin/saldos", "/admin/equipes", "/admin/configuracoes"]) {
+      const res = await request.get(path, { headers: { RSC: "1", "Next-Router-State-Tree": tree } });
+      const body = await res.text();
+      for (const secret of ["Trovão Azul", "Lobos do Norte", "Sombra Prime", "Fênix Digital", "Maria Pendente", "primearena.local"]) {
+        expect(body, `${path} vazou "${secret}"`).not.toContain(secret);
+      }
+    }
+  });
 });
+

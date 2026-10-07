@@ -6,11 +6,13 @@ import { db } from "@/lib/db";
 import { formatDateTime } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { RISK_LABELS, type RiskFlag } from "@/server/risk";
+import { requireAdmin } from "@/server/session";
 
 export const metadata: Metadata = { title: "Admin · Saques", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminWithdrawals() {
+  await requireAdmin(); // o layout sozinho não basta: uma navegação parcial (RSC) pula o layout e a página consultaria o banco sem guarda
   const [review, stuck] = await Promise.all([
     db.withdrawal.findMany({ where: { status: "UNDER_REVIEW" }, orderBy: { createdAt: "asc" } }),
     db.withdrawal.findMany({ where: { status: "PROCESSING", updatedAt: { lt: new Date(Date.now() - 10 * 60_000) } }, orderBy: { createdAt: "asc" } }),

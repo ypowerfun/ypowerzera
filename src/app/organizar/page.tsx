@@ -8,7 +8,7 @@ import { getGame } from "@/games";
 import { formatDateTime } from "@/lib/dates";
 import { STATUS_LABELS } from "@/lib/phases";
 import { organizerOverview } from "@/server/organizer";
-import { requireUser } from "@/server/session";
+import { requireUser, toActor } from "@/server/session";
 
 export const metadata: Metadata = { title: "Organizar" };
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export default async function OrganizerHome() {
   const user = await requireUser("/organizar");
   const isAdmin = user.role === "ADMIN";
   const canCreate = isAdmin || user.role === "ORGANIZER"; // jogador comum não cria organização nem campeonato
-  const { orgs, tournaments } = await organizerOverview(user.id, isAdmin);
+  const { orgs, tournaments } = await organizerOverview(toActor(user));
   if (!canCreate && orgs.length === 0) {
     return (
       <div className="mx-auto max-w-xl space-y-4">
