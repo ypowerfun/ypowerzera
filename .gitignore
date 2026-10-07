@@ -15,6 +15,7 @@ next-env.d.ts
 prisma/*.db
 prisma/*.db-journal
 prisma/data/
+prisma/backups/
 
 # dev mailbox
 .dev-mail/

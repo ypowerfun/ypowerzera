@@ -17,7 +17,8 @@
     "setup": "node scripts/setup.mjs",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
+    "reset": "node scripts/reset-db.mjs",
+    "db:reset": "node scripts/reset-db.mjs",
     "e2e": "playwright test",
     "postinstall": "prisma generate"
   },

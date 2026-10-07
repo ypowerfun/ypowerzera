@@ -41,7 +41,7 @@ Logins do seed (senha `Prime#Arena2026`): `admin@primearena.local`, `organizador
 
 - **Pix simulado**: depois de gerar um Pix na carteira, abra `/dev/pix` (existe só fora de produção) para "pagar" a cobrança — o pagamento entra pelo **mesmo webhook assinado** do provedor real.
 - **E-mails** (verificação, código de saque…) são gravados em `.dev-mail/` e impressos no console enquanto `SMTP_URL` estiver vazio.
-- Recomeçar do zero: apague `prisma/dev.db` e rode `npm run db:push && npm run db:seed`.
+- **Voltar ao estado de fábrica (só as contas padrão)**: feche o site (Ctrl+C no terminal do `npm run dev`) e rode `npm run reset`. Ele **apaga tudo** (contas criadas por você ou por outras pessoas, equipes, campeonatos, saldos, pedidos) e recria apenas os dados de demonstração, com as senhas de sempre. Pede que você digite `RESETAR` para confirmar e antes guarda uma cópia do banco em `prisma/backups/` (para voltar atrás, feche o site e copie o arquivo de volta para `prisma/dev.db`). Recusa-se a rodar em produção, em banco que não seja o SQLite local e com o site aberto. Opções: `npm run reset -- --yes` (sem perguntar), `--no-backup`, `--force`.
 
 ## Testes
 
