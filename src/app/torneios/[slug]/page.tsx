@@ -50,7 +50,7 @@ export default async function TournamentPage({ params, searchParams }: { params:
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-start gap-4">
-        {game && <GameBadge abbr={game.abbr} accent={game.accent} size="lg" />}
+        {game && <GameBadge game={game} size="lg" />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-black sm:text-3xl">{t.name}</h1>

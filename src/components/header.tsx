@@ -15,7 +15,7 @@ export async function Header() {
   const [unread, walletOn, orgMemberships] = await Promise.all([
     user ? unreadCount(user.id) : 0,
     isWalletOn(),
-    user ? db.orgMember.count({ where: { userId: user.id, role: "STAFF" } }) : 0, // jogador só vê Organizar se for equipe de apoio
+    user ? db.orgMember.count({ where: { userId: user.id, role: "STAFF", org: { deletedAt: null } } }) : 0, // jogador só vê Organizar se for equipe de apoio
   ]);
   // Organizar: organizador, admin ou quem é equipe de apoio de alguma organização. Carteira/Desafios: só com a carteira ativa.
   const showOrganizer = !!user && (user.role !== "USER" || orgMemberships > 0);

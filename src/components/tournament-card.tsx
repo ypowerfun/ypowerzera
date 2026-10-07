@@ -14,7 +14,7 @@ export function TournamentCard({ t, count, orgName }: { t: Tournament; count: nu
   return (
     <Link href={`/torneios/${t.slug}`} className="group block min-w-0 rounded-xl border border-line bg-surface/80 p-5 transition hover:-translate-y-0.5 hover:border-brand/50 hover:shadow-glow focus-ring">
       <div className="flex items-center gap-3">
-        {game && <GameBadge abbr={game.abbr} accent={game.accent} />}
+        {game && <GameBadge game={game} />}
         <p className="min-w-0 truncate text-xs text-muted">{game?.name}</p>
         <Badge tone={tone[t.status]} className="ml-auto shrink-0">{STATUS_LABELS[t.status]}</Badge>
       </div>

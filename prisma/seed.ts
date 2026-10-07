@@ -104,7 +104,7 @@ async function main() {
   // Torneios
   const free = await createTournament(organizer, {
     orgId: org.id, gameId: "sf6", modeId: "1v1", presetId: "sf6.single-elim",
-    name: "Copa Prime Arena de Street Fighter 6", summary: "Eliminação simples, melhor de 3. Inscrição gratuita.",
+    name: "Copa Prime Arena de Street Fighter", summary: "Eliminação simples, melhor de 3. Inscrição gratuita.",
     description: "Torneio aberto da comunidade. Check-in 30 minutos antes.", startsAt: hours(72), maxParticipants: 16, requireCheckIn: true,
     prizePoolCents: 100_000,
   });

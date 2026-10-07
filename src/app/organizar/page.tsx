@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { addOrgMemberAction } from "@/app/actions/organizer";
+import { Suspense } from "react";
+import { addOrgMemberAction, deleteOrgAction, updateOrgAction } from "@/app/actions/organizer";
 import { createOrgAction } from "@/app/actions/account";
 import { ActionForm } from "@/components/action-form";
-import { Alert, Badge, ButtonLink, Card, Empty, Field, Input, PageTitle, Select, Table, Td, Th } from "@/components/ui";
+import { Flash } from "@/components/flash";
+import { Alert, Badge, ButtonLink, Card, Empty, Field, GameBadge, Input, PageTitle, Select, Table, Td, Th, Textarea } from "@/components/ui";
 import { getGame } from "@/games";
 import { formatDateTime } from "@/lib/dates";
 import { STATUS_LABELS } from "@/lib/phases";
@@ -28,6 +30,7 @@ export default async function OrganizerHome() {
   }
   return (
     <div className="space-y-8">
+      <Suspense fallback={null}><Flash /></Suspense>
       <PageTitle title="Painel do organizador" subtitle={isAdmin ? "Como administrador você vê e gerencia todas as organizações e campeonatos da plataforma." : "Crie campeonatos, gerencie inscrições, chaves, resultados e premiações."} actions={canCreate && orgs.length ? <ButtonLink href="/organizar/novo">Novo campeonato</ButtonLink> : null} />
       {orgs.length === 0 ? (
         <Card className="mx-auto max-w-lg">
@@ -44,20 +47,53 @@ export default async function OrganizerHome() {
           <section>
             <h2 className="mb-3 font-bold">{isAdmin ? "Todas as organizações" : "Suas organizações"}</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              {orgs.map((o) => (
-                <Card key={o.id}>
-                  <div className="flex items-center justify-between"><h3 className="font-bold">{o.name}</h3><Badge tone="brand">{{ OWNER: "Dono", ADMIN: "Admin", STAFF: "Equipe", PLATFORM: "Admin da plataforma" }[o.role]}</Badge></div>
-                  {(o.role === "OWNER" || o.role === "ADMIN" || o.role === "PLATFORM") && canCreate && (
-                    <details className="mt-3"><summary className="cursor-pointer text-sm text-brand-soft">Adicionar membro</summary>
-                      <ActionForm action={addOrgMemberAction} className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]" submit="Adicionar" submitClassName="">
-                        <input type="hidden" name="orgId" value={o.id} />
-                        <Field label="Usuário" htmlFor={`u-${o.id}`}><Input id={`u-${o.id}`} name="username" required placeholder="usuario" /></Field>
-                        <Field label="Função" htmlFor={`r-${o.id}`}><Select id={`r-${o.id}`} name="role"><option value="STAFF">Equipe (opera partidas)</option><option value="ADMIN">Admin</option></Select></Field>
-                      </ActionForm>
-                    </details>
-                  )}
-                </Card>
-              ))}
+              {orgs.map((o) => {
+                const canEdit = canCreate && (o.role === "OWNER" || o.role === "ADMIN" || o.role === "PLATFORM");
+                const canDelete = canCreate && (o.role === "OWNER" || o.role === "PLATFORM");
+                return (
+                  <Card key={o.id} className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate font-bold">{o.name}</h3>
+                        {o.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted">{o.description}</p>}
+                      </div>
+                      <Badge tone="brand">{{ OWNER: "Dono", ADMIN: "Admin", STAFF: "Equipe", PLATFORM: "Admin da plataforma" }[o.role]}</Badge>
+                    </div>
+                    {canEdit && (
+                      <details className="border-t border-line-soft pt-3">
+                        <summary className="cursor-pointer text-sm text-brand-soft">Editar organização</summary>
+                        <ActionForm action={updateOrgAction} className="mt-3 space-y-3" submit="Salvar alterações" submitClassName="">
+                          <input type="hidden" name="orgId" value={o.id} />
+                          <Field label="Nome" htmlFor={`n-${o.id}`}><Input id={`n-${o.id}`} name="name" required minLength={3} maxLength={60} defaultValue={o.name} /></Field>
+                          <Field label="Descrição (opcional)" htmlFor={`d-${o.id}`}><Textarea id={`d-${o.id}`} name="description" maxLength={500} rows={3} defaultValue={o.description ?? ""} /></Field>
+                        </ActionForm>
+                      </details>
+                    )}
+                    {canEdit && (
+                      <details className="border-t border-line-soft pt-3">
+                        <summary className="cursor-pointer text-sm text-brand-soft">Adicionar membro</summary>
+                        <ActionForm action={addOrgMemberAction} className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]" submit="Adicionar" submitClassName="">
+                          <input type="hidden" name="orgId" value={o.id} />
+                          <Field label="Usuário" htmlFor={`u-${o.id}`}><Input id={`u-${o.id}`} name="username" required placeholder="usuario" /></Field>
+                          <Field label="Função" htmlFor={`r-${o.id}`}><Select id={`r-${o.id}`} name="role"><option value="STAFF">Equipe (opera partidas)</option><option value="ADMIN">Admin</option></Select></Field>
+                        </ActionForm>
+                      </details>
+                    )}
+                    {canDelete && (
+                      <details className="border-t border-line-soft pt-3">
+                        <summary className="cursor-pointer text-sm text-danger">Excluir organização…</summary>
+                        <div className="mt-3 space-y-3">
+                          <p className="text-xs text-muted">A organização some das listas e ninguém mais a gerencia; o histórico dos campeonatos já encerrados permanece. Não dá para excluir com campeonato aberto ou em andamento, nem com premiação a pagar.</p>
+                          <ActionForm action={deleteOrgAction} className="space-y-3" submit="Excluir organização" submitVariant="danger" submitClassName="" confirm={`Excluir a organização ${o.name}? Esta ação não pode ser desfeita pela interface.`}>
+                            <input type="hidden" name="orgId" value={o.id} />
+                            <Field label={`Para confirmar, digite o nome: ${o.name}`} htmlFor={`x-${o.id}`}><Input id={`x-${o.id}`} name="confirmName" required autoComplete="off" placeholder={o.name} /></Field>
+                          </ActionForm>
+                        </div>
+                      </details>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
             {canCreate && (
               <details className="mt-4"><summary className="cursor-pointer text-sm text-brand-soft">Criar outra organização</summary>
@@ -81,7 +117,7 @@ export default async function OrganizerHome() {
                   {tournaments.map((t) => (
                     <tr key={t.id}>
                       <Td><Link href={`/organizar/${t.id}`} className="font-semibold hover:text-brand-soft">{t.name}</Link><span className="block text-xs text-muted">{t.org.name}</span><span className="block text-xs text-muted sm:hidden">{getGame(t.gameId)?.abbr} · {formatDateTime(t.startsAt)}</span></Td>
-                      <Td className="hidden sm:table-cell">{getGame(t.gameId)?.abbr}</Td>
+                      <Td className="hidden sm:table-cell">{(() => { const g = getGame(t.gameId); return g ? <span className="inline-flex items-center gap-2"><GameBadge game={g} size="sm" />{g.abbr}</span> : null; })()}</Td>
                       <Td className="hidden text-muted sm:table-cell">{formatDateTime(t.startsAt)}</Td>
                       <Td>{t._count.participants}/{t.maxParticipants}</Td>
                       <Td><Badge tone={t.status === "LIVE" ? "accent" : t.status === "REGISTRATION" ? "ok" : t.status === "CANCELED" ? "danger" : "neutral"}>{STATUS_LABELS[t.status]}</Badge></Td>

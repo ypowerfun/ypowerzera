@@ -1,7 +1,7 @@
 import type { GameDef, GameId } from "./types";
 import { lol } from "./lol";
 import { valorant } from "./valorant";
-import { cs2, csgo } from "./cs";
+import { cs2 } from "./cs";
 import { fortnite } from "./fortnite";
 import { apex } from "./apex";
 import { bf6 } from "./bf6";
@@ -13,21 +13,28 @@ import { tft } from "./tft";
 export * from "./types";
 export * from "./common";
 
-export const GAMES: GameDef[] = [lol, valorant, cs2, csgo, fortnite, apex, bf6, warzone, tft, sf6, eafc];
+export const GAMES: GameDef[] = [lol, valorant, cs2, fortnite, apex, bf6, warzone, tft, sf6, eafc];
 
 const byId = new Map<string, GameDef>(GAMES.map((g) => [g.id, g]));
 const bySlug = new Map<string, GameDef>(GAMES.map((g) => [g.slug, g]));
 
+/**
+ * Jogos que saíram do catálogo mas podem existir em dados antigos: o CS:GO foi retirado (use o CS2) e o Street Fighter 6
+ * virou "Street Fighter" (o endereço antigo continua valendo). Registros antigos continuam abrindo, só que já como o jogo atual.
+ */
+const LEGACY_IDS: Record<string, string> = { csgo: "cs2" };
+const LEGACY_SLUGS: Record<string, string> = { "counter-strike-go": "counter-strike-2", "street-fighter-6": "street-fighter" };
+
 export function getGame(id: string): GameDef | undefined {
-  return byId.get(id);
+  return byId.get(id) ?? byId.get(LEGACY_IDS[id] ?? "");
 }
 
 export function getGameBySlug(slug: string): GameDef | undefined {
-  return bySlug.get(slug);
+  return bySlug.get(slug) ?? bySlug.get(LEGACY_SLUGS[slug] ?? "");
 }
 
 export function requireGame(id: string): GameDef {
-  const g = byId.get(id);
+  const g = getGame(id);
   if (!g) throw new Error(`Jogo desconhecido: ${id}`);
   return g;
 }

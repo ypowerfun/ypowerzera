@@ -4,7 +4,7 @@ import { upcomingTournaments } from "@/server/queries";
 import { isWalletOn } from "@/server/settings";
 import { TournamentCard } from "@/components/tournament-card";
 import { ButtonLink, Card, GameBadge, SectionTitle } from "@/components/ui";
-import { Logo } from "@/components/logo";
+import { GameWall } from "@/components/game-wall";
 
 export const dynamic = "force-dynamic";
 
@@ -25,57 +25,49 @@ const STEPS = [
   { title: "Dispute e conquiste", text: "Reporte os placares com o adversário, avance na chave e receba a premiação." },
 ];
 
-const mainGames = GAMES.filter((g) => g.id !== "csgo"); // CS:GO (legado) é uma versão de Counter-Strike, não outro jogo
 const presetCount = GAMES.reduce((n, g) => n + g.presets.length, 0);
-
-const FRAME = "polygon(0 0, calc(100% - 28px) 0, 100% 28px, 100% 100%, 28px 100%, 0 calc(100% - 28px))";
 
 export default async function Home() {
   const [upcoming, walletOn] = await Promise.all([upcomingTournaments(6), isWalletOn()]);
   const features = walletOn ? [...BASE_FEATURES, ...WALLET_FEATURES] : BASE_FEATURES;
   const stats = [
-    { value: String(mainGames.length), label: "jogos suportados" },
+    { value: String(GAMES.length), label: "jogos suportados" },
     { value: String(presetCount), label: "formatos prontos" },
-    walletOn ? { value: "R$ 1", label: "= 1 crédito" } : { value: "Auto", label: "chaves e placares" },
+    { value: "Troféus e R$", label: "em premiação" },
   ];
   return (
     <div className="space-y-16">
-      <section className="relative grid items-center gap-8 pt-2 lg:grid-cols-[1.1fr_0.9fr] lg:gap-10">
-        <div className="order-2 lg:order-1">
-          <p className="mb-4 inline-flex items-center gap-2 border-l-2 border-brand bg-brand/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-brand-soft">
-            <span aria-hidden className="h-1.5 w-1.5 rotate-45 bg-brand" />
-            <span><span className="hidden sm:inline">Plataforma de </span>campeonatos de esports</span>
-          </p>
-          <h1 className="display text-4xl leading-[1.02] sm:text-5xl lg:text-6xl">
-            <span className="text-metal">Crie. Dispute.</span>
-            <br />
-            <span className="text-red-metal">Vença.</span>
-          </h1>
-          <p className="mt-5 max-w-xl text-lg text-muted">Chaves automáticas, inscrições, check-in e resultados para LoL, Valorant, CS2, Fortnite, Apex, Battlefield 6, Warzone, TFT, Street Fighter e EA FC{walletOn ? " — e desafios entre equipes valendo créditos" : ""}.</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <ButtonLink href="/torneios">Ver torneios</ButtonLink>
-            <ButtonLink href="/organizar" variant="light">Criar um campeonato</ButtonLink>
-            {walletOn && <ButtonLink href="/desafios" variant="secondary">Desafiar uma equipe</ButtonLink>}
+      {/* banner: texto à esquerda e, à direita, a parede inclinada com as logos dos jogos (cada uma leva à página do jogo) */}
+      <section aria-labelledby="hero-title" className="relative isolate overflow-hidden rounded-xl border border-brand/60 bg-surface shadow-glow">
+        <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(900px_420px_at_85%_40%,rgb(225_29_42/0.22),transparent_65%),radial-gradient(700px_380px_at_0%_0%,rgb(255_255_255/0.05),transparent_60%)]" />
+        <div className="grid items-stretch lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="relative z-10 px-6 pb-2 pt-8 sm:px-10 sm:pt-12 lg:py-14 lg:pl-12 lg:pr-0">
+            <p className="mb-4 inline-flex items-center gap-2 border-l-2 border-brand bg-brand/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-brand-soft">
+              <span aria-hidden className="h-1.5 w-1.5 rotate-45 bg-brand" />
+              <span><span className="hidden sm:inline">Plataforma de </span>campeonatos de esports</span>
+            </p>
+            <h1 id="hero-title" className="display text-4xl leading-[1.04] sm:text-5xl lg:text-6xl">
+              <span className="text-metal">Qual jogo</span>
+              <br />
+              <span className="text-red-metal">você joga?</span>
+            </h1>
+            <p className="mt-5 max-w-md text-base text-muted sm:text-lg">Escolha um jogo para encontrar campeonatos abertos, montar o seu time e acompanhar as chaves ao vivo{walletOn ? " — ou desafie outra equipe valendo créditos" : ""}.</p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <ButtonLink href="/jogos">Escolher um jogo <span aria-hidden>→</span></ButtonLink>
+              <ButtonLink href="/torneios" variant="light">Ver torneios</ButtonLink>
+              {walletOn && <ButtonLink href="/desafios" variant="secondary">Desafiar uma equipe</ButtonLink>}
+            </div>
+            <dl className="mt-8 flex flex-wrap gap-x-8 gap-y-4">
+              {stats.map((x) => (
+                <div key={x.label} className="border-l-2 border-brand/70 pl-3">
+                  <dt className="sr-only">{x.label}</dt>
+                  <dd className="text-2xl font-black text-ink">{x.value}</dd>
+                  <dd className="text-xs text-muted" aria-hidden>{x.label}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
-          <dl className="mt-10 grid max-w-md grid-cols-3 gap-4">
-            {stats.map((s) => (
-              <div key={s.label} className="border-l-2 border-brand/70 pl-3">
-                <dt className="sr-only">{s.label}</dt>
-                <dd className="text-2xl font-black text-ink">{s.value}</dd>
-                <dd className="text-xs text-muted" aria-hidden>{s.label}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-
-        {/* arte oficial em moldura chanfrada com borda vermelha e brilho de arena atrás */}
-        <div className="relative order-1 mx-auto w-48 sm:w-80 lg:order-2 lg:w-[26rem]">
-          <div aria-hidden className="absolute -inset-10 -z-10 bg-[radial-gradient(closest-side,rgb(225_29_42/0.4),rgb(225_29_42/0.12)_55%,transparent_75%)] blur-2xl" />
-          <div className="float-slow relative">
-            <div aria-hidden className="absolute -inset-0.5 bg-gradient-to-br from-brand via-[#3a3f4d] to-brand-strong" style={{ clipPath: FRAME }} />
-            <Logo variant="art" className="relative w-full" />
-            <div aria-hidden className="pointer-events-none absolute inset-0" style={{ clipPath: FRAME, boxShadow: "inset 0 0 40px rgb(0 0 0 / 0.35)" }} />
-          </div>
+          <GameWall games={GAMES} />
         </div>
       </section>
 
@@ -95,7 +87,7 @@ export default async function Home() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {GAMES.map((g) => (
             <Link key={g.id} href={`/jogos/${g.slug}`} className="flex min-w-0 items-center gap-3 rounded-lg border border-line bg-surface/80 p-3 transition hover:-translate-y-0.5 hover:border-brand/50 hover:shadow-glow focus-ring">
-              <GameBadge abbr={g.abbr} accent={g.accent} />
+              <GameBadge game={g} size="lg" />
               <span className="min-w-0"><span className="block text-sm font-bold leading-tight">{g.name}</span><span className="block truncate text-xs text-muted">{g.category}</span></span>
             </Link>
           ))}

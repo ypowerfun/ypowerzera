@@ -44,7 +44,7 @@ let steam = Math.floor(Math.random() * 80_000_000);
 export async function linkGame(user: Actor, gameId: string) {
   const n = `${++steam}`;
   let identity: Record<string, string>;
-  if (gameId === "cs2" || gameId === "csgo") identity = { steamId: `76561198${String(100000000 + steam).padStart(9, "0")}` };
+  if (gameId === "cs2") identity = { steamId: `76561198${String(100000000 + steam).padStart(9, "0")}` };
   else if (gameId === "valorant" || gameId === "lol" || gameId === "tft") identity = { riotId: `Jog${n}#BR1` };
   else identity = (identityFor[gameId] ?? identityFor.sf6)(n);
   return saveGameAccount(user.id, gameId, identity);

@@ -147,23 +147,47 @@ textarea {
   }
 }
 
-@keyframes float-slow {
-  0%,
-  100% {
+/* parede de logos dos jogos (banner da home): cada coluna tem 3 cópias e sobe/desce exatamente uma cópia por ciclo */
+.wall-col {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  animation: wall-scroll var(--wall-dur, 50s) linear infinite;
+  will-change: transform;
+}
+
+.wall-rev {
+  animation-direction: reverse;
+}
+
+.wall-set {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding-bottom: 0.875rem;
+}
+
+@keyframes wall-scroll {
+  from {
     transform: translateY(0);
   }
-  50% {
-    transform: translateY(-10px);
+  to {
+    transform: translateY(-33.3333%);
   }
 }
 
-@utility float-slow {
-  animation: float-slow 7s ease-in-out infinite;
+.wall:hover .wall-col,
+.wall:focus-within .wall-col {
+  animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .float-slow {
+  .wall-col {
     animation: none;
+  }
+
+  .wall-dup {
+    display: none;
   }
 }
 

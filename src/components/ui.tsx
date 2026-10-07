@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { gameLogoProps } from "@/games/logos";
 import type { ComponentProps, ReactNode } from "react";
 import { cx } from "@/lib/cx";
 import { ScrollTable } from "./scroll-table";
@@ -139,11 +140,21 @@ export const Th = ({ children, className }: { children?: ReactNode; className?: 
 );
 export const Td = ({ children, className }: { children?: ReactNode; className?: string }) => <td className={cx("border-t border-line-soft px-2 py-2.5 align-middle sm:px-3", className)}>{children}</td>;
 
-export function GameBadge({ abbr, accent, size = "md" }: { abbr: string; accent: string; size?: "sm" | "md" | "lg" }) {
+/** Logo do jogo (quadrada) ao lado de cada plataforma; sem logo cadastrada, cai para a sigla colorida. */
+export function GameBadge({ game, size = "md" }: { game: { id: string; abbr: string; accent: string }; size?: "sm" | "md" | "lg" }) {
+  const px = { sm: 28, md: 40, lg: 56 }[size];
+  const logo = gameLogoProps(game.id);
+  if (logo) {
+    // decorativa: o nome do jogo sempre aparece em texto ao lado
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={logo.src} srcSet={logo.srcSet} sizes={`${px}px`} width={px} height={px} alt="" loading="lazy" decoding="async" className="shrink-0 rounded-lg border border-line-soft bg-elevated object-cover" style={{ width: px, height: px }} />
+    );
+  }
   const dims = { sm: "h-7 min-w-7 text-[10px]", md: "h-10 min-w-10 text-xs", lg: "h-14 min-w-14 text-sm" }[size];
   return (
-    <span className={cx("inline-flex items-center justify-center rounded-lg px-2 font-black tracking-wide", dims)} style={{ background: `${accent}22`, color: `color-mix(in srgb, ${accent} 60%, #fff)`, border: `1px solid ${accent}66` }}>
-      {abbr}
+    <span className={cx("inline-flex items-center justify-center rounded-lg px-2 font-black tracking-wide", dims)} style={{ background: `${game.accent}22`, color: `color-mix(in srgb, ${game.accent} 60%, #fff)`, border: `1px solid ${game.accent}66` }}>
+      {game.abbr}
     </span>
   );
 }

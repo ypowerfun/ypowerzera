@@ -4,7 +4,6 @@ export type GameId =
   | "lol"
   | "valorant"
   | "cs2"
-  | "csgo"
   | "fortnite"
   | "apex"
   | "bf6"

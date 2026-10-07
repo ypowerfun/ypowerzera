@@ -45,7 +45,7 @@ export default async function ChallengePage({ params, searchParams }: { params: 
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <PageTitle title={`${c.creatorTeam.name} × ${c.opponentTeam?.name ?? "aguardando adversário"}`} subtitle={<span className="inline-flex items-center gap-2"><GameBadge abbr={game.abbr} accent={game.accent} size="sm" />{game.name} · {mode.label} · melhor de {c.bestOf}</span>} actions={<Badge tone={statusTone[c.status]}>{statusLabel[c.status]}</Badge>} />
+      <PageTitle title={`${c.creatorTeam.name} × ${c.opponentTeam?.name ?? "aguardando adversário"}`} subtitle={<span className="inline-flex items-center gap-2"><GameBadge game={game} size="sm" />{game.name} · {mode.label} · melhor de {c.bestOf}</span>} actions={<Badge tone={statusTone[c.status]}>{statusLabel[c.status]}</Badge>} />
 
       <Card className="grid gap-4 text-center sm:grid-cols-3">
         <div><p className="text-xs uppercase tracking-wider text-muted">Aposta de cada equipe</p><p className="text-3xl font-black text-silver">{formatMoney(c.stakeCents)}</p></div>

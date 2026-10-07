@@ -1,44 +1,22 @@
 const NAME = "Prime Arena";
 
 /**
- * Marca Prime Arena, a partir da arte oficial (public/brand).
- *  - `full`: a arte oficial inteira, em tamanho reduzido, para o cabeçalho (`md`) e o rodapé (`lg`); `size` escolhe o tamanho.
- *  - `mark`: só o "A" vermelho facetado, em quadrado (avatar, ícones); o tamanho vem do className (ex.: "h-10 w-10").
- *  - `art`: a arte oficial completa, para o destaque da home.
+ * Logo Prime Arena: a arte oficial (PNG com fundo transparente), só sem as margens vazias e redimensionada.
+ * `size` escolhe a altura: `md` para o cabeçalho, `lg` para o rodapé. A largura acompanha (proporção 1248:1001).
  */
-export function Logo({ variant = "full", size = "md", className = "" }: { variant?: "full" | "mark" | "art"; size?: "sm" | "md" | "lg"; className?: string }) {
-  if (variant === "art") {
-    return (
-      <img
-        src="/brand/prime-arena-art-512.webp"
-        srcSet="/brand/prime-arena-art-512.webp 512w, /brand/prime-arena-art-960.webp 960w"
-        sizes="(min-width: 1024px) 448px, 288px"
-        width={960}
-        height={960}
-        alt={NAME}
-        fetchPriority="high"
-        decoding="async"
-        className={`aspect-square ${className}`}
-      />
-    );
-  }
-
-  if (variant === "mark") {
-    return <img src="/brand/prime-arena-mark-128.webp" srcSet="/brand/prime-arena-mark-128.webp 1x, /brand/prime-arena-mark-256.webp 2x" width={128} height={128} alt={NAME} decoding="async" className={`aspect-square shrink-0 rounded-md ${className}`} />;
-  }
-
-  // logo original inteira (marca + PRIME ARENA), só reduzida: pequena na barra de cima, maior no rodapé
-  const dim = { sm: { cls: "h-10 w-10", px: 40 }, md: { cls: "h-12 w-12 sm:h-14 sm:w-14", px: 56 }, lg: { cls: "h-28 w-28", px: 112 } }[size];
+export function Logo({ size = "md", className = "" }: { size?: "sm" | "md" | "lg"; className?: string }) {
+  const dim = { sm: { cls: "h-9", h: 36 }, md: { cls: "h-12 sm:h-14", h: 56 }, lg: { cls: "h-28 sm:h-32", h: 128 } }[size];
+  const w = Math.round(dim.h * (1248 / 1001));
   return (
     <img
-      src="/brand/prime-arena-art-256.webp"
-      srcSet="/brand/prime-arena-art-128.webp 128w, /brand/prime-arena-art-256.webp 256w, /brand/prime-arena-art-512.webp 512w"
-      sizes={`${dim.px}px`}
-      width={969}
-      height={969}
+      src="/brand/prime-arena-logo-320.webp"
+      srcSet="/brand/prime-arena-logo-160.webp 160w, /brand/prime-arena-logo-320.webp 320w, /brand/prime-arena-logo-640.webp 640w"
+      sizes={`${w}px`}
+      width={1248}
+      height={1001}
       alt={NAME}
       decoding="async"
-      className={`aspect-square shrink-0 rounded-md ${dim.cls} ${className}`}
+      className={`w-auto shrink-0 ${dim.cls} ${className}`}
     />
   );
 }

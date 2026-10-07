@@ -6,7 +6,7 @@ import { getEnv } from "@/lib/env";
 import { formatMoney, priceOrder, type PriceBreakdown } from "@/lib/money";
 import { audit } from "./audit";
 import { notify } from "./notifications";
-import { assertOrgAccess, canManageOrg, requireActor } from "./permissions";
+import { assertOrgAccess, assertTournamentAccess, canManageOrg, requireActor } from "./permissions";
 import { getProvider } from "./payments";
 import type { Actor } from "./types";
 
@@ -301,7 +301,7 @@ export async function refundOrder(actorIn: Actor | null, orderId: string, input:
   const actor = requireActor(actorIn);
   const order = await db.order.findUnique({ where: { id: orderId }, include: { tournament: true } });
   if (!order) throw new AppError("Pedido não encontrado.", "NOT_FOUND");
-  await assertOrgAccess(actor, order.tournament.orgId, "admin");
+  await assertTournamentAccess(actor, order.tournament, "admin");
   if (order.status !== "PAID" && order.status !== "PARTIALLY_REFUNDED") throw new AppError("Só é possível reembolsar pedidos pagos.");
   const reason = input.reason.trim();
   if (reason.length < 3) throw new AppError("Informe o motivo do reembolso.");

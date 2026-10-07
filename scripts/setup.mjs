@@ -42,6 +42,8 @@ if (ifNeeded) {
     if (databaseUrl().startsWith("file:")) {
       quiet("Atualizando o esquema do banco", "npx", ["prisma", "db", "push", "--skip-generate"]);
       quiet("Atualizando o cliente do banco", "npx", ["prisma", "generate"]);
+      // renomeia, só se existirem, os nomes antigos dos dados de demonstração (textos exatos da própria seed)
+      quiet("Atualizando os nomes dos dados de demonstração", "npx", ["tsx", "prisma/refresh-demo.ts"]);
     }
     process.exit(0);
   }

@@ -3,9 +3,9 @@ import { CAPCOM_ID, POINTS_WIN_ONLY, TB_LEAGUE, bo, discordField, platformField 
 
 export const sf6: GameDef = {
   id: "sf6",
-  slug: "street-fighter-6",
-  name: "Street Fighter 6",
-  abbr: "SF6",
+  slug: "street-fighter",
+  name: "Street Fighter",
+  abbr: "SF",
   category: "Luta",
   accent: "#f5b800",
   tagline: "1v1 em dupla eliminação, Bo3 com finais Bo5, estilo Capcom Cup/EVO.",

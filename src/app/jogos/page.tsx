@@ -14,7 +14,7 @@ export default function GamesPage() {
           <Link key={g.id} href={`/jogos/${g.slug}`} className="focus-ring rounded-xl">
             <Card className="h-full transition hover:border-brand-soft/60">
               <div className="flex items-start gap-3">
-                <GameBadge abbr={g.abbr} accent={g.accent} size="lg" />
+                <GameBadge game={g} size="lg" />
                 <div>
                   <h2 className="text-lg font-bold">{g.name}</h2>
                   <p className="text-sm text-muted">{g.tagline}</p>

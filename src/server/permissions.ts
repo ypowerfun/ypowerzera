@@ -36,7 +36,10 @@ export async function orgRoleOf(userId: string, orgId: string, client: Tx = db):
 
 /** "admin" = dono/admin da organização; "staff" = pode operar partidas e participantes. */
 export async function canManageOrg(actor: Actor, orgId: string, level: "admin" | "staff", client: Tx = db): Promise<boolean> {
-  if (actor.role === "ADMIN") return true;
+  const org = await client.organization.findUnique({ where: { id: orgId }, select: { deletedAt: true } });
+  if (!org) return false;
+  if (actor.role === "ADMIN") return true; // o admin segue enxergando o histórico de uma organização excluída
+  if (org.deletedAt) return false; // para os demais, organização excluída não é mais gerenciável
   const role = await orgRoleOf(actor.id, orgId, client);
   if (!role) return false;
   // Quem voltou a ser jogador perde a gestão (dono/admin da organização); só continua como equipe de apoio (STAFF),
@@ -45,11 +48,14 @@ export async function canManageOrg(actor: Actor, orgId: string, level: "admin" |
   return level === "staff" ? true : role === "OWNER" || role === "ADMIN";
 }
 
+/** Ações DA organização (criar campeonato, cupom, membros): a organização precisa existir e não estar excluída, nem para o admin. */
 export async function assertOrgAccess(actor: Actor, orgId: string, level: "admin" | "staff", client: Tx = db): Promise<void> {
+  const org = await client.organization.findUnique({ where: { id: orgId }, select: { deletedAt: true } });
+  if (!org || org.deletedAt) throw new AppError("Organização não encontrada.", "NOT_FOUND");
   if (!(await canManageOrg(actor, orgId, level, client))) throw new AppError("Você não tem permissão para esta ação.", "FORBIDDEN");
 }
 
 /** Dentro de uma transação, passe o `tx` em `client`: nunca consulte o `db` global ali dentro. */
 export async function assertTournamentAccess(actor: Actor, tournament: Pick<Tournament, "orgId">, level: "admin" | "staff", client: Tx = db): Promise<void> {
-  await assertOrgAccess(actor, tournament.orgId, level, client);
+  if (!(await canManageOrg(actor, tournament.orgId, level, client))) throw new AppError("Você não tem permissão para esta ação.", "FORBIDDEN");
 }

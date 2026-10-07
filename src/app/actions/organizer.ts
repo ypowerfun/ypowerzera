@@ -29,7 +29,7 @@ import { forfeitMatch, resetMatch, scheduleMatch, setMatchResult } from "@/serve
 import { setBrGameCode, submitBrResults } from "@/server/leaderboard";
 import { createCoupon, refundOrder } from "@/server/orders";
 import { markPrizePaid } from "@/server/organizer";
-import { addOrgMember } from "@/server/orgs";
+import { addOrgMember, deleteOrganization, updateOrganization } from "@/server/orgs";
 import { requireUser, toActor } from "@/server/session";
 
 function dateField(fd: FormData, k: string): Date | null {
@@ -257,6 +257,17 @@ export const createCouponAction = simple(
 );
 export const refundAction = simple((a, fd) => refundOrder(a, str(fd, "orderId"), { reason: str(fd, "reason") }), "Reembolso realizado.", tPath);
 export const prizePaidAction = simple((a, fd) => markPrizePaid(a, str(fd, "awardId"), str(fd, "note")), "Premiação marcada como paga.", tPath);
+export const updateOrgAction = simple((a, fd) => updateOrganization(a, str(fd, "orgId"), { name: str(fd, "name"), description: str(fd, "description") || undefined }), "Organização atualizada.", () => "/organizar");
+
+/** Exclui a organização (só digitando o nome exato) e volta ao painel com a confirmação. */
+export async function deleteOrgAction(_: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser("/organizar");
+  const res = await guard(() => deleteOrganization(toActor(user), str(fd, "orgId"), { confirmName: str(fd, "confirmName") }));
+  if (!res.ok) return { error: res.error };
+  revalidatePath("/organizar", "layout");
+  redirect("/organizar?ok=org-excluida");
+}
+
 export const addOrgMemberAction = simple((a, fd) => addOrgMember(a, str(fd, "orgId"), str(fd, "username"), str(fd, "role") === "ADMIN" ? "ADMIN" : "STAFF"), "Membro adicionado à organização.", () => "/organizar");
 
 export async function gameHint(gameId: string, presetId: string) {

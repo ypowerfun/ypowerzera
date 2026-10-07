@@ -14,7 +14,10 @@ import {
   type LeaderboardSettings,
   type StageInput,
 } from "@/engine";
-import { GAMES, allPresets, getGame, type FormatPreset } from "@/games";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { GAMES, allPresets, getGame, getGameBySlug, type FormatPreset } from "@/games";
+import { gameLogoProps, hasGameLogo } from "@/games/logos";
 import { ids, simulateStage } from "./helpers";
 
 function simulateLeaderboard(settings: LeaderboardSettings, seeds: Id[], rngSeed: string): { input: StageInput; champion: Id | null } {
@@ -70,7 +73,30 @@ function runPreset(preset: FormatPreset, n: number, rngSeed: string) {
 describe("catálogo de jogos", () => {
   it("contém todos os jogos solicitados", () => {
     const names = GAMES.map((g) => g.id).sort();
-    expect(names).toEqual(["apex", "bf6", "cs2", "csgo", "eafc", "fortnite", "lol", "sf6", "tft", "valorant", "warzone"]);
+    expect(names).toEqual(["apex", "bf6", "cs2", "eafc", "fortnite", "lol", "sf6", "tft", "valorant", "warzone"]);
+  });
+
+  it("o CS:GO saiu do catálogo e o Street Fighter 6 virou 'Street Fighter'; registros e endereços antigos continuam abrindo", () => {
+    expect(GAMES.some((g) => g.id === ("csgo" as string))).toBe(false);
+    expect(GAMES.map((g) => g.name).join("|")).not.toMatch(/CS:GO/);
+    expect(getGame("sf6")).toMatchObject({ name: "Street Fighter", slug: "street-fighter", abbr: "SF" });
+    expect(GAMES.some((g) => /Street Fighter 6/.test(g.name))).toBe(false);
+    // dados antigos: o id "csgo" abre como CS2 e os endereços antigos levam ao jogo atual
+    expect(getGame("csgo")?.id).toBe("cs2");
+    expect(getGameBySlug("counter-strike-go")?.id).toBe("cs2");
+    expect(getGameBySlug("street-fighter-6")?.id).toBe("sf6");
+    expect(getGame("não-existe")).toBeUndefined();
+  });
+
+  it("todo jogo do catálogo tem a logo nos três tamanhos (e só eles)", () => {
+    const dir = path.resolve(__dirname, "../public/games");
+    for (const g of GAMES) {
+      expect(hasGameLogo(g.id), g.id).toBe(true);
+      for (const n of [128, 256, 512]) expect(existsSync(path.join(dir, `${g.id}-${n}.webp`)), `${g.id}-${n}`).toBe(true);
+      expect(gameLogoProps(g.id)?.srcSet).toContain(`/games/${g.id}-512.webp 512w`);
+    }
+    expect(hasGameLogo("csgo")).toBe(false);
+    expect(gameLogoProps("csgo")).toBeNull();
   });
 
   it("ids e slugs são únicos", () => {

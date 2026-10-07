@@ -10,12 +10,12 @@ test.describe("público", () => {
     await expect(page.locator("img[alt*='Prime Arena']").first()).toBeVisible();
 
     await page.goto("/jogos");
-    for (const g of ["League of Legends", "VALORANT", "Counter-Strike 2", "Fortnite", "Apex Legends", "Battlefield 6", "Street Fighter 6", "Call of Duty: Warzone", "EA SPORTS FC", "Teamfight Tactics"]) {
+    for (const g of ["League of Legends", "VALORANT", "Counter-Strike 2", "Fortnite", "Apex Legends", "Battlefield 6", "Street Fighter", "Call of Duty: Warzone", "EA SPORTS FC", "Teamfight Tactics"]) {
       await expect(page.getByText(g, { exact: false }).first()).toBeVisible();
     }
 
     await page.goto("/torneios");
-    await expect(page.getByText("Copa Prime Arena de Street Fighter 6")).toBeVisible();
+    await expect(page.getByText("Copa Prime Arena de Street Fighter")).toBeVisible();
     await expect(page.getByText("Prime Arena Valorant Cup #1")).toBeVisible();
   });
 
@@ -197,7 +197,7 @@ test.describe("responsividade", () => {
     }
     // o nome do campeonato aparece inteiro no cartão (não truncado ao lado do selo)
     await page.goto("/torneios");
-    await expect(page.getByRole("heading", { name: "Copa Prime Arena de Street Fighter 6" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Copa Prime Arena de Street Fighter" })).toBeVisible();
 
     await loginOk(page, "lider1@primearena.local");
     for (const p of ["/carteira", "/desafios/novo", "/times", "/conta"]) {
@@ -228,13 +228,13 @@ test.describe("marca Prime Arena", () => {
     const og = await page.locator("meta[property='og:image']").getAttribute("content");
     expect(og).toBeTruthy();
     expect((await request.get(og!)).status()).toBe(200);
-    for (const src of ["/brand/prime-arena-art-512.webp", "/brand/prime-arena-art-960.webp", "/brand/prime-arena-art-128.webp", "/brand/prime-arena-art-256.webp", "/brand/prime-arena-mark-128.webp"]) {
+    for (const src of ["/brand/prime-arena-logo-160.webp", "/brand/prime-arena-logo-320.webp", "/brand/prime-arena-logo-640.webp", "/brand/prime-arena-logo-1248.webp", "/games/lol-128.webp", "/games/sf6-256.webp", "/games/cs2-512.webp"]) {
       const r = await request.get(src);
       expect(r.status(), src).toBe(200);
       expect(r.headers()["content-type"]).toContain("image/webp");
     }
 
-    // a arte do destaque carregou de verdade (não é imagem quebrada)
+    // a logo do cabeçalho carregou de verdade (não é imagem quebrada)
     const art = page.getByRole("img", { name: "Prime Arena" }).first();
     await expect(art).toBeVisible();
     expect(await art.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
@@ -413,6 +413,112 @@ test.describe("cargos, time excluído e chave da carteira", () => {
         expect(body, `${path} vazou "${secret}"`).not.toContain(secret);
       }
     }
+  });
+});
+
+test.describe("banner da home, logos dos jogos e organização", () => {
+  test("banner: 'Qual jogo você joga?' com a parede de logos; sem o 'R$ 1 = 1 crédito'; cada logo leva ao jogo", async ({ page }) => {
+    await page.goto("/");
+    const hero = page.locator("section[aria-labelledby='hero-title']");
+    await expect(hero.getByRole("heading", { level: 1 })).toHaveText(/Qual jogo\s*você joga\?/i);
+    await expect(hero.getByText("Troféus e R$")).toBeVisible();
+    await expect(hero.getByText(/1 crédito/)).toHaveCount(0);
+    await expect(hero.getByText("CRIE. DISPUTE")).toHaveCount(0);
+    await expect(hero.getByRole("link", { name: /Escolher um jogo/ })).toHaveAttribute("href", "/jogos");
+
+    // 10 logos clicáveis (as cópias do laço contínuo ficam escondidas dos leitores de tela)
+    const tiles = page.locator(".wall").getByRole("link");
+    await expect(tiles).toHaveCount(10);
+    const broken = await page.locator(".wall img").evaluateAll((imgs) => imgs.filter((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth === 0).length);
+    expect(broken).toBe(0);
+    // cada logo aponta para a página do seu jogo (a parede anima, então confiro o endereço em vez de clicar num alvo em movimento)
+    const hrefs = await tiles.evaluateAll((els) => els.map((e) => (e as HTMLAnchorElement).getAttribute("href")));
+    expect([...hrefs].sort()).toEqual(
+      ["apex-legends", "battlefield-6", "call-of-duty-warzone", "counter-strike-2", "ea-sports-fc", "fortnite", "league-of-legends", "street-fighter", "teamfight-tactics", "valorant"].map((s) => `/jogos/${s}`).sort(),
+    );
+    await page.goto("/jogos/street-fighter");
+    await expect(page.getByRole("heading", { name: "Street Fighter", level: 1 })).toBeVisible();
+  });
+
+  test("com 'reduzir movimento' a parede fica parada e sem cópias repetidas", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    expect(await page.locator(".wall-col").first().evaluate((e) => getComputedStyle(e).animationName)).toBe("none");
+    expect(await page.locator(".wall-dup").first().evaluate((e) => getComputedStyle(e).display)).toBe("none");
+  });
+
+  test("catálogo: logo ao lado de cada jogo, sem CS:GO, 'Street Fighter' (e os endereços antigos continuam valendo)", async ({ page }) => {
+    await page.goto("/jogos");
+    await expect(page.locator("main img[src*='/games/']")).toHaveCount(10);
+    await expect(page.getByText("CS:GO")).toHaveCount(0);
+    await expect(page.getByText("Street Fighter 6")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Street Fighter", exact: true })).toBeVisible();
+    await page.goto("/jogos/street-fighter-6");
+    await expect(page).toHaveURL(/\/jogos\/street-fighter$/);
+    await page.goto("/jogos/counter-strike-go");
+    await expect(page).toHaveURL(/\/jogos\/counter-strike-2$/);
+  });
+
+  test("torneios: filtro por jogo com a logo de cada um", async ({ page }) => {
+    await page.goto("/torneios");
+    const filter = page.getByRole("navigation", { name: "Filtrar por jogo" });
+    await expect(filter.locator("img[src*='/games/']")).toHaveCount(10);
+    await filter.getByRole("link", { name: "VALORANT" }).click();
+    await expect(page).toHaveURL(/jogo=valorant/);
+    await expect(page.getByText("Prime Arena Valorant Cup #1")).toBeVisible();
+    await expect(page.getByText("Copa Prime Arena de Street Fighter")).toHaveCount(0);
+    await expect(filter.getByRole("link", { name: "VALORANT" })).toHaveAttribute("aria-current", "page");
+  });
+
+  test("organização: criar, editar/renomear e excluir; com campeonato aberto não exclui", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    await loginOk(page, "organizador@primearena.local");
+    await page.goto("/organizar");
+    await page.locator("details", { hasText: "Criar outra organização" }).locator("summary").click();
+    const create = page.locator("details", { hasText: "Criar outra organização" });
+    await create.getByLabel("Nome").fill("Liga E2E Temporária");
+    await create.getByRole("button", { name: "Criar organização" }).click();
+    await page.waitForURL(/\/organizar\/novo/);
+    await page.goto("/organizar");
+
+    const card = () => page.locator("div").filter({ has: page.getByRole("heading", { name: /Liga E2E/ }) }).filter({ has: page.getByText("Editar organização") }).last();
+    await expect(page.getByRole("heading", { name: "Liga E2E Temporária" })).toBeVisible();
+    await card().getByText("Editar organização").click();
+    await card().getByLabel("Nome", { exact: true }).fill("Liga E2E Renomeada");
+    await card().getByLabel(/Descrição/).fill("Organização criada pelo teste.");
+    await card().getByRole("button", { name: "Salvar alterações" }).click();
+    await expect(page.getByText("Organização atualizada.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Liga E2E Renomeada" })).toBeVisible();
+    await expect(page.getByText("Organização criada pelo teste.")).toBeVisible();
+
+    // nome errado não exclui
+    await card().getByText("Excluir organização…").click();
+    await card().getByLabel(/Para confirmar, digite o nome/).fill("Outro nome");
+    await card().getByRole("button", { name: "Excluir organização" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "nome exato" })).toBeVisible();
+    // nome certo exclui e volta ao painel com a confirmação
+    await card().getByLabel(/Para confirmar, digite o nome/).fill("Liga E2E Renomeada");
+    await card().getByRole("button", { name: "Excluir organização" }).click();
+    await expect(page.getByText("Organização excluída.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Liga E2E Renomeada" })).toHaveCount(0);
+
+    // a organização do seed tem campeonatos abertos: o servidor recusa mesmo com o nome certo
+    const official = page.locator("div").filter({ has: page.getByRole("heading", { name: "Prime Arena Oficial" }) }).filter({ has: page.getByText("Excluir organização…") }).last();
+    await official.getByText("Excluir organização…").click();
+    await official.getByLabel(/Para confirmar, digite o nome/).fill("Prime Arena Oficial");
+    await official.getByRole("button", { name: "Excluir organização" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: /aberto\(s\) ou em andamento/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Prime Arena Oficial" })).toBeVisible();
+    await logout(page);
+  });
+
+  test("jogador comum e equipe de apoio não veem editar/excluir organização", async ({ page }) => {
+    await loginOk(page, "jogador1@primearena.local");
+    await page.goto("/organizar");
+    await expect(page.getByText("Editar organização")).toHaveCount(0);
+    await expect(page.getByText("Excluir organização…")).toHaveCount(0);
+    await logout(page);
   });
 });
 

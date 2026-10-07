@@ -24,7 +24,7 @@ export default async function GameAccountsPage({ searchParams }: { searchParams:
         return (
           <Card key={g.id} id={g.id} className={g.id === sp.jogo ? "border-brand/60 shadow-glow" : ""}>
             <div className="mb-4 flex items-center gap-3">
-              <GameBadge abbr={g.abbr} accent={g.accent} />
+              <GameBadge game={g} />
               <div className="flex-1"><h2 className="font-bold">{g.name}</h2>{acc && <p className="text-xs text-muted">Vinculada: {acc.handle}</p>}</div>
               {acc ? <Badge tone="ok">vinculada</Badge> : <Badge>pendente</Badge>}
             </div>

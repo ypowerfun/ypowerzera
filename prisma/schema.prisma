@@ -267,6 +267,8 @@ model Organization {
   name        String
   description String?
   createdAt   DateTime @default(now())
+  /// Exclusão LÓGICA: a organização some das listas e não aceita mais gestão, mas o histórico (campeonatos, pedidos, premiações) permanece.
+  deletedAt   DateTime?
 
   members     OrgMember[]
   tournaments Tournament[]

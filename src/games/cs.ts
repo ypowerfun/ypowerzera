@@ -137,32 +137,3 @@ export const cs2: GameDef = {
     "Pools de mapas mudam; confira a rotação oficial antes de publicar o campeonato.",
   ],
 };
-
-export const csgo: GameDef = {
-  id: "csgo",
-  slug: "counter-strike-go",
-  name: "CS:GO (legado)",
-  abbr: "CSGO",
-  category: "FPS tático",
-  accent: "#de9b35",
-  tagline: "Campeonatos retrô de CS:GO com os mesmos formatos de CS.",
-  description:
-    "Suporte a campeonatos de Counter-Strike: Global Offensive (versão legada), útil para ligas retrô e comunidades que ainda mantêm servidores. Usa os mesmos formatos do CS2.",
-  platforms: ["PC"],
-  regions: ["BR", "LATAM", "NA", "EU"],
-  modes: [{ id: "5v5", label: "5v5 Competitivo", teamSize: 5, maxSubs: 2, description: "Cinco titulares e até dois reservas." }],
-  identity: [STEAM_ID, FACEIT, discordField()],
-  mapPool: {
-    label: "Active Duty clássico (CS:GO, fim de 2023)",
-    maps: ["Ancient", "Anubis", "Inferno", "Mirage", "Nuke", "Overpass", "Vertigo"],
-  },
-  vetoSupported: true,
-  matchSettings: [
-    "Modo: Competitivo 5v5, MR15 (16 rounds para vencer) — versão clássica; prorrogação MR3.",
-    "Veto Bo1: 6 bans alternados. Bo3: ban, ban, pick, pick, ban, ban.",
-    "Servidor de comunidade com anticheat; demos obrigatórias.",
-  ],
-  rules: csRules("- **Versão:** o campeonato é disputado em CS:GO legado. Confirme com a organização a versão do cliente/servidor.\n- **Formato de jogo:** MR15 (16 rounds) na versão clássica, salvo regra diferente do evento."),
-  presets: csPresets("csgo", "CS:GO"),
-  notes: ["O CS:GO foi substituído pelo CS2 em 2023; mantemos o suporte para ligas retrô e comunidades."],
-};

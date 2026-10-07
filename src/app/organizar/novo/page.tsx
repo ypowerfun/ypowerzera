@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createTournamentAction } from "@/app/actions/organizer";
 import { ActionForm } from "@/components/action-form";
-import { Alert, Card, Field, Input, PageTitle, Select, Textarea, buttonClass } from "@/components/ui";
+import { Alert, Card, Field, GameBadge, Input, PageTitle, Select, Textarea, buttonClass } from "@/components/ui";
 import { describeStage } from "@/engine";
 import { GAMES, getGame, presetsForMode } from "@/games";
 import { toLocalInput } from "@/lib/dates";
@@ -20,8 +20,8 @@ export default async function NewTournamentPage({ searchParams }: { searchParams
   }
   // o admin cria campeonato em QUALQUER organização; o organizador, nas que é dono ou admin
   const orgList = user.role === "ADMIN"
-    ? (await db.organization.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } })).map((o) => ({ orgId: o.id, org: o }))
-    : await db.orgMember.findMany({ where: { userId: user.id, role: { in: ["OWNER", "ADMIN"] } }, include: { org: true } });
+    ? (await db.organization.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } })).map((o) => ({ orgId: o.id, org: o }))
+    : await db.orgMember.findMany({ where: { userId: user.id, role: { in: ["OWNER", "ADMIN"] }, org: { deletedAt: null } }, include: { org: true } });
   if (orgList.length === 0) {
     return <div className="mx-auto max-w-lg"><Alert tone="warn">Você precisa de uma organização para criar campeonatos. <Link href="/organizar" className="underline">Criar organização</Link></Alert></div>;
   }
@@ -35,14 +35,27 @@ export default async function NewTournamentPage({ searchParams }: { searchParams
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <PageTitle title="Novo campeonato" subtitle="Escolha o jogo, o modo e um formato pronto. Depois você ajusta fases, melhor-de-N e pontuação." />
-      <Card>
-        <form className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end" method="get">
+      <Card className="space-y-5">
+        <div>
+          <p className="mb-2 text-sm font-semibold">Jogo</p>
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {GAMES.map((g) => (
+              <li key={g.id}>
+                <Link href={`/organizar/novo?org=${orgId}&jogo=${g.id}`} aria-current={game?.id === g.id ? "true" : undefined} className={`flex items-center gap-2.5 rounded-lg border p-1.5 pr-3 text-sm font-semibold focus-ring ${game?.id === g.id ? "border-brand bg-brand/15 text-ink" : "border-line bg-elevated/40 text-muted hover:border-brand/50 hover:text-ink"}`}>
+                  <GameBadge game={g} size="md" />
+                  <span className="min-w-0 leading-tight">{g.name}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" method="get">
+          <input type="hidden" name="jogo" value={game?.id ?? ""} />
           <Field label="Organização" htmlFor="org"><Select id="org" name="org" defaultValue={orgId}>{orgList.map((m) => <option key={m.orgId} value={m.orgId}>{m.org.name}</option>)}</Select></Field>
-          <Field label="Jogo" htmlFor="jogo"><Select id="jogo" name="jogo" defaultValue={game?.id ?? ""} required><option value="">Selecione…</option>{GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select></Field>
           <Field label="Modo" htmlFor="modo"><Select id="modo" name="modo" defaultValue={mode?.id ?? ""} disabled={!game}>{game ? game.modes.map((m) => <option key={m.id} value={m.id}>{m.label}</option>) : <option>—</option>}</Select></Field>
-          <button className={buttonClass("secondary")}>Continuar</button>
+          <button className={buttonClass("secondary")} disabled={!game}>Continuar</button>
         </form>
-        <p className="mt-2 text-xs text-muted">Se trocar o jogo, clique em Continuar para atualizar modos e formatos.</p>
+        <p className="text-xs text-muted">Escolha o jogo acima. Se trocar a organização ou o modo, clique em Continuar para atualizar os formatos.</p>
       </Card>
 
       {game && mode && (

@@ -9,14 +9,14 @@ export async function organizerOverview(actor: Pick<Actor, "id" | "role">) {
   const userId = actor.id;
   const isAdmin = actor.role === "ADMIN";
   // quem voltou a ser jogador só gerencia onde é equipe de apoio (STAFF): é a mesma regra de canManageOrg
-  const memberships = await db.orgMember.findMany({ where: { userId, ...(isAdmin || actor.role === "ORGANIZER" ? {} : { role: "STAFF" as const }) }, include: { org: true } });
+  const memberships = await db.orgMember.findMany({ where: { userId, org: { deletedAt: null }, ...(isAdmin || actor.role === "ORGANIZER" ? {} : { role: "STAFF" as const }) }, include: { org: true } });
   const orgIds = memberships.map((m) => m.orgId);
   // o admin gerencia TODAS as organizações; os demais, só aquelas de que fazem parte
   const orgs = isAdmin
-    ? (await db.organization.findMany({ orderBy: { name: "asc" } })).map((o) => ({ id: o.id, name: o.name, role: (memberships.find((m) => m.orgId === o.id)?.role ?? "PLATFORM") as "OWNER" | "ADMIN" | "STAFF" | "PLATFORM" }))
-    : memberships.map((m) => ({ id: m.orgId, name: m.org.name, role: m.role as "OWNER" | "ADMIN" | "STAFF" | "PLATFORM" }));
+    ? (await db.organization.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" } })).map((o) => ({ id: o.id, name: o.name, description: o.description, role: (memberships.find((m) => m.orgId === o.id)?.role ?? "PLATFORM") as "OWNER" | "ADMIN" | "STAFF" | "PLATFORM" }))
+    : memberships.map((m) => ({ id: m.orgId, name: m.org.name, description: m.org.description, role: m.role as "OWNER" | "ADMIN" | "STAFF" | "PLATFORM" }));
   const tournaments = await db.tournament.findMany({
-    where: isAdmin ? {} : { orgId: { in: orgIds } },
+    where: isAdmin ? { org: { deletedAt: null } } : { orgId: { in: orgIds } },
     orderBy: { startsAt: "desc" },
     take: 50,
     include: { org: { select: { name: true } }, _count: { select: { participants: { where: { status: { in: ["REGISTERED", "CHECKED_IN", "PENDING_PAYMENT"] } } } } } },

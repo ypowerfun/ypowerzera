@@ -3,7 +3,7 @@ import Link from "next/link";
 import { GAMES } from "@/games";
 import { listPublicTournaments, type ListFilters } from "@/server/queries";
 import { TournamentCard } from "@/components/tournament-card";
-import { ButtonLink, Empty, Input, PageTitle, Select, buttonClass, cx } from "@/components/ui";
+import { ButtonLink, Empty, GameBadge, Input, PageTitle, Select, buttonClass, cx } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Torneios" };
 export const dynamic = "force-dynamic";
@@ -27,12 +27,22 @@ export default async function TournamentsPage({ searchParams }: { searchParams: 
   return (
     <>
       <PageTitle title="Torneios" subtitle={`${total} campeonato${total === 1 ? "" : "s"} encontrado${total === 1 ? "" : "s"}.`} actions={<ButtonLink href="/organizar/novo" variant="secondary">Criar campeonato</ButtonLink>} />
-      <form className="mb-6 grid gap-3 rounded-xl border border-line bg-surface/70 p-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]" role="search">
+      <nav aria-label="Filtrar por jogo" className="-mx-4 mb-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+        <ul className="flex w-max gap-2 sm:w-auto sm:flex-wrap">
+          <li><Link href={`/torneios${qs({ jogo: undefined, pagina: undefined })}`} aria-current={!sp.jogo ? "page" : undefined} className={cx("flex h-11 items-center rounded-lg border px-4 text-sm font-bold", !sp.jogo ? "border-brand bg-brand/20 text-brand-soft" : "border-line bg-surface/70 text-muted hover:text-ink")}>Todos</Link></li>
+          {GAMES.map((g) => (
+            <li key={g.id}>
+              <Link href={`/torneios${qs({ jogo: g.id, pagina: undefined })}`} aria-current={sp.jogo === g.id ? "page" : undefined} className={cx("flex h-11 items-center gap-2 whitespace-nowrap rounded-lg border py-1 pl-1 pr-3 text-sm font-semibold", sp.jogo === g.id ? "border-brand bg-brand/20 text-ink" : "border-line bg-surface/70 text-muted hover:border-brand/50 hover:text-ink")}>
+                <GameBadge game={g} size="sm" />
+                {g.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <form className="mb-6 grid gap-3 rounded-xl border border-line bg-surface/70 p-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_auto]" role="search">
         <Input name="q" placeholder="Buscar por nome" defaultValue={sp.q} aria-label="Buscar por nome" />
-        <Select name="jogo" defaultValue={sp.jogo ?? ""} aria-label="Jogo">
-          <option value="">Todos os jogos</option>
-          {GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-        </Select>
+        <input type="hidden" name="jogo" value={sp.jogo ?? ""} />
         <Select name="status" defaultValue={sp.status ?? ""} aria-label="Situação">
           <option value="">Qualquer situação</option>
           <option value="abertos">Inscrições abertas</option>

@@ -21,6 +21,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
     if (byId) redirect(`/jogos/${byId.slug}`);
     notFound();
   }
+  if (game.slug !== slug) redirect(`/jogos/${game.slug}`); // endereço antigo (ex.: street-fighter-6) leva ao atual
   const tournaments = await db.tournament.findMany({
     where: { gameId: game.id, visibility: "PUBLIC", status: { in: ["REGISTRATION", "CHECK_IN", "LIVE"] } },
     orderBy: { startsAt: "asc" },
@@ -30,7 +31,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
   return (
     <div className="space-y-10">
       <header className="flex flex-wrap items-center gap-4">
-        <GameBadge abbr={game.abbr} accent={game.accent} size="lg" />
+        <GameBadge game={game} size="lg" />
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="break-words text-3xl font-black">{game.name}</h1>
           <span aria-hidden className="mt-2 block h-0.5 w-12 rounded-full bg-gradient-to-r from-brand to-transparent" />

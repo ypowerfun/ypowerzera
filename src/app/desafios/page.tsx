@@ -64,7 +64,7 @@ export default async function ChallengesPage({ searchParams }: { searchParams: P
               return (
                 <Link key={c.id} href={`/desafios/${c.id}`} className="focus-ring rounded-xl">
                   <Card className="h-full transition hover:border-brand-soft/60 hover:shadow-glow">
-                    <div className="flex items-center gap-3">{g && <GameBadge abbr={g.abbr} accent={g.accent} />}<div className="min-w-0"><p className="truncate font-bold">{c.creatorTeam.name}</p><p className="truncate text-xs text-muted">{g?.name} · {g?.modes.find((m) => m.id === c.modeId)?.label} · melhor de {c.bestOf}</p></div></div>
+                    <div className="flex items-center gap-3">{g && <GameBadge game={g} />}<div className="min-w-0"><p className="truncate font-bold">{c.creatorTeam.name}</p><p className="truncate text-xs text-muted">{g?.name} · {g?.modes.find((m) => m.id === c.modeId)?.label} · melhor de {c.bestOf}</p></div></div>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div><p className="text-xs text-muted">Aposta de cada equipe</p><p className="text-xl font-black text-silver">{formatMoney(c.stakeCents)}</p></div>
                       <div><p className="text-xs text-muted">Vencedor recebe</p><p className="text-xl font-black text-ok">{formatMoney(c.stakeCents * 2 - fee)}</p></div>

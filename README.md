@@ -2,7 +2,7 @@
 
 Gerenciador de campeonatos de esports (inspirado no Battlefy) com **carteira por equipe** e **desafios equipe × equipe valendo créditos** (1 crédito = R$ 1,00). Visual grafite com vermelho e prata (a partir do logo oficial), interface em português do Brasil.
 
-Jogos: **League of Legends, VALORANT, Counter-Strike (CS2 e CS:GO), Fortnite, Apex Legends, Battlefield 6, Street Fighter 6, Call of Duty: Warzone, EA SPORTS FC e TFT.**
+Jogos: **League of Legends, VALORANT, Counter-Strike 2, Fortnite, Apex Legends, Battlefield 6, Street Fighter, Call of Duty: Warzone, EA SPORTS FC e TFT.** (O CS:GO saiu do catálogo; registros antigos dele passam a abrir como CS2.)
 
 > ⚠️ **Dinheiro real exige revisão jurídica e de conformidade antes de ir ao ar** — veja [Antes de operar com dinheiro real](#antes-de-operar-com-dinheiro-real).
 
@@ -17,12 +17,13 @@ Jogos: **League of Legends, VALORANT, Counter-Strike (CS2 e CS:GO), Fortnite, Ap
 - **Motor de chaves puro e testado** (`src/engine`): eliminação simples e dupla (com *reset* da grande final), pontos corridos, Suíço (Buchholz), grupos GSL, leaderboard de *battle royale* (pontos por colocação/abates, multiplicadores, *Match Point*, lobbies paralelos e reembaralhados) e classificação entre fases.
 - **Conta**: cadastro, e-mail verificado, login com sessões (token só em hash), recuperação de senha, contas de jogo por título (Riot ID, SteamID, Epic, EA, Capcom ID, Activision…).
 - **Checkout**: taxa de serviço de 10% por cima do valor do organizador, cupons, reserva de vaga de 30 min, fila de espera, reembolso automático ao desistir. Provedor `mock` (dev) ou Stripe (cartão + Pix) com webhook assinado e idempotente.
-- **Organizador**: painel por campeonato (participantes, fases, partidas, financeiro, configurações) e organizações com equipe de staff.
+- **Organizador**: painel por campeonato (participantes, fases, partidas, financeiro, configurações) e organizações com equipe de staff. Cada organização pode ser **editada/renomeada** (dono e admin da organização) e **excluída** (só o dono ou um admin da plataforma, digitando o nome; a exclusão é lógica e o histórico fica; não exclui com campeonato aberto/em andamento nem com premiação a pagar).
+- **Home e jogos**: banner "Qual jogo você joga?" com a parede de logos dos jogos (cada uma leva à página do jogo) e a logo de cada jogo ao lado do nome em listas, filtros e cartões (`public/games/`).
 - **Cargos**: Admin (tudo), Organizador e Jogador; o admin promove e rebaixa pela tela **Admin → Usuários**.
 - **Carteira da equipe** (só o **líder** movimenta): depósito por Pix, saque por Pix para o CPF verificado, extrato imutável. O admin liga e desliga a aba em **Admin → Configurações**.
 - **Desafios equipe × equipe**: a aposta fica em custódia, o vencedor leva o pote menos 10%.
 - **Admin**: usuários e cargos, todas as equipes, saldos de times excluídos, configurações, fila de KYC, saques em análise e presos, depósitos retidos, disputas, congelar/liberar carteira, ajuste auditado e conciliação do razão.
-- **Marca**: logo Prime Arena (`public/brand/`, a arte oficial enviada, só redimensionada: pequena no cabeçalho e maior no rodapé).
+- **Marca**: logo Prime Arena (`public/brand/`): o PNG transparente oficial, só sem as margens vazias e redimensionado (pequeno no cabeçalho, maior no rodapé); favicon e imagem de compartilhamento saem dele.
 
 ## Rodando em desenvolvimento
 
@@ -62,11 +63,11 @@ Cada jogo traz *presets* de formato baseados no que o cenário competitivo usa; 
 |---|---|---|
 | **League of Legends** | 5v5 | Eliminação simples · Eliminação dupla · Estilo Worlds (Suíço 3-3 → playoffs) · Grupos + playoffs · Liga |
 | **VALORANT** | 5v5 | Eliminação simples · Dupla (estilo VCT, Bo3/Bo5) · Champions (GSL em 4 grupos → dupla) · VCT Stage (2 grupos de 6 → dupla) |
-| **Counter-Strike 2** / **CS:GO (legado)** | 5v5 | Eliminação simples · Dupla · Major (Suíço 3-3 → playoffs Bo3) · GSL + playoffs · Suíço aberto (5 rodadas) · Liga |
+| **Counter-Strike 2** | 5v5 | Eliminação simples · Dupla · Major (Suíço 3-3 → playoffs Bo3) · GSL + playoffs · Suíço aberto (5 rodadas) · Liga |
 | **Fortnite** | Solo, Duos, Trios, Squads | Sessão de 6 partidas (tabela FNCS + 2 pts/abate) · Qualificatória + final · Box Fight (mata-mata 1v1) · Liga |
 | **Apex Legends** | Duos, Trios | *Match Point* (50 pts + vitória, lobby de até 20) · Dia ALGS de 6 partidas (vários lobbies) · Qualificatória + final |
 | **Battlefield 6** | RedSec Squads, 4v4 | RedSec (qualificatória + Gauntlet) · 4v4: simples, dupla, Suíço + playoffs, liga |
-| **Street Fighter 6** | 1v1 | Dupla eliminação (Bo3, finais Bo5) · Pools → Top 8 · Simples com 3º lugar · Pontos corridos |
+| **Street Fighter** | 1v1 | Dupla eliminação (Bo3, finais Bo5) · Pools → Top 8 · Simples com 3º lugar · Pontos corridos |
 | **Call of Duty: Warzone** | Duos, Trios, Quads | Trios (abate × multiplicador de colocação) · Duos · Comunidade (pontos por colocação + abates) · Qualificatória + final |
 | **EA SPORTS FC** | 1v1, Pro Clubs | Grupos + mata-mata · Copa · Liga (turno e returno) · Suíço + mata-mata · Liga de clubes |
 | **TFT** | Solo | Aberto (6 partidas + final *Checkmate*) · Lobby único até 20 pts · Dia de pontos com lobbies reembaralhados |
