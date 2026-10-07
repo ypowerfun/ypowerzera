@@ -14,7 +14,11 @@ COPY . .
 # O endereço público entra no build (links absolutos das imagens de compartilhamento); vem do APP_URL do .env via docker-compose.
 ARG APP_URL=""
 ENV NEXT_TELEMETRY_DISABLED=1 APP_URL=${APP_URL}
-RUN npm run build
+# Banco DESCARTÁVEL só para a montagem: o Next consulta o banco ao pré-gerar algumas páginas, e sem ele o build imprime erros do
+# Prisma (inofensivos, mas assustam). Ele fica em /tmp, fora da imagem final; o banco de verdade é o do volume /data.
+RUN DATABASE_URL="file:/tmp/build.db?connection_limit=1" npx prisma db push --skip-generate \
+  && DATABASE_URL="file:/tmp/build.db?connection_limit=1" npm run build \
+  && rm -f /tmp/build.db
 
 FROM base AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
