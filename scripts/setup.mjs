@@ -42,8 +42,11 @@ if (ifNeeded) {
     if (databaseUrl().startsWith("file:")) {
       quiet("Atualizando o esquema do banco", "npx", ["prisma", "db", "push", "--skip-generate"]);
       quiet("Atualizando o cliente do banco", "npx", ["prisma", "generate"]);
-      // renomeia, só se existirem, os nomes antigos dos dados de demonstração (textos exatos da própria seed)
-      quiet("Atualizando os nomes dos dados de demonstração", "npx", ["tsx", "prisma/refresh-demo.ts"]);
+      // renomeia, só se existirem, os nomes antigos dos dados de demonstração (textos exatos da própria seed).
+      // É só cosmético: se falhar, avisa e segue — nunca impede o site de subir.
+      const r = spawnSync("npx", ["tsx", "prisma/refresh-demo.ts"], { shell: true, encoding: "utf8" });
+      if (r.status !== 0) console.warn(`\n⚠ Não foi possível atualizar os nomes dos dados de demonstração (o site sobe normalmente):\n${(r.stderr || r.stdout || "").trim().split("\n").slice(-3).join("\n")}`);
+      else if (r.stdout?.trim()) console.log(r.stdout.trim());
     }
     process.exit(0);
   }
