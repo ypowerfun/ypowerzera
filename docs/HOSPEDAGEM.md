@@ -146,7 +146,7 @@ docker compose logs -f app        # acompanha o site subindo (Ctrl+C sai; o site
 Abra `https://meusite.com.br`. Se aparecer o site com o cadeado, deu certo.
 
 **Não abriu?** Veja:
-- `docker compose logs app`: lista o que falta no `.env` (o site recusa subir).
+- Se todas as páginas mostram **"Internal Server Error"** (erro 500) e `docker compose ps` marca o `app` como **unhealthy**, é a **trava de segurança** do site: ele não serve nada enquanto a configuração estiver insegura ou incompleta. Rode `docker compose logs app`: ele lista exatamente o que falta ou está errado no `.env` (ou avisa que o banco tem as contas de demonstração, que têm senha pública). Corrija e rode `docker compose up -d`.
 - `docker compose logs caddy`: problemas de certificado (quase sempre DNS ainda não propagou ou porta 80/443 fechada no firewall do provedor do VPS).
 - Muitos VPS têm **um firewall no painel do provedor** além do `ufw`: libere 80 e 443 lá também.
 
@@ -263,4 +263,5 @@ Aí você precisa de: um **proxy com HTTPS** na frente (Caddy ou Nginx) que escr
 - **O pacote Docker não foi construído no ambiente onde o projeto foi desenvolvido** (o ambiente não tem Docker). Os mesmos passos (instalar, montar, criar o banco, subir em modo produção) foram executados e testados sem Docker, mas o primeiro `docker compose up -d --build` no seu servidor é a primeira vez que a imagem é montada. Se algo falhar nele, o erro aparece na tela do build e costuma ser de rede ou de memória do servidor.
 - **Pix/Asaas:** o adaptador foi escrito pela documentação pública e **nunca foi validado contra o sandbox real**. Teste tudo no sandbox (seção 3 do guia do Pix) antes de qualquer valor real.
 - **Dinheiro em desafios entre equipes pode ser regulado** como jogo de azar/aposta dependendo de como é feito. Veja a seção 1 do guia do Pix e consulte um advogado antes da Fase 2. Os campeonatos gratuitos da Fase 1 não têm essa questão.
+- **Segurança: leia [`SEGURANCA.md`](SEGURANCA.md)**, que lista o que foi verificado e o que continua sendo risco (por exemplo: o administrador não tem verificação em duas etapas).
 - **Nenhuma auditoria elimina todo o risco.** O projeto passou por revisão de segurança e testes automáticos, mas mantenha o servidor atualizado, as chaves em segredo, os backups fora do servidor e olhe os logs de vez em quando.

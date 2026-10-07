@@ -125,6 +125,8 @@ Nenhum sistema é "à prova de fraude". O desenho reduz a superfície e faz as f
 |---|---|
 | [`docs/HOSPEDAGEM.md`](docs/HOSPEDAGEM.md) | Do `.zip` ao site online com HTTPS: VPS, domínio, `.env`, `docker compose up -d --build`, administrador, backups, atualização |
 | [`docs/CONFIGURAR_EMAIL.md`](docs/CONFIGURAR_EMAIL.md) | Enviar o **e-mail de confirmação de conta** e de recuperação de senha (SMTP: Brevo, Resend, Gmail…) |
+| [`COMECE_AQUI.md`](COMECE_AQUI.md) | A ordem dos guias e como lançar em duas fases |
+| [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | O que foi verificado e corrigido, o que ainda é risco, e a rotina de segurança semanal |
 | [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md) | Pix real (depósito e saque com liberação do admin), da conta no provedor até o QR Code, e o que resolver antes (conformidade) |
 
 O pacote inclui `Dockerfile`, `docker-compose.yml` (site + HTTPS automático com Caddy + agendador + backup diário) e `.env.production.example`. Comandos úteis: `npm run secrets` (gera os segredos), `npm run mail:test -- voce@exemplo.com` (testa o e-mail), `npm run verificar-site -- https://seusite.com.br` (confere a segurança do site no ar), `npm run backup` (cópia do banco). Em **Admin → Configurações → Verificação do site** há um checklist e o botão de e-mail de teste.

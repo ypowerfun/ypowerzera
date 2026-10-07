@@ -17,12 +17,14 @@ export function cronAuthorized(authorization: string | null): boolean {
 }
 
 /** Apaga o que já venceu e não serve mais (limites de tentativas, sessões e links de e-mail antigos): sem isso as tabelas só crescem. */
-export async function purgeExpired(): Promise<{ rateLimits: number; sessions: number; tokens: number }> {
+export async function purgeExpired(): Promise<{ rateLimits: number; sessions: number; tokens: number; securityAudit: number }> {
   const weekAgo = new Date(Date.now() - 7 * 86400_000);
   const rateLimits = await purgeExpiredRateLimits();
   const sessions = (await db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } })).count;
   const tokens = (await db.authToken.deleteMany({ where: { OR: [{ expiresAt: { lt: weekAgo } }, { usedAt: { lt: weekAgo } }] } })).count;
-  return { rateLimits, sessions, tokens };
+  // Avisos de segurança (webhook sem assinatura etc.) só interessam recentes; a trilha financeira e administrativa NUNCA é apagada.
+  const securityAudit = (await db.auditLog.deleteMany({ where: { action: { startsWith: "security." }, createdAt: { lt: new Date(Date.now() - 60 * 86400_000) } } })).count;
+  return { rateLimits, sessions, tokens, securityAudit };
 }
 
 /** Tarefas periódicas (a cada 1–5 min): saques devidos, conciliação, expirações, desafios e reservas. */

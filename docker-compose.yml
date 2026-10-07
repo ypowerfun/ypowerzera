@@ -2,8 +2,16 @@
 # Passo a passo completo: docs/HOSPEDAGEM.md
 #   1) copie .env.production.example para .env e preencha
 #   2) docker compose up -d --build
+# Os logs do Docker não têm limite por padrão e, com o tempo, enchem o disco do servidor: aqui cada serviço guarda no máximo ~50 MB.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   app:
+    logging: *logging
     build:
       context: .
       args:
@@ -26,6 +34,7 @@ services:
       start_period: 60s
 
   caddy:
+    logging: *logging
     image: caddy:2-alpine
     restart: unless-stopped
     depends_on:
@@ -43,6 +52,7 @@ services:
 
   # Chama o agendador do site a cada 2 minutos: envia os saques aprovados, expira Pix e desafios, concilia o razão.
   cron:
+    logging: *logging
     image: curlimages/curl:8.10.1
     restart: unless-stopped
     depends_on:
@@ -59,6 +69,7 @@ services:
 
   # Uma cópia consistente do banco por dia (guarda as 14 mais recentes em /data/backups, dentro do volume "data").
   backup:
+    logging: *logging
     image: prime-arena:latest
     restart: unless-stopped
     depends_on:

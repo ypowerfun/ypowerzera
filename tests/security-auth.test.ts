@@ -213,7 +213,20 @@ describe("limpeza periódica", () => {
     await db.rateLimit.createMany({ data: [{ key: "velho", count: 3, resetAt: past }, { key: "novo", count: 1, resetAt: future }] });
     await db.session.createMany({ data: [{ id: "sess-velha", userId: u.id, expiresAt: past }, { id: "sess-nova", userId: u.id, expiresAt: future }] });
     await db.authToken.create({ data: { userId: u.id, type: "RESET_PASSWORD", tokenHash: "hash-velho", expiresAt: past } });
+    const old = new Date(Date.now() - 90 * 86400_000);
+    await db.auditLog.createMany({
+      data: [
+        { action: "security.webhook_rejected", entity: "Webhook", entityId: "purge-test", createdAt: old },
+        { action: "security.webhook_rejected", entity: "Webhook", entityId: "purge-test" },
+        { action: "wallet.adjust", entity: "Wallet", entityId: "purge-test", createdAt: old },
+      ],
+    });
     const r = await purgeExpired();
+    expect(r.securityAudit).toBeGreaterThanOrEqual(1);
+    // só o aviso de segurança ANTIGO some; o recente e a trilha financeira (mesmo antiga) ficam
+    expect(await db.auditLog.count({ where: { entityId: "purge-test" } })).toBe(2);
+    expect(await db.auditLog.count({ where: { entityId: "purge-test", action: "wallet.adjust" } })).toBe(1);
+    await db.auditLog.deleteMany({ where: { entityId: "purge-test" } });
     expect(r.rateLimits).toBeGreaterThanOrEqual(1);
     expect(r.sessions).toBe(1);
     expect(r.tokens).toBeGreaterThanOrEqual(1);
