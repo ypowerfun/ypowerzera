@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { addOrgMemberAction, deleteOrgAction, updateOrgAction } from "@/app/actions/organizer";
+import { addOrgMemberAction, deleteOrgAction, removeOrgMemberAction, updateOrgAction } from "@/app/actions/organizer";
 import { createOrgAction } from "@/app/actions/account";
 import { ActionForm } from "@/components/action-form";
 import { Flash } from "@/components/flash";
@@ -77,6 +77,15 @@ export default async function OrganizerHome() {
                           <input type="hidden" name="orgId" value={o.id} />
                           <Field label="Usuário" htmlFor={`u-${o.id}`}><Input id={`u-${o.id}`} name="username" required placeholder="usuario" /></Field>
                           <Field label="Função" htmlFor={`r-${o.id}`}><Select id={`r-${o.id}`} name="role"><option value="STAFF">Equipe (opera partidas)</option><option value="ADMIN">Admin</option></Select></Field>
+                        </ActionForm>
+                      </details>
+                    )}
+                    {canEdit && (
+                      <details className="border-t border-line-soft pt-3">
+                        <summary className="cursor-pointer text-sm text-brand-soft">Remover membro</summary>
+                        <ActionForm action={removeOrgMemberAction} className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]" submit="Remover" submitVariant="danger" submitClassName="" confirm="Remover esta pessoa da organização? Ela perde o acesso aos campeonatos agora.">
+                          <input type="hidden" name="orgId" value={o.id} />
+                          <Field label="Usuário" htmlFor={`rm-${o.id}`}><Input id={`rm-${o.id}`} name="username" required placeholder="usuario" /></Field>
                         </ActionForm>
                       </details>
                     )}

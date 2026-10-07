@@ -5,7 +5,7 @@ import { dummyPasswordHash, hashPassword, randomToken, sha256, verifyPassword } 
 import { getEnv } from "@/lib/env";
 import { moneyConfig } from "./money-config";
 import { safeMailError, sendMail } from "./mailer";
-import { isRateLimited, rateLimit, resetRateLimit } from "./rate-limit";
+import { refundRateLimit, rateLimit, resetRateLimit } from "./rate-limit";
 import type { Role, User } from "@prisma/client";
 
 export const SESSION_DAYS = 30;
@@ -34,6 +34,20 @@ export function checkPasswordStrength(password: string, context: { email?: strin
   return null;
 }
 
+/** Nomes que fingiriam ser a equipe do site (o nome de usuário é único; o de exibição é livre, por isso só vale para este). */
+const RESERVED_USERNAMES = new Set([
+  "admin", "administrador", "administrator", "root", "suporte", "support", "staff", "moderador", "moderator", "sistema", "system",
+  "oficial", "official", "equipe", "prime", "primearena", "prime_arena", "prime_arena_oficial", "contato", "ajuda", "help", "financeiro", "seguranca",
+]);
+
+/**
+ * Nome de exibição sem caracteres invisíveis ou de controle (quebra de linha, largura zero, inversão de texto): ele aparece em
+ * e-mails, escalações e chaves, e esses caracteres servem para falsificar o texto ao redor.
+ */
+export function cleanDisplayName(input: string): string {
+  return input.normalize("NFKC").replace(/\s+/g, " ").replace(/\p{C}/gu, "").replace(/ {2,}/g, " ").trim();
+}
+
 export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email("Informe um e-mail válido.").max(254),
   username: z
@@ -41,7 +55,7 @@ export const registerSchema = z.object({
     .trim()
     .toLowerCase()
     .regex(/^[a-z0-9_]{3,20}$/, "Nome de usuário: 3 a 20 caracteres (letras, números e _)."),
-  displayName: z.string().trim().min(2, "Informe seu nome de exibição.").max(40),
+  displayName: z.string().transform(cleanDisplayName).pipe(z.string().min(2, "Informe seu nome de exibição.").max(40)),
   password: z.string(),
 });
 
@@ -66,6 +80,7 @@ export async function registerUser(input: unknown, meta: { ip?: string } = {}): 
   const { email, username, displayName, password } = parsed.data;
   const weak = checkPasswordStrength(password, { email, username });
   if (weak) throw new AppError(weak);
+  if (RESERVED_USERNAMES.has(username)) throw new AppError("Este nome de usuário não está disponível. Escolha outro.");
   await rateLimit(`register:ip:${meta.ip ?? "unknown"}`, 10, 3600, "Muitos cadastros a partir deste endereço. Tente novamente mais tarde.");
 
   const existing = await db.user.findFirst({ where: { OR: [{ email }, { username }] }, select: { id: true } });
@@ -115,18 +130,33 @@ export async function resendVerification(userId: string): Promise<void> {
   }
 }
 
-export async function verifyEmail(token: string): Promise<void> {
-  const row = await db.authToken.findUnique({ where: { tokenHash: sha256(token) }, include: { user: { select: { emailVerifiedAt: true } } } });
+/**
+ * Confirma o e-mail. Devolve `resetToken` quando o e-mail é de administrador (ADMIN_EMAILS): quem se cadastra primeiro com o
+ * e-mail do dono escolhe a senha e já fica logado ANTES de provar que a caixa de entrada é sua; ao confirmar, a sessão e a senha
+ * dessa pessoa são apagadas e só quem tem o link do e-mail (o dono) consegue criar a senha, na tela de redefinição.
+ */
+export async function verifyEmail(token: string): Promise<{ resetToken?: string }> {
+  const row = await db.authToken.findUnique({ where: { tokenHash: sha256(token) }, include: { user: { select: { emailVerifiedAt: true, email: true } } } });
   // Outlook/Hotmail, Gmail e antivírus costumam abrir o link antes da pessoa: se o link já foi usado e a conta está
   // confirmada, o clique da pessoa também mostra "confirmado" (um link usado não revela nada nem confirma outra conta).
-  if (row && row.type === "VERIFY_EMAIL" && row.usedAt && row.user.emailVerifiedAt) return;
+  if (row && row.type === "VERIFY_EMAIL" && row.usedAt && row.user.emailVerifiedAt) return {};
   if (!row || row.type !== "VERIFY_EMAIL" || row.usedAt || row.expiresAt < new Date()) {
     throw new AppError("Link de verificação inválido ou expirado.");
   }
+  const isAdminAddress = getEnv().adminEmails.includes(row.user.email.toLowerCase());
+  if (!isAdminAddress) {
+    await db.$transaction([
+      db.authToken.update({ where: { id: row.id }, data: { usedAt: new Date() } }),
+      db.user.update({ where: { id: row.userId }, data: { emailVerifiedAt: new Date() } }),
+    ]);
+    return {};
+  }
   await db.$transaction([
     db.authToken.update({ where: { id: row.id }, data: { usedAt: new Date() } }),
-    db.user.update({ where: { id: row.userId }, data: { emailVerifiedAt: new Date() } }),
+    db.user.update({ where: { id: row.userId }, data: { emailVerifiedAt: new Date(), passwordHash: await hashPassword(randomToken(32)) } }),
+    db.session.deleteMany({ where: { userId: row.userId } }),
   ]);
+  return { resetToken: await issueToken(row.userId, "RESET_PASSWORD", RESET_HOURS) };
 }
 
 export interface LoginResult {
@@ -135,6 +165,8 @@ export interface LoginResult {
   expiresAt: Date;
 }
 
+const LOGIN_WINDOW_S = 900;
+
 export async function login(
   input: { identifier: string; password: string },
   meta: { ip?: string; userAgent?: string } = {},
@@ -142,25 +174,39 @@ export async function login(
   const identifier = input.identifier.trim().toLowerCase();
   const ip = meta.ip ?? "unknown";
   if (!identifier || !input.password) throw new AppError("Informe e-mail/usuário e senha.");
-  if (input.password.length > 256) throw new AppError("E-mail/usuário ou senha incorretos.");
+  // Tamanhos máximos ANTES de qualquer consulta ou chave de limite (um identificador gigante não pode virar chave no banco).
+  if (identifier.length > 254 || input.password.length > 256) throw new AppError("E-mail/usuário ou senha incorretos.", "UNAUTHENTICATED");
 
-  const idKey = `login:id:${identifier}`;
-  const ipKey = `login:ip:${ip}`;
-  if ((await isRateLimited(idKey, 8)) || (await isRateLimited(ipKey, 40))) {
-    throw new AppError("Muitas tentativas de login. Aguarde 15 minutos e tente novamente.", "RATE_LIMIT");
+  // As tentativas são RESERVADAS antes do scrypt, de forma atômica: 500 pedidos em paralelo não passam todos pelo limite.
+  //  - por IP (40): um só endereço não testa muitas contas;
+  //  - por conta + IP (8): quem erra a senha trava só a si mesmo, e ninguém consegue bloquear a conta de outra pessoa de fora;
+  //  - por conta, de todos os IPs (40): freio contra ataque distribuído.
+  const keys: Array<[string, number]> = [
+    [`login:ip:${ip}`, 40],
+    [`login:pair:${identifier}:${ip}`, 8],
+    [`login:id:${identifier}`, 40],
+  ];
+  const reserved: string[] = [];
+  for (const [key, limit] of keys) {
+    try {
+      await rateLimit(key, limit, LOGIN_WINDOW_S);
+      reserved.push(key);
+    } catch (e) {
+      for (const k of reserved) await refundRateLimit(k); // um pedido barrado não gasta o limite dos outros baldes
+      throw e instanceof AppError && e.code === "RATE_LIMIT" ? new AppError("Muitas tentativas de login. Aguarde 15 minutos e tente novamente.", "RATE_LIMIT") : e;
+    }
   }
 
   const user = await db.user.findFirst({ where: { OR: [{ email: identifier }, { username: identifier }] } });
   // Sempre executa um scrypt, exista o usuário ou não, para não revelar contas pelo tempo de resposta.
   const ok = user ? await verifyPassword(input.password, user.passwordHash) : (await verifyPassword(input.password, await dummyPasswordHash()), false);
-  if (!user || !ok) {
-    await rateLimit(idKey, 8, 900).catch(() => undefined);
-    await rateLimit(ipKey, 40, 900).catch(() => undefined);
-    throw new AppError("E-mail/usuário ou senha incorretos.", "UNAUTHENTICATED");
-  }
+  if (!user || !ok) throw new AppError("E-mail/usuário ou senha incorretos.", "UNAUTHENTICATED");
   if (user.bannedAt) throw new AppError("Esta conta está suspensa. Entre em contato com o suporte.", "FORBIDDEN");
 
-  await resetRateLimit(idKey);
+  // Deu certo: devolve as tentativas (login legítimo não gasta o limite do IP nem da conta).
+  await resetRateLimit(keys[1][0]);
+  await refundRateLimit(keys[0][0]);
+  await refundRateLimit(keys[2][0]);
   const session = await createSession(user.id, meta);
   return { token: session.token, user: toSafeUser(user), expiresAt: session.expiresAt };
 }
@@ -206,6 +252,8 @@ export async function logoutEverywhere(userId: string, exceptToken?: string): Pr
 export async function requestPasswordReset(emailInput: string, meta: { ip?: string } = {}): Promise<void> {
   const email = emailInput.trim().toLowerCase();
   await rateLimit(`reset:ip:${meta.ip ?? "unknown"}`, 10, 3600, "Muitos pedidos de redefinição. Tente novamente mais tarde.");
+  // Entrada fora do formato nunca vira chave no banco (e a resposta continua igual à de uma conta que não existe).
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(email)) return;
   await rateLimit(`reset:email:${email}`, 3, 3600).catch(() => {
     throw new AppError("Você já pediu a redefinição várias vezes. Verifique sua caixa de entrada ou aguarde.", "RATE_LIMIT");
   });
@@ -256,7 +304,7 @@ export async function changePassword(userId: string, current: string, next: stri
 export async function updateProfile(userId: string, input: { displayName: string; country?: string | null; bio?: string | null }) {
   const data = z
     .object({
-      displayName: z.string().trim().min(2, "Informe seu nome de exibição.").max(40),
+      displayName: z.string().transform(cleanDisplayName).pipe(z.string().min(2, "Informe seu nome de exibição.").max(40)),
       country: z.string().trim().max(2).nullish(),
       bio: z.string().trim().max(300).nullish(),
     })

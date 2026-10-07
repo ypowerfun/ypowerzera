@@ -1,3 +1,4 @@
+import { safeHttpUrl } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -108,10 +109,10 @@ export default async function TournamentPage({ params, searchParams }: { params:
                   )}
                 </Card>
               )}
-              {(t.streamUrl || t.discordUrl) && (
+              {(safeHttpUrl(t.streamUrl) || safeHttpUrl(t.discordUrl)) && (
                 <Card className="flex flex-wrap gap-3 text-sm">
-                  {t.streamUrl && <a href={t.streamUrl} target="_blank" rel="noopener noreferrer nofollow" className="text-brand-soft hover:underline">📺 Transmissão</a>}
-                  {t.discordUrl && <a href={t.discordUrl} target="_blank" rel="noopener noreferrer nofollow" className="text-brand-soft hover:underline">💬 Discord</a>}
+                  {safeHttpUrl(t.streamUrl) && <a href={safeHttpUrl(t.streamUrl)!} target="_blank" rel="noopener noreferrer nofollow" className="text-brand-soft hover:underline">📺 Transmissão</a>}
+                  {safeHttpUrl(t.discordUrl) && <a href={safeHttpUrl(t.discordUrl)!} target="_blank" rel="noopener noreferrer nofollow" className="text-brand-soft hover:underline">💬 Discord</a>}
                 </Card>
               )}
             </div>

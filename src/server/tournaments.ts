@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+import { safeHttpUrl } from "@/lib/url";
 import { Prisma, type Tournament } from "@prisma/client";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -32,6 +33,9 @@ const stageSchema = z.object({ name: z.string().trim().min(2).max(40), settings:
 
 const dateOrNull = z.date().nullable().optional();
 
+/** Link http(s). O `z.url()` puro aceita javascript:/data:, que num href viram XSS guardado. */
+const httpUrlSchema = z.string().trim().max(200).refine((v) => safeHttpUrl(v) !== null, "Informe um link válido (http/https).");
+
 export const createTournamentSchema = z.object({
   orgId: z.string(),
   gameId: z.string(),
@@ -60,8 +64,8 @@ export const createTournamentSchema = z.object({
   customFields: z.array(customFieldSchema).max(12).optional(),
   mapPool: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   visibility: z.enum(["PUBLIC", "UNLISTED"]).default("PUBLIC"),
-  streamUrl: z.string().trim().url().max(200).optional().or(z.literal("")),
-  discordUrl: z.string().trim().url().max(200).optional().or(z.literal("")),
+  streamUrl: httpUrlSchema.optional().or(z.literal("")),
+  discordUrl: httpUrlSchema.optional().or(z.literal("")),
 });
 
 export type CreateTournamentInput = z.input<typeof createTournamentSchema>;
@@ -245,6 +249,17 @@ export async function updateTournament(actorIn: Actor | null, id: string, patch:
   if (patch.entryFeeCents !== undefined && patch.entryFeeCents !== t.entryFeeCents) {
     if (participants > 0) throw new AppError("Já há inscrições: não é possível alterar a taxa. Crie cupons ou um novo campeonato.");
     validateFee(patch.entryFeeCents);
+    if (patch.entryFeeCents > 0 && t.status !== "DRAFT") {
+      // Sem provedor de pagamento (PAYMENTS_PROVIDER=none) ninguém consegue pagar: as vagas ficariam presas em "aguardando pagamento".
+      const { paymentsAvailable } = await import("./payments");
+      if (!paymentsAvailable()) throw new AppError("Pagamentos indisponíveis neste site: os campeonatos publicados só podem ser gratuitos.");
+    }
+  }
+  // Com inscritos a premiação anunciada é uma promessa: só pode aumentar, e a divisão entre os colocados não muda.
+  if (participants > 0) {
+    if (patch.prizePoolCents !== undefined && patch.prizePoolCents < t.prizePoolCents) throw new AppError("Já há inscrições: a premiação só pode aumentar, não diminuir.");
+    const norm = (v: unknown) => JSON.stringify(((v as PrizeSplitEntry[] | null) ?? []).map((e) => [e.placement, e.label, e.percent]));
+    if (patch.prizeSplit !== undefined && norm(patch.prizeSplit) !== norm(t.prizeSplit)) throw new AppError("Já há inscrições: a divisão da premiação entre os colocados não pode mais mudar.");
   }
   const active = await db.participant.count({ where: { tournamentId: id, status: { in: ["REGISTERED", "CHECKED_IN", "PENDING_PAYMENT"] } } });
   if (patch.maxParticipants !== undefined && patch.maxParticipants < active) throw new AppError(`Há ${active} inscrições ativas; as vagas não podem ficar abaixo disso.`);

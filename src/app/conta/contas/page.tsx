@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { removeGameAccountAction, saveGameAccountAction } from "@/app/actions/account";
-import { ActionForm, SubmitButton } from "@/components/action-form";
+import { ActionForm } from "@/components/action-form";
 import { Badge, Card, Field, GameBadge, Input, PageTitle, Select } from "@/components/ui";
 import { GAMES } from "@/games";
 import { listGameAccounts } from "@/server/game-accounts";
@@ -45,10 +45,9 @@ export default async function GameAccountsPage({ searchParams }: { searchParams:
               ))}
             </ActionForm>
             {acc && (
-              <form action={removeGameAccountAction as never} className="mt-3">
+              <ActionForm action={removeGameAccountAction} className="mt-3 space-y-2" submit="Remover vínculo" submitVariant="ghost" submitClassName="text-xs text-danger" confirm="Remover o vínculo desta conta de jogo?">
                 <input type="hidden" name="gameId" value={g.id} />
-                <SubmitButton variant="ghost" className="text-xs text-danger">Remover vínculo</SubmitButton>
-              </form>
+              </ActionForm>
             )}
           </Card>
         );

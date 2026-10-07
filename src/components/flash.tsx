@@ -14,6 +14,8 @@ const MESSAGES: Record<string, string> = {
   liberada: "Carteira liberada.",
   ajuste: "Ajuste lançado no razão.",
   cargo: "Cargo atualizado.",
+  suspenso: "Conta suspensa: a pessoa foi desconectada e não consegue mais entrar.",
+  reativado: "Conta reativada.",
   "email-teste": "E-mail de teste enviado: confira a sua caixa de entrada (e a pasta de spam).",
   "org-excluida": "Organização excluída.",
   "time-excluido": "Time excluído. O saldo, se houver, ficou bloqueado até a revisão.",

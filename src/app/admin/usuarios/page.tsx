@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { Role } from "@prisma/client";
-import { setUserRoleAction } from "@/app/actions/admin";
+import { setUserBanAction, setUserRoleAction } from "@/app/actions/admin";
 import { ActionForm } from "@/components/action-form";
 import { Badge, Empty, Input, PageTitle, Select, Table, Td, Th, buttonClass } from "@/components/ui";
 import { formatDate } from "@/lib/dates";
@@ -65,6 +65,7 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
                     ) : isAdmin ? (
                       <span className="text-xs text-muted">—</span>
                     ) : (
+                      <>
                       <ActionForm
                         action={setUserRoleAction}
                         className=""
@@ -77,6 +78,23 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
                         <input type="hidden" name="role" value={toOrganizer ? "ORGANIZER" : "USER"} />
                         <input type="hidden" name="back" value={back} />
                       </ActionForm>
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs text-danger">{u.bannedAt ? "Reativar conta…" : "Suspender conta…"}</summary>
+                        <ActionForm
+                          action={setUserBanAction}
+                          className="mt-2 space-y-2"
+                          submit={u.bannedAt ? "Reativar" : "Suspender"}
+                          submitVariant={u.bannedAt ? "secondary" : "danger"}
+                          submitClassName="px-3 py-1.5 text-xs"
+                          confirm={u.bannedAt ? `Reativar a conta de ${u.displayName}?` : `Suspender a conta de ${u.displayName}? Ela é desconectada agora e não consegue mais entrar nem se inscrever.`}
+                        >
+                          <input type="hidden" name="userId" value={u.id} />
+                          <input type="hidden" name="ban" value={u.bannedAt ? "0" : "1"} />
+                          <input type="hidden" name="back" value={back} />
+                          {!u.bannedAt && <Input name="reason" required minLength={5} maxLength={300} placeholder="Motivo (fica registrado)" aria-label={`Motivo da suspensão de ${u.displayName}`} />}
+                        </ActionForm>
+                      </details>
+                      </>
                     )}
                   </Td>
                 </tr>

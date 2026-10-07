@@ -11,7 +11,9 @@ RUN npm ci
 
 FROM deps AS build
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
+# O endereço público entra no build (links absolutos das imagens de compartilhamento); vem do APP_URL do .env via docker-compose.
+ARG APP_URL=""
+ENV NEXT_TELEMETRY_DISABLED=1 APP_URL=${APP_URL}
 RUN npm run build
 
 FROM base AS runtime

@@ -19,6 +19,7 @@ import { getGame } from "@/games";
 import { audit } from "./audit";
 import { notify } from "./notifications";
 import { assertTournamentAccess, requireActor } from "./permissions";
+import { rateLimit } from "./rate-limit";
 import { forfeitScore, loadStage, syncStage } from "./stage-runner";
 import type { Actor } from "./types";
 
@@ -151,12 +152,22 @@ export async function openDispute(actorIn: Actor | null, matchId: string, reason
   const mine = m.participantA?.userId === actor.id || m.participantB?.userId === actor.id;
   if (!mine) throw new AppError("Só os participantes da partida podem abrir disputa.", "FORBIDDEN");
   if (!["REPORTED", "READY", "DISPUTED"].includes(m.status)) throw new AppError("Esta partida não permite disputa agora.");
-  if (reason.trim().length < 5) throw new AppError("Descreva o motivo da disputa (mínimo de 5 caracteres).");
+  if (m.stage.tournament.status !== "LIVE") throw new AppError("O campeonato não está em andamento.");
+  const text = reason.trim();
+  if (text.length < 5) throw new AppError("Descreva o motivo da disputa (mínimo de 5 caracteres).");
+  if (text.length > 600) throw new AppError("O motivo pode ter até 600 caracteres. Se precisar de mais, anexe um link.");
+  await rateLimit(`dispute:${actor.id}`, 10, 3600, "Muitas disputas seguidas. Aguarde um pouco.");
   await db.$transaction(async (tx) => {
     await tx.match.update({ where: { id: m.id }, data: { status: "DISPUTED" } });
     const open = await tx.matchDispute.findFirst({ where: { matchId: m.id, status: "OPEN" } });
-    if (open) await tx.matchDispute.update({ where: { id: open.id }, data: { reason: `${open.reason}\n${reason.trim()}` } });
-    else await tx.matchDispute.create({ data: { matchId: m.id, openedById: actor.id, reason: reason.trim() } });
+    if (open) {
+      // Mensagens extras entram no mesmo registro, com teto total (o texto não pode crescer sem limite) e sem novo aviso à organização.
+      const joined = `${open.reason}\n${text}`;
+      if (joined.length > 4000) throw new AppError("Esta disputa já tem muitas mensagens. Aguarde a decisão da organização.");
+      await tx.matchDispute.update({ where: { id: open.id }, data: { reason: joined } });
+      return;
+    }
+    await tx.matchDispute.create({ data: { matchId: m.id, openedById: actor.id, reason: text } });
     const t = m.stage.tournament;
     const staff = await tx.orgMember.findMany({ where: { orgId: t.orgId }, select: { userId: true } });
     await notify(staff.map((s) => s.userId), "match.disputed", "Partida em disputa", `${t.name}: ${m.participantA?.name} × ${m.participantB?.name}`, `/organizar/${t.id}/partidas`, tx);

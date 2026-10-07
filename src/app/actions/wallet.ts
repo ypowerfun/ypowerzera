@@ -11,7 +11,6 @@ import { cancelWithdrawal, confirmWithdrawal, requestWithdrawal } from "@/server
 import { requireUser, toActor } from "@/server/session";
 import { creditsToCents } from "@/server/money-config";
 import { db } from "@/lib/db";
-import { getOrCreateTeamWallet } from "@/server/wallet";
 import { handlePixWebhook } from "@/server/pix-webhooks";
 import { mockFinishTransfer, mockPayCharge, mockReverseCharge } from "@/server/pix/mock";
 import { decryptField } from "@/lib/crypto";
@@ -116,8 +115,4 @@ export async function devFinishTransferAction(_: FormState, fd: FormData): Promi
   const res = await handlePixWebhook(hook.headers, hook.rawBody);
   revalidatePath("/dev/pix");
   return { success: `Banco simulado: ${JSON.stringify(res.body)}` };
-}
-
-export async function devTouchWallet(teamId: string) {
-  return getOrCreateTeamWallet(db, teamId);
 }

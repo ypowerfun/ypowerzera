@@ -1,3 +1,4 @@
+import { clampPage } from "@/lib/url";
 import type { Prisma, Role } from "@prisma/client";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -20,7 +21,7 @@ export async function listUsers(actorIn: Actor | null, opts: { q?: string; role?
     ...(opts.role ? { role: opts.role } : {}),
     ...(q ? { OR: [{ email: { contains: q } }, { username: { contains: q } }, { displayName: { contains: q } }] } : {}),
   };
-  const page = Math.max(1, Math.trunc(opts.page ?? 1));
+  const page = clampPage(opts.page);
   const [total, users] = await Promise.all([
     db.user.count({ where }),
     db.user.findMany({
@@ -88,4 +89,29 @@ export async function setUserRole(actorIn: Actor | null, userId: string, role: R
     return impact;
   });
   return { changed: true, from: target.role, to: role, impact: res };
+}
+
+/**
+ * Suspende ou reativa uma conta (golpe, trapaça, assédio). A pessoa é desconectada na hora e não consegue entrar nem se inscrever.
+ * Só admin; não vale para si mesmo nem para outro administrador; exige o motivo; tudo auditado.
+ * (Carteira e dinheiro da equipe continuam como estão: bloqueie a carteira em Admin → Carteiras se for o caso.)
+ */
+export async function setUserBan(actorIn: Actor | null, userId: string, ban: boolean, reason: string): Promise<void> {
+  const actor = requireActor(actorIn);
+  requireAdmin(actor);
+  if (userId === actor.id) throw new AppError("Você não pode suspender a si mesmo.", "FORBIDDEN");
+  const target = await db.user.findUnique({ where: { id: userId } });
+  if (!target) throw new AppError("Usuário não encontrado.", "NOT_FOUND");
+  if (effectiveRole(target) === "ADMIN") throw new AppError("Administradores não são suspensos por aqui.", "FORBIDDEN");
+  const why = reason.trim().slice(0, 300);
+  if (ban && why.length < 5) throw new AppError("Informe o motivo da suspensão (mínimo de 5 caracteres).");
+  await db.$transaction(async (tx) => {
+    const upd = await tx.user.updateMany({
+      where: { id: target.id, bannedAt: ban ? null : { not: null } },
+      data: ban ? { bannedAt: new Date(), banReason: why } : { bannedAt: null, banReason: null },
+    });
+    if (upd.count === 0) throw new AppError(ban ? "Esta conta já está suspensa." : "Esta conta não está suspensa.", "CONFLICT");
+    if (ban) await tx.session.deleteMany({ where: { userId: target.id } });
+    await audit(actor.id, ban ? "user.ban" : "user.unban", "User", target.id, { reason: why || null }, tx);
+  });
 }

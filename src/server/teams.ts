@@ -99,6 +99,27 @@ export async function removeFromTeam(actorIn: Actor | null, teamId: string, user
   await audit(actor.id, self ? "team.leave" : "team.kick", "Team", teamId, { userId });
 }
 
+const HANDOVER_STATUSES: ParticipantStatus[] = ["REGISTERED", "CHECKED_IN", "WAITLIST"];
+
+/**
+ * Quem controla a inscrição de um time em campeonatos (relatar placar, disputa, veto, check-in, desistir) é o `userId` da
+ * inscrição, gravado no dia em que o capitão a fez. Quando a capitania muda, o ex-capitão não pode seguir mandando no time e o novo
+ * capitão precisa assumir: as inscrições em andamento passam para ele. (Inscrição aguardando pagamento fica como está: o pedido de
+ * pagamento é de quem a fez e expira em 30 minutos.)
+ */
+async function handOverRegistrations(tx: Prisma.TransactionClient, teamId: string, toUserId: string): Promise<void> {
+  const open = await tx.participant.findMany({
+    where: { teamId, userId: { not: toUserId }, status: { in: HANDOVER_STATUSES }, tournament: { status: { in: ["DRAFT", "REGISTRATION", "CHECK_IN", "LIVE"] } } },
+    select: { id: true, tournamentId: true },
+  });
+  for (const p of open) {
+    // a unicidade (campeonato + usuário) impede dois cadastros do mesmo usuário: se o novo capitão já tem outro, mantém como está
+    const clash = await tx.participant.findUnique({ where: { tournamentId_userId: { tournamentId: p.tournamentId, userId: toUserId } }, select: { id: true } });
+    if (clash) continue;
+    await tx.participant.update({ where: { id: p.id }, data: { userId: toUserId } });
+  }
+}
+
 export async function setMemberRole(actorIn: Actor | null, teamId: string, userId: string, role: "CAPTAIN" | "PLAYER" | "SUB") {
   const actor = requireActor(actorIn);
   const team = await requireCaptain(actor, teamId);
@@ -116,6 +137,7 @@ export async function setMemberRole(actorIn: Actor | null, teamId: string, userI
       // transferência de capitania: QUALQUER outro capitão vira jogador (quem transfere pode ser um admin que nem é do time)
       await tx.teamMember.updateMany({ where: { teamId, role: "CAPTAIN", NOT: { userId } }, data: { role: "PLAYER" } });
       await tx.team.update({ where: { id: teamId }, data: { ownerId: userId } });
+      await handOverRegistrations(tx, teamId, userId);
       if (target.role !== "CAPTAIN") await audit(actor.id, "team.captain", "Team", teamId, { to: userId, byAdmin: actor.role === "ADMIN" && !actorIsCaptain }, tx);
     }
   });

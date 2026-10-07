@@ -9,7 +9,7 @@ import { resolveHeldDeposit } from "@/server/deposits";
 import { resolveChallenge } from "@/server/challenges";
 import { adminAdjustWallet, adminFreezeWallet, adminUnfreezeWallet, runReconciliation } from "@/server/admin-wallet";
 import { requireAdmin, toActor } from "@/server/session";
-import { setUserRole } from "@/server/users-admin";
+import { setUserBan, setUserRole } from "@/server/users-admin";
 import { deleteTeam } from "@/server/teams";
 import { reviewBalanceRequest } from "@/server/team-release";
 import { sendTestMailToAdmin, setWalletEnabled, setWithdrawalsNeedAdminApproval } from "@/server/settings";
@@ -57,6 +57,16 @@ export async function setUserRoleAction(_: FormState, fd: FormData): Promise<For
   revalidatePath("/admin", "layout");
   const back = backTo(fd, "/admin/usuarios");
   redirect(`${back}${back.includes("?") ? "&" : "?"}ok=cargo`);
+}
+
+export async function setUserBanAction(_: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireAdmin();
+  const ban = str(fd, "ban") === "1";
+  const res = await guard(() => setUserBan(toActor(user), str(fd, "userId"), ban, str(fd, "reason")));
+  if (!res.ok) return { error: res.error };
+  revalidatePath("/admin", "layout");
+  const back = backTo(fd, "/admin/usuarios");
+  redirect(`${back}${back.includes("?") ? "&" : "?"}ok=${ban ? "suspenso" : "reativado"}`);
 }
 
 export const adminDeleteTeamAction = adminAction((a, fd) => deleteTeam(a, str(fd, "teamId"), { reason: str(fd, "reason") }), "time-excluido", "/admin/equipes");

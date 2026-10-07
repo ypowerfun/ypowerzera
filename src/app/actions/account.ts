@@ -28,9 +28,10 @@ export async function saveGameAccountAction(_: FormState, fd: FormData): Promise
 
 export async function removeGameAccountAction(_: FormState, fd: FormData): Promise<FormState> {
   const user = await requireUser("/conta/contas");
-  await removeGameAccount(user.id, str(fd, "gameId"));
+  const res = await guard(() => removeGameAccount(user.id, str(fd, "gameId")));
+  if (!res.ok) return { error: res.error };
   revalidatePath("/conta/contas");
-  return { success: "Conta removida." };
+  return { success: "Vínculo removido." };
 }
 
 export async function markNotificationsReadAction() {

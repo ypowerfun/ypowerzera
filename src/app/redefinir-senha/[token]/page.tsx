@@ -5,12 +5,14 @@ import { Alert, Card, Field, Input } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Nova senha", robots: { index: false } };
 
-export default async function ResetPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function ResetPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ admin?: string }> }) {
   const { token } = await params;
+  const { admin } = await searchParams;
   return (
     <div className="mx-auto max-w-md">
       <Card className="p-7">
         <h1 className="text-2xl font-extrabold">Criar nova senha</h1>
+        {admin ? <Alert tone="ok" className="mt-4">E-mail confirmado! Este e-mail é de administrador: por segurança, crie agora a senha do acesso (a que você digitou no cadastro foi descartada).</Alert> : null}
         <Alert tone="warn" className="mt-4">Por segurança, depois de redefinir a senha os saques da carteira ficam bloqueados por 24 horas.</Alert>
         <ActionForm action={resetPasswordAction} className="mt-5 space-y-4" submit="Salvar nova senha">
           <input type="hidden" name="token" value={token} />

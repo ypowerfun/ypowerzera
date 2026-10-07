@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { assertProductionConfig } from "@/lib/env";
 
-const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"];
+const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "MAIL_FROM", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"];
 const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
 afterEach(() => {
   for (const k of KEYS) {
@@ -16,6 +16,7 @@ function prod(over: Record<string, string> = {}) {
   Object.assign(env, {
     APP_URL: "https://arena.example.com",
     SMTP_URL: "smtps://user:pass@smtp.example.com:465",
+    MAIL_FROM: "Prime Arena <nao-responda@arena.example.com>",
     ADMIN_EMAILS: "dono@example.com",
     APP_SECRET: "x".repeat(40),
     TRUST_PROXY: "true",
@@ -35,6 +36,16 @@ function prod(over: Record<string, string> = {}) {
 describe("configuração de produção", () => {
   it("aceita uma configuração completa", () => {
     prod();
+    expect(() => assertProductionConfig()).not.toThrow();
+  });
+
+  it("exige MAIL_FROM de verdade (o padrão @primearena.local é recusado pelos provedores de e-mail)", () => {
+    prod();
+    delete process.env.MAIL_FROM;
+    expect(() => assertProductionConfig()).toThrow(/MAIL_FROM/);
+    process.env.MAIL_FROM = "Prime Arena <no-reply@primearena.local>";
+    expect(() => assertProductionConfig()).toThrow(/MAIL_FROM/);
+    process.env.MAIL_FROM = "Prime Arena <nao-responda@arena.example.com>";
     expect(() => assertProductionConfig()).not.toThrow();
   });
 

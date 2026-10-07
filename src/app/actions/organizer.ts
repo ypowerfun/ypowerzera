@@ -8,7 +8,6 @@ import { parseMoneyToCents } from "@/lib/money";
 import { slugify } from "@/lib/slug";
 import { parseStageSettings } from "@/lib/stage-form";
 import { db } from "@/lib/db";
-import { getPreset, getGame } from "@/games";
 import type { StageSettings } from "@/engine";
 import { AppError } from "@/lib/errors";
 import {
@@ -29,7 +28,7 @@ import { forfeitMatch, resetMatch, scheduleMatch, setMatchResult } from "@/serve
 import { setBrGameCode, submitBrResults } from "@/server/leaderboard";
 import { createCoupon, refundOrder } from "@/server/orders";
 import { markPrizePaid } from "@/server/organizer";
-import { addOrgMember, deleteOrganization, updateOrganization } from "@/server/orgs";
+import { addOrgMember, deleteOrganization, removeOrgMember, updateOrganization } from "@/server/orgs";
 import { requireUser, toActor } from "@/server/session";
 
 function dateField(fd: FormData, k: string): Date | null {
@@ -268,8 +267,16 @@ export async function deleteOrgAction(_: FormState, fd: FormData): Promise<FormS
   redirect("/organizar?ok=org-excluida");
 }
 
+export const removeOrgMemberAction = simple(
+  async (a, fd) => {
+    const orgId = str(fd, "orgId");
+    const user = await db.user.findUnique({ where: { username: str(fd, "username").toLowerCase() }, select: { id: true } });
+    if (!user) throw new AppError("Usuário não encontrado.", "NOT_FOUND");
+    await removeOrgMember(a, orgId, user.id);
+  },
+  "Membro removido da organização.",
+  () => "/organizar",
+);
+
 export const addOrgMemberAction = simple((a, fd) => addOrgMember(a, str(fd, "orgId"), str(fd, "username"), str(fd, "role") === "ADMIN" ? "ADMIN" : "STAFF"), "Membro adicionado à organização.", () => "/organizar");
 
-export async function gameHint(gameId: string, presetId: string) {
-  return { game: getGame(gameId)?.name, preset: getPreset(gameId, presetId)?.name };
-}

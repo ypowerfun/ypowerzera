@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getEnv } from "@/lib/env";
+import { normalizeClientIp } from "@/lib/ip";
 import { getUserBySessionToken, SESSION_DAYS, type SafeUser } from "./auth";
 import type { Actor } from "./types";
 
@@ -58,5 +59,5 @@ export async function clientMeta(): Promise<{ ip: string; userAgent?: string }> 
   const trusted = env.trustProxy ?? !env.isProd;
   // Último item de x-forwarded-for: é o que o SEU proxy anotou. O primeiro pode vir escrito pelo próprio cliente.
   const forwarded = trusted ? h.get("x-forwarded-for")?.split(",").map((x) => x.trim()).filter(Boolean).at(-1) || h.get("x-real-ip") : null;
-  return { ip: (forwarded || "unknown").slice(0, 64), userAgent: h.get("user-agent") ?? undefined };
+  return { ip: forwarded ? normalizeClientIp(forwarded) : "unknown", userAgent: h.get("user-agent") ?? undefined };
 }

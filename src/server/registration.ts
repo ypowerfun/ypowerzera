@@ -14,6 +14,7 @@ import {
   releaseParticipant,
 } from "./orders";
 import { assertTournamentAccess, requireActor, requireVerified } from "./permissions";
+import { rateLimit } from "./rate-limit";
 import { syncStage } from "./stage-runner";
 import type { Actor, CustomField, RosterMember } from "./types";
 
@@ -69,6 +70,12 @@ export async function registerForTournament(actorIn: Actor | null, input: Regist
   const actor = requireActor(actorIn);
   requireVerified(actor);
   if (!input.acceptRules) throw new AppError("Você precisa aceitar o regulamento para se inscrever.");
+  // Cada tentativa de cupom conta (acertando ou errando): sem isso dá para testar códigos de dicionário até achar um com desconto.
+  // Fica fora da transação (o limitador usa a conexão global do banco).
+  if (input.couponCode?.trim()) {
+    if (input.couponCode.trim().length > 40) throw new AppError("Cupom inválido ou expirado.");
+    await rateLimit(`coupon:${actor.id}`, 15, 3600, "Muitas tentativas de cupom. Aguarde um pouco e tente de novo.");
+  }
 
   return withRetry(() =>
     db.$transaction(
@@ -194,12 +201,14 @@ export async function withdrawRegistration(actorIn: Actor | null, participantId:
   const p = await db.participant.findUnique({ where: { id: participantId }, include: { tournament: true, orders: true } });
   if (!p) throw new AppError("Inscrição não encontrada.", "NOT_FOUND");
   const mine = p.userId === actor.id;
-  if (!mine) await assertTournamentAccess(actor, p.tournament, "staff");
+  const paid = p.orders.find((o) => o.status === "PAID" || o.status === "PARTIALLY_REFUNDED");
+  // Remover uma inscrição PAGA devolve o dinheiro (reembolso total): é decisão de admin da organização, como o reembolso manual,
+  // e não da equipe de apoio (senão um membro desonesto esvazia o campeonato e reembolsa todo mundo).
+  if (!mine) await assertTournamentAccess(actor, p.tournament, paid ? "admin" : "staff");
   if (!["DRAFT", "REGISTRATION", "CHECK_IN"].includes(p.tournament.status)) {
     throw new AppError("O campeonato já começou. Peça à organização para desclassificar a inscrição.");
   }
   const refundable = !mine || refundsOnWithdrawal(p.tournament);
-  const paid = p.orders.find((o) => o.status === "PAID" || o.status === "PARTIALLY_REFUNDED");
   await db.$transaction(async (tx) => {
     for (const o of p.orders.filter((x) => x.status === "PENDING")) {
       await tx.order.update({ where: { id: o.id }, data: { status: "CANCELED" } });

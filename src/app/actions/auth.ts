@@ -49,9 +49,9 @@ export async function resetPasswordAction(_: FormState, fd: FormData): Promise<F
   redirect("/entrar?senha-redefinida=1");
 }
 
-export async function verifyEmailAction(token: string): Promise<{ ok: boolean; error?: string }> {
+export async function verifyEmailAction(token: string): Promise<{ ok: boolean; error?: string; resetToken?: string }> {
   const res = await guard(() => verifyEmail(token));
-  return res.ok ? { ok: true } : { ok: false, error: res.error };
+  return res.ok ? { ok: true, resetToken: res.value.resetToken } : { ok: false, error: res.error };
 }
 
 export async function resendVerificationAction(_: FormState): Promise<FormState> {

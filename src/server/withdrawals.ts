@@ -10,7 +10,7 @@ import { audit } from "./audit";
 import { getVerifiedCpf, requireKyc } from "./kyc";
 import { moneyConfig, isWholeCredits } from "./money-config";
 import { notify } from "./notifications";
-import { sendMail } from "./mailer";
+import { safeMailError, sendMail } from "./mailer";
 import { requireActor, requireVerified } from "./permissions";
 import { getPixProvider, type TransferAuthRequest } from "./pix";
 import { rateLimit } from "./rate-limit";
@@ -110,11 +110,18 @@ export async function requestWithdrawal(
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 20000 },
   );
 
-  await sendMail({
-    to: user.email,
-    subject: "Código de confirmação de saque — Prime Arena",
-    text: `Você pediu o saque de ${formatMoney(input.amountCents)} da equipe ${team.name}.\n\nCódigo de confirmação: ${code}\n(válido por ${cfg.otpTtlMinutes} minutos)\n\nSe NÃO foi você, ignore este e-mail e troque sua senha agora: o saque não será concluído sem este código.`,
-  });
+  try {
+    await sendMail({
+      to: user.email,
+      subject: "Código de confirmação de saque — Prime Arena",
+      text: `Você pediu o saque de ${formatMoney(input.amountCents)} da equipe ${team.name}.\n\nCódigo de confirmação: ${code}\n(válido por ${cfg.otpTtlMinutes} minutos)\n\nSe NÃO foi você, ignore este e-mail e troque sua senha agora: o saque não será concluído sem este código.`,
+    });
+  } catch (e) {
+    // Sem o e-mail ninguém consegue confirmar: devolve o saldo agora em vez de deixá-lo preso até o código vencer.
+    console.error(`[mail] Não consegui enviar o código de saque ${wd.id}: ${safeMailError(e)}`);
+    await cancelInternal(wd.id, "Cancelado: não foi possível enviar o código por e-mail.", ["PENDING_CONFIRMATION"]);
+    throw new AppError("Não foi possível enviar o código de confirmação por e-mail agora. O seu saldo não foi movido. Tente novamente em alguns minutos.");
+  }
   return { withdrawalId: wd.id };
 }
 
@@ -165,15 +172,20 @@ export async function confirmWithdrawal(actorIn: Actor | null, withdrawalId: str
   });
   if (res.count === 0) throw new AppError("Este saque já foi processado.");
   await audit(actor.id, "withdrawal.confirm", "Withdrawal", w.id, { score: risk.score, flags: risk.flags, review });
-  await sendMail({
-    to: user.email,
-    subject: "Saque solicitado — Prime Arena",
-    text: review
-      ? `Seu saque de ${formatMoney(w.amountCents)} foi enviado para análise de segurança. Você será avisado quando for decidido.\nNão reconhece? Cancele em Carteira e troque sua senha.`
-      : `Seu saque de ${formatMoney(w.amountCents)} será enviado por Pix para o CPF final ${w.destinationCpfLast4} em ~${cfg.withdrawDelayMinutes} minutos.\nNão foi você? Cancele agora em Carteira e troque sua senha.`,
-  });
+  // O saque JÁ foi confirmado acima: se o e-mail falhar, a pessoa não pode ver "erro" (nem o aviso aos admins pode ser pulado).
   if (review) {
     await notify(await adminUserIds(), "withdrawal.review", "Saque aguardando análise", `${formatMoney(w.amountCents)} — risco ${risk.score}`, "/admin/saques");
+  }
+  try {
+    await sendMail({
+      to: user.email,
+      subject: "Saque solicitado — Prime Arena",
+      text: review
+        ? `Seu saque de ${formatMoney(w.amountCents)} foi enviado para análise de segurança. Você será avisado quando for decidido.\nNão reconhece? Cancele em Carteira e troque sua senha.`
+        : `Seu saque de ${formatMoney(w.amountCents)} será enviado por Pix para o CPF final ${w.destinationCpfLast4} em ~${cfg.withdrawDelayMinutes} minutos.\nNão foi você? Cancele agora em Carteira e troque sua senha.`,
+    });
+  } catch (e) {
+    console.error(`[mail] Não consegui avisar por e-mail do saque ${w.id}: ${safeMailError(e)}`);
   }
   return review ? "under_review" : "approved";
 }

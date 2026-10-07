@@ -64,7 +64,7 @@ describe("e-mail de confirmação de conta", () => {
     const token = lastMailTo(input.email)!.text.match(/\/verificar-email\/([A-Za-z0-9_-]+)/)![1];
     await verifyEmail(token); // o leitor de e-mail abriu primeiro
     expect((await db.user.findUniqueOrThrow({ where: { email: input.email } })).emailVerifiedAt).not.toBeNull();
-    await expect(verifyEmail(token)).resolves.toBeUndefined(); // a pessoa clica depois: também vê "confirmado"
+    await expect(verifyEmail(token)).resolves.toEqual({}); // a pessoa clica depois: também vê "confirmado"
     await expect(verifyEmail("token-que-nao-existe")).rejects.toThrow(/inválido ou expirado/);
   });
 });

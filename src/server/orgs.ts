@@ -39,9 +39,17 @@ export async function createOrganization(actorIn: Actor | null, input: { name: s
   return org;
 }
 
+/** Dono da organização (ou admin da plataforma): só eles criam e removem outros admins da organização. */
+async function isOrgOwnerOrPlatformAdmin(actor: Actor, orgId: string): Promise<boolean> {
+  if (actor.role === "ADMIN") return true;
+  const me = await db.orgMember.findUnique({ where: { orgId_userId: { orgId, userId: actor.id } }, select: { role: true } });
+  return me?.role === "OWNER";
+}
+
 export async function addOrgMember(actorIn: Actor | null, orgId: string, username: string, role: "ADMIN" | "STAFF") {
   const actor = requireActor(actorIn);
   await assertOrgAccess(actor, orgId, "admin");
+  if (role === "ADMIN" && !(await isOrgOwnerOrPlatformAdmin(actor, orgId))) throw new AppError("Só o dono da organização pode adicionar outro admin.", "FORBIDDEN");
   const user = await db.user.findUnique({ where: { username: username.trim().toLowerCase() } });
   if (!user) throw new AppError("Usuário não encontrado.", "NOT_FOUND");
   const existing = await db.orgMember.findUnique({ where: { orgId_userId: { orgId, userId: user.id } } });
@@ -54,8 +62,9 @@ export async function removeOrgMember(actorIn: Actor | null, orgId: string, user
   const actor = requireActor(actorIn);
   await assertOrgAccess(actor, orgId, "admin");
   const m = await db.orgMember.findUnique({ where: { orgId_userId: { orgId, userId } } });
-  if (!m) return;
+  if (!m) throw new AppError("Esta pessoa não faz parte da organização.", "NOT_FOUND");
   if (m.role === "OWNER") throw new AppError("O dono da organização não pode ser removido.");
+  if (m.role === "ADMIN" && !(await isOrgOwnerOrPlatformAdmin(actor, orgId))) throw new AppError("Só o dono da organização pode remover um admin.", "FORBIDDEN");
   await db.orgMember.delete({ where: { id: m.id } });
   await audit(actor.id, "org.member.remove", "Organization", orgId, { userId });
 }

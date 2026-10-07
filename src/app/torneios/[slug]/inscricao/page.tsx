@@ -21,7 +21,8 @@ export default async function RegistrationPage({ params, searchParams }: { param
   const sp = await searchParams;
   const user = await requireUser(`/torneios/${slug}/inscricao`);
   const t = await db.tournament.findUnique({ where: { slug } });
-  if (!t) notFound();
+  // Rascunho é só do organizador (a página do campeonato já dá 404): a tela de inscrição não pode entregar nome, taxa e campos.
+  if (!t || t.status === "DRAFT") notFound();
   const game = getGame(t.gameId)!;
   const mode = game.modes.find((m) => m.id === t.modeId)!;
   const existing = await db.participant.findUnique({ where: { tournamentId_userId: { tournamentId: t.id, userId: user.id } } });

@@ -1,3 +1,4 @@
+import { clampPage } from "@/lib/url";
 import { db } from "@/lib/db";
 import {
   leaderboardState,
@@ -41,7 +42,7 @@ export async function listPublicTournaments(f: ListFilters = {}) {
     ...(f.fee === "gratis" ? { entryFeeCents: 0 } : f.fee === "pago" ? { entryFeeCents: { gt: 0 } } : {}),
     ...(f.q ? { name: { contains: f.q } } : {}),
   };
-  const page = Math.max(1, f.page ?? 1);
+  const page = clampPage(f.page);
   const [items, total] = await Promise.all([
     db.tournament.findMany({
       where,

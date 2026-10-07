@@ -142,7 +142,7 @@ describe("verificação de e-mail", () => {
     await verifyEmail(token);
     const confirmedAt = (await db.user.findUnique({ where: { id: u.id } }))!.emailVerifiedAt;
     expect(confirmedAt).not.toBeNull();
-    await expect(verifyEmail(token)).resolves.toBeUndefined(); // mesma resposta, sem refazer nada
+    await expect(verifyEmail(token)).resolves.toEqual({}); // mesma resposta, sem refazer nada
     expect((await db.user.findUnique({ where: { id: u.id } }))!.emailVerifiedAt).toEqual(confirmedAt); // a data de confirmação não muda
     await expect(verifyEmail("token-inexistente")).rejects.toThrow(/inválido/);
     await expect(resendVerification(u.id)).rejects.toThrow(/já está verificado/);

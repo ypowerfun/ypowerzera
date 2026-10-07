@@ -6,7 +6,7 @@ import { bool, guard, int, str, type FormState } from "@/lib/action-helpers";
 import { checkIn, registerForTournament, undoCheckIn, withdrawRegistration } from "@/server/registration";
 import { cancelPendingOrder, completeOrder, failOrder, startCheckout } from "@/server/orders";
 import { openDispute, reportMatch, vetoAction } from "@/server/matches";
-import { getCurrentUser, requireUser, toActor } from "@/server/session";
+import { requireUser, toActor } from "@/server/session";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { AppError } from "@/lib/errors";
@@ -130,8 +130,4 @@ export async function vetoAction_(_: FormState, fd: FormData): Promise<FormState
   if (!res.ok) return { error: res.error };
   revalidatePath(`/partidas/${str(fd, "matchId")}`);
   return { success: "Escolha registrada." };
-}
-
-export async function whoAmI() {
-  return getCurrentUser();
 }

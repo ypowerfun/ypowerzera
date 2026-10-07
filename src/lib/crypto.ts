@@ -1,10 +1,38 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, scrypt as scryptCb, timingSafeEqual, type ScryptOptions } from "node:crypto";
 import { getEnv } from "./env";
+import { AppError } from "./errors";
 
-function scrypt(password: string, salt: Buffer, keylen: number, opts: ScryptOptions): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    scryptCb(password, salt, keylen, opts, (err, key) => (err ? reject(err) : resolve(key)));
-  });
+// O scrypt é caro de propósito (~0,3 s e dezenas de MB). Sem limite, uma rajada de logins/cadastros ocupa todas as threads do
+// Node e trava o site inteiro para todo mundo. Poucos hashes ao mesmo tempo + fila curta; o resto recebe "tente em instantes".
+const MAX_HASHING = process.env.NODE_ENV === "test" || process.env.VITEST ? 8 : 2;
+const MAX_HASH_QUEUE = 48;
+let hashing = 0;
+const hashQueue: Array<() => void> = [];
+
+async function acquireHashSlot(): Promise<void> {
+  if (hashing < MAX_HASHING) {
+    hashing++;
+    return;
+  }
+  if (hashQueue.length >= MAX_HASH_QUEUE) throw new AppError("O servidor está ocupado agora. Tente novamente em alguns instantes.", "RATE_LIMIT");
+  await new Promise<void>((resolve) => hashQueue.push(resolve)); // a vaga é repassada por releaseHashSlot (hashing não muda)
+}
+
+function releaseHashSlot(): void {
+  const next = hashQueue.shift();
+  if (next) next();
+  else hashing--;
+}
+
+async function scrypt(password: string, salt: Buffer, keylen: number, opts: ScryptOptions): Promise<Buffer> {
+  await acquireHashSlot();
+  try {
+    return await new Promise<Buffer>((resolve, reject) => {
+      scryptCb(password, salt, keylen, opts, (err, key) => (err ? reject(err) : resolve(key)));
+    });
+  } finally {
+    releaseHashSlot();
+  }
 }
 
 // OWASP: scrypt com N=2^15, r=8, p=3. Em testes usamos custo baixo para acelerar a suíte.
@@ -35,7 +63,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
       maxmem: 256 * 1024 * 1024,
     });
     return actual.length === expected.length && timingSafeEqual(actual, expected);
-  } catch {
+  } catch (e) {
+    if (e instanceof AppError) throw e; // "servidor ocupado" não pode virar "senha errada"
     return false;
   }
 }
