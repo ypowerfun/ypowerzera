@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { slugify } from "@/lib/slug";
 import { audit } from "./audit";
-import { assertOrgAccess, requireActor, requireVerified } from "./permissions";
+import { assertOrgAccess, requireActor, requireOrganizer, requireVerified } from "./permissions";
 import { rateLimit } from "./rate-limit";
 import type { Actor } from "./types";
 
@@ -17,6 +17,7 @@ async function uniqueSlug(base: string, exists: (slug: string) => Promise<boolea
 export async function createOrganization(actorIn: Actor | null, input: { name: string; description?: string }) {
   const actor = requireActor(actorIn);
   requireVerified(actor);
+  requireOrganizer(actor);
   const parsed = z
     .object({ name: z.string().trim().min(3, "Nome da organização: mínimo de 3 caracteres.").max(60), description: z.string().trim().max(500).optional() })
     .safeParse(input);
@@ -27,8 +28,6 @@ export async function createOrganization(actorIn: Actor | null, input: { name: s
     const o = await tx.organization.create({
       data: { name: parsed.data.name, slug, description: parsed.data.description, members: { create: { userId: actor.id, role: "OWNER" } } },
     });
-    const user = await tx.user.findUnique({ where: { id: actor.id } });
-    if (user && user.role === "USER") await tx.user.update({ where: { id: actor.id }, data: { role: "ORGANIZER" } });
     await audit(actor.id, "org.create", "Organization", o.id, { name: o.name }, tx);
     return o;
   });

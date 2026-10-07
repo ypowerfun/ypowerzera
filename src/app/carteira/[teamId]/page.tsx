@@ -12,6 +12,8 @@ import { formatMoney } from "@/lib/money";
 import { getKyc } from "@/server/kyc";
 import { moneyConfig } from "@/server/money-config";
 import { requireUser } from "@/server/session";
+import { isWalletOn } from "@/server/settings";
+import { WalletUnavailable } from "@/components/wallet-off";
 import { getOrCreateTeamWallet, withdrawableBreakdown } from "@/server/wallet";
 
 export const metadata: Metadata = { title: "Carteira da equipe", robots: { index: false } };
@@ -27,12 +29,19 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
   const { teamId } = await params;
   const sp = await searchParams;
   const user = await requireUser(`/carteira/${teamId}`);
+  if (!(await isWalletOn())) return <WalletUnavailable />;
   const team = await db.team.findUnique({ where: { id: teamId }, include: { members: true } });
   if (!team) notFound();
   const me = team.members.find((m) => m.userId === user.id);
   if (me?.role !== "CAPTAIN") {
     return (
       <div className="mx-auto max-w-lg"><Alert tone="warn"><b>Somente o líder da equipe</b> pode ver e movimentar a carteira de [{team.tag}] {team.name}. <Link href="/carteira" className="underline">Voltar</Link></Alert></div>
+    );
+  }
+  const deleted = !!team.deletedAt;
+  if (deleted && !team.balanceReleasedAt) {
+    return (
+      <div className="mx-auto max-w-lg"><Alert tone="warn"><b>[{team.tag}] {team.name} foi excluída</b> e o saldo está bloqueado até a revisão do administrador. <Link href="/carteira" className="underline">Peça a revisão na Carteira</Link>.</Alert></div>
     );
   }
   const cfg = moneyConfig();
@@ -54,7 +63,9 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
 
   return (
     <div className="space-y-6">
-      <PageTitle title={`Carteira · [${team.tag}] ${team.name}`} subtitle="Você é o líder desta equipe: só você movimenta estes créditos." actions={<><ButtonLink href="/desafios/novo" variant="accent">Criar desafio</ButtonLink><ButtonLink href="/carteira" variant="secondary">Todas as equipes</ButtonLink></>} />
+      <PageTitle title={`Carteira · [${team.tag}] ${team.name}`} subtitle={deleted ? "Equipe excluída: o administrador liberou o saldo para saque." : "Você é o líder desta equipe: só você movimenta estes créditos."} actions={<>{!deleted && <ButtonLink href="/desafios/novo" variant="accent">Criar desafio</ButtonLink>}<ButtonLink href="/carteira" variant="secondary">Todas as equipes</ButtonLink></>} />
+
+      {deleted && <Alert tone="ok"><b>Saldo liberado.</b> Esta equipe foi excluída, então não recebe depósitos nem entra em desafios; o saldo abaixo pode ser sacado para o CPF verificado do líder.</Alert>}
 
       {wallet.frozenAt && <Alert tone="danger"><b>Carteira congelada</b> para análise de segurança ({wallet.frozenReason}). Depósitos recebidos continuam sendo registrados, mas saques e novos desafios estão bloqueados. Fale com o suporte.</Alert>}
       {wallet.debtCents > 0 && <Alert tone="danger">Há uma dívida de {formatMoney(wallet.debtCents)} por estorno de depósito. Regularize com o suporte.</Alert>}
@@ -69,12 +80,12 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
         <Stat label="Retido por segurança" value={formatMoney(Math.max(0, b.balanceCents - b.withdrawableCents))} tone="warn" hint="Depósito sem giro / recente / prêmio < 24h" />
       </section>
 
-      <div className="grid items-start gap-6 lg:grid-cols-2">
-        <Card>
+      <div className={`grid items-start gap-6 ${deleted ? "" : "lg:grid-cols-2"}`}>
+        {!deleted && <Card>
           <h2 className="mb-1 font-bold">Depositar via Pix</h2>
           <p className="mb-4 text-sm text-muted">1 crédito = R$ 1,00. Entre {formatMoney(cfg.depositMinCents)} e {formatMoney(cfg.depositMaxCents)} por Pix. O Pix precisa ser pago com o <b>seu CPF</b>.</p>
           {pixDeposit && pixDeposit.status === "PENDING" && (
-            <div className="mb-4 space-y-3 rounded-lg border border-gold/40 bg-gold/5 p-4">
+            <div className="mb-4 space-y-3 rounded-lg border border-brand/40 bg-brand/5 p-4">
               <meta httpEquiv="refresh" content="6" />
               <p className="text-sm font-semibold">Pague {formatMoney(pixDeposit.amountCents)} no Pix até {formatDateTime(pixDeposit.expiresAt)}</p>
               {pixDeposit.pixQrImage && /^[A-Za-z0-9+/=]+$/.test(pixDeposit.pixQrImage) && (
@@ -92,7 +103,7 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
             <input type="hidden" name="teamId" value={team.id} />
             <Field label="Valor em créditos" htmlFor="dep-credits"><Input id="dep-credits" name="credits" type="number" min={cfg.depositMinCents / 100} max={cfg.depositMaxCents / 100} step={1} required disabled={!canDeposit} /></Field>
           </ActionForm>
-        </Card>
+        </Card>}
 
         <Card>
           <h2 className="mb-1 font-bold">Sacar por Pix</h2>

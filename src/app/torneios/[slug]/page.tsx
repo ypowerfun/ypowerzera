@@ -100,7 +100,7 @@ export default async function TournamentPage({ params, searchParams }: { params:
               </Card>
               {(t.prizePoolCents > 0 || prizes.length > 0) && (
                 <Card>
-                  <h2 className="mb-3 font-bold">Premiação <span className="font-black text-gold">{formatMoney(t.prizePoolCents, t.currency)}</span></h2>
+                  <h2 className="mb-3 font-bold">Premiação <span className="font-black text-silver">{formatMoney(t.prizePoolCents, t.currency)}</span></h2>
                   {prizes.length > 0 ? (
                     <ul className="space-y-1.5 text-sm">{prizes.map((p) => <li key={p.id} className="flex justify-between"><span>{p.placement}º · {p.participant.name}</span><span className="font-bold">{formatMoney(p.amountCents, t.currency)} {p.status === "PAID" && <Badge tone="ok">pago</Badge>}</span></li>)}</ul>
                   ) : (

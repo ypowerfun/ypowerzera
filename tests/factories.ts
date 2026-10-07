@@ -50,8 +50,13 @@ export async function linkGame(user: Actor, gameId: string) {
   return saveGameAccount(user.id, gameId, identity);
 }
 
+/** Só organizador/admin cria organização: promove o dono (no banco e no objeto, que os testes reaproveitam). */
 export async function makeOrg(owner: Actor) {
-  return createOrganization({ ...owner, role: "USER" }, { name: `Org ${uid()}` });
+  if (owner.role === "USER") {
+    await db.user.update({ where: { id: owner.id }, data: { role: "ORGANIZER" } });
+    owner.role = "ORGANIZER";
+  }
+  return createOrganization(owner, { name: `Org ${uid()}` });
 }
 
 export async function makeTeamWithPlayers(captain: Actor, size: number, gameId: string, name?: string) {

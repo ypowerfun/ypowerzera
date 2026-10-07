@@ -1,3 +1,4 @@
+import { Prisma, type ChallengeStatus, type ParticipantStatus, type TournamentStatus, type WithdrawalStatus } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -6,6 +7,7 @@ import { audit } from "./audit";
 import { notify } from "./notifications";
 import { uniqueSlug } from "./orgs";
 import { requireActor, requireVerified } from "./permissions";
+import { freezeWallet } from "./wallet";
 import { rateLimit } from "./rate-limit";
 import type { Actor } from "./types";
 import { getGame } from "@/games";
@@ -29,7 +31,7 @@ export async function createTeam(actorIn: Actor | null, input: unknown) {
   const { name, tag, gameId, description } = parsed.data;
   if (gameId && !getGame(gameId)) throw new AppError("Jogo inválido.");
   await rateLimit(`team-create:${actor.id}`, 10, 86400, "Você já criou vários times hoje.");
-  const clash = await db.team.findFirst({ where: { name: { equals: name } }, select: { id: true } });
+  const clash = await db.team.findFirst({ where: { name: { equals: name }, deletedAt: null }, select: { id: true } });
   if (clash) throw new AppError("Já existe um time com esse nome.", "CONFLICT");
   const slug = await uniqueSlug(name, async (s) => !!(await db.team.findUnique({ where: { slug: s } })));
   return db.team.create({
@@ -42,6 +44,7 @@ async function requireCaptain(actor: Actor, teamId: string) {
   if (!team) throw new AppError("Time não encontrado.", "NOT_FOUND");
   const me = team.members.find((m) => m.userId === actor.id);
   if (actor.role !== "ADMIN" && me?.role !== "CAPTAIN") throw new AppError("Só o capitão pode fazer isso.", "FORBIDDEN");
+  if (team.deletedAt) throw new AppError("Este time foi excluído.", "FORBIDDEN");
   return team;
 }
 
@@ -82,7 +85,7 @@ export async function respondToInvite(actorIn: Actor | null, inviteId: string, a
 export async function removeFromTeam(actorIn: Actor | null, teamId: string, userId: string) {
   const actor = requireActor(actorIn);
   const team = await db.team.findUnique({ where: { id: teamId }, include: { members: true } });
-  if (!team) throw new AppError("Time não encontrado.", "NOT_FOUND");
+  if (!team || team.deletedAt) throw new AppError("Time não encontrado.", "NOT_FOUND");
   const self = userId === actor.id;
   if (!self) await requireCaptain(actor, teamId);
   const target = team.members.find((m) => m.userId === userId);
@@ -110,9 +113,65 @@ export async function setMemberRole(actorIn: Actor | null, teamId: string, userI
 }
 
 export async function myTeams(userId: string) {
-  return db.teamMember.findMany({ where: { userId }, include: { team: { include: { members: { include: { user: true } } } } }, orderBy: { team: { name: "asc" } } });
+  return db.teamMember.findMany({ where: { userId, team: { deletedAt: null } }, include: { team: { include: { members: { include: { user: true } } } } }, orderBy: { team: { name: "asc" } } });
 }
 
 export async function pendingInvites(userId: string) {
   return db.teamInvite.findMany({ where: { userId, status: "PENDING", expiresAt: { gt: new Date() } }, include: { team: true, invitedBy: true } });
+}
+
+const OPEN_CHALLENGE: ChallengeStatus[] = ["OPEN", "ACCEPTED", "REPORTED", "DISPUTED"];
+const OPEN_WITHDRAWAL: WithdrawalStatus[] = ["PENDING_CONFIRMATION", "UNDER_REVIEW", "APPROVED", "PROCESSING"];
+const LIVE_TOURNAMENT: TournamentStatus[] = ["REGISTRATION", "CHECK_IN", "LIVE"];
+const ACTIVE_PARTICIPANT: ParticipantStatus[] = ["PENDING_PAYMENT", "REGISTERED", "CHECKED_IN", "WAITLIST"];
+
+/**
+ * Exclui o time (exclusão LÓGICA: a carteira e o razão imutável permanecem). Só o líder ou um admin.
+ * Não exclui com desafio, saque, Pix pendente ou campeonato em andamento. O saldo que sobrar fica BLOQUEADO
+ * (carteira congelada) até o líder pedir a revisão e um admin liberar para saque (veja team-release.ts).
+ */
+export async function deleteTeam(actorIn: Actor | null, teamId: string, input: { reason?: string } = {}): Promise<{ balanceCents: number }> {
+  const actor = requireActor(actorIn);
+  requireVerified(actor);
+  const team = await requireCaptain(actor, teamId); // líder ou admin; recusa time já excluído
+  const reason = (input.reason ?? "").trim().slice(0, 300);
+  const isLeader = team.members.some((m) => m.userId === actor.id && m.role === "CAPTAIN");
+  if (!isLeader && reason.length < 10) throw new AppError("Informe o motivo da exclusão (mínimo de 10 caracteres).");
+
+  const now = new Date();
+  return db.$transaction(
+    async (tx) => {
+      const t = await tx.team.findUniqueOrThrow({ where: { id: teamId }, include: { wallet: true, members: true } });
+      if (t.deletedAt) throw new AppError("Este time já foi excluído.", "CONFLICT");
+      const [challenges, withdrawals, pixPending, tournaments] = await Promise.all([
+        tx.challenge.count({ where: { status: { in: OPEN_CHALLENGE }, OR: [{ creatorTeamId: teamId }, { opponentTeamId: teamId }] } }),
+        tx.withdrawal.count({ where: { teamId, status: { in: OPEN_WITHDRAWAL } } }),
+        tx.deposit.count({ where: { teamId, status: "PENDING", expiresAt: { gt: now } } }),
+        tx.participant.count({ where: { teamId, status: { in: ACTIVE_PARTICIPANT }, tournament: { status: { in: LIVE_TOURNAMENT } } } }),
+      ]);
+      const blockers: string[] = [];
+      if (challenges) blockers.push(`${challenges} desafio(s) em andamento (conclua ou cancele)`);
+      if (withdrawals) blockers.push(`${withdrawals} saque(s) em andamento`);
+      if (pixPending) blockers.push(`${pixPending} Pix pendente(s) (aguarde expirar)`);
+      if (tournaments) blockers.push(`inscrição em ${tournaments} campeonato(s) em andamento (cancele a inscrição)`);
+      if (blockers.length) throw new AppError(`Não é possível excluir o time agora: ${blockers.join("; ")}.`);
+
+      await tx.team.update({ where: { id: teamId }, data: { deletedAt: now, deletedById: actor.id } });
+      await tx.teamInvite.updateMany({ where: { teamId, status: "PENDING" }, data: { status: "REVOKED" } });
+      const balanceCents = t.wallet?.balanceCents ?? 0;
+      // sempre congela: qualquer valor que ainda chegue (ex.: Pix pago com atraso) também espera a revisão do admin
+      if (t.wallet) await freezeWallet(tx, t.wallet.id, `Equipe excluída em ${now.toLocaleDateString("pt-BR")}: saldo bloqueado até a revisão do administrador.`);
+      await audit(actor.id, "team.delete", "Team", teamId, { balanceCents, byAdmin: !isLeader, reason: reason || null }, tx);
+      await notify(
+        t.members.filter((m) => m.userId !== actor.id).map((m) => m.userId),
+        "team.deleted",
+        `O time ${t.name} foi excluído`,
+        isLeader ? "O líder excluiu o time." : "Um administrador excluiu o time.",
+        "/times",
+        tx,
+      );
+      return { balanceCents };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 20000 },
+  );
 }

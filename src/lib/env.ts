@@ -24,7 +24,7 @@ export function getEnv() {
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
     platformFeeBps: int(process.env.PLATFORM_FEE_BPS, 1000),
     reservationMinutes: int(process.env.RESERVATION_MINUTES, 30),
-    mailFrom: process.env.MAIL_FROM ?? "Prime Arena One <no-reply@primearena.local>",
+    mailFrom: process.env.MAIL_FROM ?? "Prime Arena <no-reply@primearena.local>",
     smtpUrl: process.env.SMTP_URL ?? "",
     adminEmails: (process.env.ADMIN_EMAILS ?? "")
       .split(",")

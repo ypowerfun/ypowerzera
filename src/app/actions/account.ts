@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { guard, safeNext, str, type FormState } from "@/lib/action-helpers";
 import { removeGameAccount, saveGameAccount } from "@/server/game-accounts";
 import { markAllRead } from "@/server/notifications";
-import { createTeam, inviteToTeam, removeFromTeam, respondToInvite, setMemberRole } from "@/server/teams";
+import { createTeam, deleteTeam, inviteToTeam, removeFromTeam, respondToInvite, setMemberRole } from "@/server/teams";
+import { requestBalanceReview } from "@/server/team-release";
 import { createOrganization } from "@/server/orgs";
 import { requireUser, toActor } from "@/server/session";
 import { getGame } from "@/games";
@@ -45,6 +46,24 @@ export async function createTeamAction(_: FormState, fd: FormData): Promise<Form
   const res = await guard(() => createTeam(toActor(user), { name: str(fd, "name"), tag: str(fd, "tag"), gameId: str(fd, "gameId") || undefined, description: str(fd, "description") || undefined }));
   if (!res.ok) return { error: res.error };
   redirect(`/times/${res.value.slug}`);
+}
+
+/** Excluir o time: o saldo (se houver) fica bloqueado até o líder pedir a revisão e um admin liberar. */
+export async function deleteTeamAction(_: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const res = await guard(() => deleteTeam(toActor(user), str(fd, "teamId"), { reason: str(fd, "reason") }));
+  if (!res.ok) return { error: res.error };
+  revalidatePath("/times", "layout");
+  redirect(user.role === "ADMIN" ? "/admin/equipes?ok=time-excluido" : `/times?ok=${res.value.balanceCents > 0 ? "time-excluido-saldo" : "time-excluido"}`);
+}
+
+/** O ex-líder de um time excluído pede ao admin que revise e libere o saldo bloqueado. */
+export async function requestBalanceReviewAction(_: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser("/carteira");
+  const res = await guard(() => requestBalanceReview(toActor(user), str(fd, "teamId"), str(fd, "message")));
+  if (!res.ok) return { error: res.error };
+  revalidatePath("/carteira", "layout");
+  redirect("/carteira?ok=revisao-pedida");
 }
 
 export async function inviteAction(_: FormState, fd: FormData): Promise<FormState> {

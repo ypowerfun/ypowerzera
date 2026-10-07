@@ -15,11 +15,17 @@ export const dynamic = "force-dynamic";
 export default async function NewTournamentPage({ searchParams }: { searchParams: Promise<{ org?: string; jogo?: string; modo?: string }> }) {
   const user = await requireUser("/organizar/novo");
   const sp = await searchParams;
-  const memberships = await db.orgMember.findMany({ where: { userId: user.id, role: { in: ["OWNER", "ADMIN"] } }, include: { org: true } });
-  if (memberships.length === 0) {
+  if (user.role === "USER") {
+    return <div className="mx-auto max-w-lg"><Alert tone="warn"><b>Seu cargo é Jogador.</b> Só organizadores criam campeonatos. Peça a um administrador da plataforma para liberar o seu acesso. <Link href="/torneios" className="underline">Ver torneios</Link></Alert></div>;
+  }
+  // o admin cria campeonato em QUALQUER organização; o organizador, nas que é dono ou admin
+  const orgList = user.role === "ADMIN"
+    ? (await db.organization.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } })).map((o) => ({ orgId: o.id, org: o }))
+    : await db.orgMember.findMany({ where: { userId: user.id, role: { in: ["OWNER", "ADMIN"] } }, include: { org: true } });
+  if (orgList.length === 0) {
     return <div className="mx-auto max-w-lg"><Alert tone="warn">Você precisa de uma organização para criar campeonatos. <Link href="/organizar" className="underline">Criar organização</Link></Alert></div>;
   }
-  const orgId = sp.org ?? memberships[0].orgId;
+  const orgId = orgList.some((m) => m.orgId === sp.org) ? sp.org! : orgList[0].orgId;
   const game = getGame(sp.jogo ?? "");
   const mode = game?.modes.find((m) => m.id === sp.modo) ?? game?.modes[0];
   const presets = game && mode ? presetsForMode(game, mode.id) : [];
@@ -31,7 +37,7 @@ export default async function NewTournamentPage({ searchParams }: { searchParams
       <PageTitle title="Novo campeonato" subtitle="Escolha o jogo, o modo e um formato pronto. Depois você ajusta fases, melhor-de-N e pontuação." />
       <Card>
         <form className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end" method="get">
-          <Field label="Organização" htmlFor="org"><Select id="org" name="org" defaultValue={orgId}>{memberships.map((m) => <option key={m.orgId} value={m.orgId}>{m.org.name}</option>)}</Select></Field>
+          <Field label="Organização" htmlFor="org"><Select id="org" name="org" defaultValue={orgId}>{orgList.map((m) => <option key={m.orgId} value={m.orgId}>{m.org.name}</option>)}</Select></Field>
           <Field label="Jogo" htmlFor="jogo"><Select id="jogo" name="jogo" defaultValue={game?.id ?? ""} required><option value="">Selecione…</option>{GAMES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select></Field>
           <Field label="Modo" htmlFor="modo"><Select id="modo" name="modo" defaultValue={mode?.id ?? ""} disabled={!game}>{game ? game.modes.map((m) => <option key={m.id} value={m.id}>{m.label}</option>) : <option>—</option>}</Select></Field>
           <button className={buttonClass("secondary")}>Continuar</button>

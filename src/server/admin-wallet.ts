@@ -79,14 +79,15 @@ export async function runReconciliation() {
 }
 
 export async function adminOverview() {
-  const [kyc, review, held, disputed, processing, frozen] = await Promise.all([
+  const [kyc, review, held, disputed, processing, frozen, releasePending] = await Promise.all([
     db.kycProfile.count({ where: { status: "PENDING" } }),
     db.withdrawal.count({ where: { status: "UNDER_REVIEW" } }),
     db.deposit.count({ where: { status: "HELD" } }),
     db.challenge.count({ where: { status: "DISPUTED" } }),
     db.withdrawal.count({ where: { status: "PROCESSING", updatedAt: { lt: new Date(Date.now() - 10 * 60_000) } } }),
     db.wallet.count({ where: { frozenAt: { not: null } } }),
+    db.walletReleaseRequest.count({ where: { status: "PENDING" } }),
   ]);
   const platform = await db.wallet.findUnique({ where: { id: "platform" } });
-  return { kyc, review, held, disputed, processing, frozen, platformCents: platform?.balanceCents ?? 0, limits: moneyConfig() };
+  return { kyc, review, held, disputed, processing, frozen, releasePending, platformCents: platform?.balanceCents ?? 0, limits: moneyConfig() };
 }

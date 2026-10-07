@@ -1,6 +1,6 @@
-# Prime Arena One
+# Prime Arena
 
-Gerenciador de campeonatos de esports (inspirado no Battlefy) com **carteira por equipe** e **desafios equipe × equipe valendo créditos** (1 crédito = R$ 1,00). Tema azul escuro, interface em português do Brasil.
+Gerenciador de campeonatos de esports (inspirado no Battlefy) com **carteira por equipe** e **desafios equipe × equipe valendo créditos** (1 crédito = R$ 1,00). Visual grafite com vermelho e prata (a partir do logo oficial), interface em português do Brasil.
 
 Jogos: **League of Legends, VALORANT, Counter-Strike (CS2 e CS:GO), Fortnite, Apex Legends, Battlefield 6, Street Fighter 6, Call of Duty: Warzone, EA SPORTS FC e TFT.**
 
@@ -9,7 +9,7 @@ Jogos: **League of Legends, VALORANT, Counter-Strike (CS2 e CS:GO), Fortnite, Ap
 ## Sumário
 
 - [O que tem](#o-que-tem) · [Rodando](#rodando-em-desenvolvimento) · [Testes](#testes) · [Formatos por jogo](#formatos-por-jogo)
-- [Carteira e desafios](#carteira-e-desafios) · [Modelo de segurança](#modelo-de-segurança) · [Produção](#produção) · [Antes de operar com dinheiro real](#antes-de-operar-com-dinheiro-real)
+- [Cargos e permissões](#cargos-e-permissões) · [Carteira e desafios](#carteira-e-desafios) · [Modelo de segurança](#modelo-de-segurança) · [Produção](#produção) · [Antes de operar com dinheiro real](#antes-de-operar-com-dinheiro-real)
 
 ## O que tem
 
@@ -18,10 +18,11 @@ Jogos: **League of Legends, VALORANT, Counter-Strike (CS2 e CS:GO), Fortnite, Ap
 - **Conta**: cadastro, e-mail verificado, login com sessões (token só em hash), recuperação de senha, contas de jogo por título (Riot ID, SteamID, Epic, EA, Capcom ID, Activision…).
 - **Checkout**: taxa de serviço de 10% por cima do valor do organizador, cupons, reserva de vaga de 30 min, fila de espera, reembolso automático ao desistir. Provedor `mock` (dev) ou Stripe (cartão + Pix) com webhook assinado e idempotente.
 - **Organizador**: painel por campeonato (participantes, fases, partidas, financeiro, configurações) e organizações com equipe de staff.
-- **Carteira da equipe** (só o **líder** movimenta): depósito por Pix, saque por Pix para o CPF verificado, extrato imutável.
+- **Cargos**: Admin (tudo), Organizador e Jogador; o admin promove e rebaixa pela tela **Admin → Usuários**.
+- **Carteira da equipe** (só o **líder** movimenta): depósito por Pix, saque por Pix para o CPF verificado, extrato imutável. O admin liga e desliga a aba em **Admin → Configurações**.
 - **Desafios equipe × equipe**: a aposta fica em custódia, o vencedor leva o pote menos 10%.
-- **Admin**: fila de KYC, saques em análise e presos, depósitos retidos, disputas, congelar/liberar carteira, ajuste auditado e conciliação do razão.
-- **Marca**: logo Prime Arena One (`public/brand/`, gerada a partir da arte oficial).
+- **Admin**: usuários e cargos, todas as equipes, saldos de times excluídos, configurações, fila de KYC, saques em análise e presos, depósitos retidos, disputas, congelar/liberar carteira, ajuste auditado e conciliação do razão.
+- **Marca**: logo Prime Arena (`public/brand/`, recortada e redimensionada a partir da arte oficial).
 
 ## Rodando em desenvolvimento
 
@@ -51,7 +52,7 @@ npm run e2e               # Playwright (sobe o app com um banco próprio, prisma
 
 No ambiente sem o Chromium do Playwright, aponte `PW_CHROMIUM_PATH` para um Chrome/Chromium instalado.
 
-Os testes de unidade usam um banco SQLite temporário criado por `tests/global-setup.ts`. Cobrem, entre outros: todos os formatos de chave, conservação do dinheiro (conciliação do razão após cada fluxo), concorrência (saque/aceite/webhook em paralelo), idempotência de webhooks, limites e janelas de retenção, antifraude de saque, anti-conluio de desafios e a validação de configuração de produção. O E2E cobre navegação, controle de acesso, depósito, aceite de desafio, tentativa de saque forjado pelo DOM e o fluxo do admin.
+Os testes de unidade usam um banco SQLite temporário criado por `tests/global-setup.ts`. Cobrem, entre outros: todos os formatos de chave, conservação do dinheiro (conciliação do razão após cada fluxo), concorrência (saque/aceite/webhook em paralelo), idempotência de webhooks, limites e janelas de retenção, antifraude de saque, anti-conluio de desafios e a validação de configuração de produção. O E2E cobre navegação, controle de acesso, depósito, aceite de desafio, tentativa de saque forjado pelo DOM, o fluxo do admin, a troca de cargos, a exclusão de time com liberação do saldo e a chave da carteira. (O E2E recria o banco `prisma/e2e.db` antes de subir o servidor: `e2e/prepare-db.ts`.)
 
 ## Formatos por jogo
 
@@ -70,12 +71,24 @@ Cada jogo traz *presets* de formato baseados no que o cenário competitivo usa; 
 | **EA SPORTS FC** | 1v1, Pro Clubs | Grupos + mata-mata · Copa · Liga (turno e returno) · Suíço + mata-mata · Liga de clubes |
 | **TFT** | Solo | Aberto (6 partidas + final *Checkmate*) · Lobby único até 20 pts · Dia de pontos com lobbies reembaralhados |
 
+## Cargos e permissões
+
+| Cargo | O que pode |
+|---|---|
+| **Jogador** (padrão de quem se cadastra) | Criar time (e virar o **líder** dele automaticamente), convidar, inscrever o time em campeonatos, aceitar e criar desafios, depositar e sacar pela carteira do time que lidera. **Não** cria organização nem campeonato. |
+| **Organizador** | Tudo do jogador, mais criar organizações e campeonatos e gerenciar os das organizações de que faz parte. |
+| **Admin** | Tudo, em qualquer organização, campeonato ou time: promove e rebaixa usuários, exclui equipes (com motivo), analisa KYC, saques, depósitos retidos, disputas e saldos de times excluídos, liga e desliga a carteira. **Não movimenta o dinheiro de uma equipe** — só o líder faz isso — e nunca decide o que ele mesmo solicitou ou o que é do seu time (quatro olhos). |
+
+- **Promover/rebaixar**: em **Admin → Usuários** o admin busca a pessoa e troca entre Jogador e Organizador. Não há como mudar o próprio cargo nem o de outro admin pela tela (administradores vêm do `ADMIN_EMAILS` do `.env`, com e-mail verificado). Quem volta a ser jogador perde a gestão das organizações e dos campeonatos e só continua como **equipe de apoio** (STAFF) onde foi adicionado; o admin vê quantas organizações e campeonatos ativos a pessoa tinha ao rebaixar.
+- **Excluir time e saldo bloqueado**: o líder (ou um admin, com motivo) exclui o time em **Meus times → time → Excluir time**. Não exclui com desafio, saque, Pix pendente ou campeonato em andamento. Se houver saldo, ele fica **bloqueado** (carteira congelada; Pix que ainda chegue também espera). O ex-líder, com identidade verificada, pede a revisão em **Carteira → Equipes excluídas com saldo**; o admin confere e **libera ou recusa** em **Admin → Saldos de times excluídos**. Liberado, o saldo vira sacável sem as retenções de depósito/giro, mas o saque segue todas as regras de segurança (senha, código por e-mail, CPF do titular, liberação do admin).
+- **Chave da carteira** (**Admin → Configurações**): liga e desliga a aba *Carteira*, os depósitos, os saques e os *Desafios*. Só liga se a configuração necessária estiver pronta (provedor de Pix real, chave de criptografia, agendador e URL pública — em desenvolvimento tudo isso é dispensado). Desativada, nada novo de dinheiro entra; Pix já pago é creditado, saque já pedido continua e desafio já aceito termina. Há ainda a chave **Exigir a liberação do admin em todo saque** (ligada por padrão).
+
 ## Carteira e desafios
 
 **Regras de ouro**: tudo em **centavos inteiros**; 1 crédito = 100 centavos; só o **líder** da equipe deposita, saca e aposta; o saldo pertence à **equipe**.
 
 - **Depósito (Pix)**: líder com KYC → cobrança Pix → o provedor paga → **webhook assinado** → o sistema **reconsulta o pagamento no provedor** (não confia no corpo do webhook), confere o valor e se o **CPF do pagador é o do líder verificado**. Se algo diverge, o valor fica **retido** para o admin; nada é creditado por "achismo".
-- **Saque (Pix)**: líder · KYC aprovado · confirmação de **senha** · **código por e-mail** · limites por pedido/dia/equipe · valor **bloqueado na hora** · **análise de risco** (pontuação) e **revisão humana com quatro olhos** acima do limite automático ou com sinais de fraude · **atraso configurável** para cancelar · destino **somente a chave Pix do CPF verificado**.
+- **Saque (Pix)**: líder · KYC aprovado · confirmação de **senha** · **código por e-mail** · limites por pedido/dia/equipe · valor **bloqueado na hora** · **liberação do admin em todo saque** (padrão; dá para trocar em *Admin → Configurações*) · **análise de risco** (pontuação) e **revisão humana com quatro olhos** acima do limite automático ou com sinais de fraude · **atraso configurável** para cancelar · destino **somente a chave Pix do CPF verificado**.
 - **Sacável**: só o que foi **jogado e ganho**. Depósitos sem giro, depósitos das últimas 72 h (janela do MED/estorno do Pix) e prêmios das últimas 24 h ficam retidos — isso mata o ciclo "depositar → sacar" de lavagem/estorno.
 - **Desafios**: a aposta da criadora é bloqueada ao criar e a do adversário ao aceitar (aceite **atômico**: só um adversário). O resultado é combinado: quem perde reconhece a derrota e o pote (menos 10%) é liberado; divergência vira **disputa** para o admin. Liquidação automática só para apostas pequenas. **Anti-conluio**: equipes com membros em comum não se enfrentam; mesmo IP e confrontos repetidos entre as mesmas equipes geram **alertas ao admin e elevam a pontuação de risco dos saques** de quem ganhou (levando à revisão humana).
 - **Razão imutável**: cada movimento é um lançamento com **chave de idempotência única**; o saldo nunca fica negativo (atualização condicional); carteira congelada bloqueia saídas. A **conciliação** confere saldos × lançamentos, conservação do dinheiro entre carteiras e razão × depósitos/saques, e roda a cada ciclo do job e sob demanda no admin.

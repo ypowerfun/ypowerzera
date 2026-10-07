@@ -1,4 +1,4 @@
-// Prime Arena One — plataforma de campeonatos de esports.
+// Prime Arena — plataforma de campeonatos de esports.
 //
 // Desenvolvimento: SQLite. Produção: troque `provider` para "postgresql" e ajuste DATABASE_URL.
 // Todos os valores monetários são inteiros em centavos.
@@ -296,13 +296,55 @@ model Team {
   ownerId     String
   owner       User     @relation("TeamOwner", fields: [ownerId], references: [id])
   createdAt   DateTime @default(now())
+  /// Exclusão lógica: a carteira e o razão (imutável) continuam existindo; o time some das listas.
+  deletedAt   DateTime?
+  deletedById String?
+  /// Quando o admin liberou o saldo do time excluído para saque pelo ex-líder.
+  balanceReleasedAt DateTime?
 
+  releaseRequests WalletReleaseRequest[]
   members      TeamMember[]
   invites      TeamInvite[]
   participants Participant[]
   wallet       Wallet?
   challengesCreated  Challenge[] @relation("ChallengeCreator")
   challengesReceived Challenge[] @relation("ChallengeOpponent")
+}
+
+enum ReleaseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Pedido do ex-líder para o admin revisar e liberar o saldo (bloqueado) de um time excluído.
+model WalletReleaseRequest {
+  id            String        @id @default(cuid())
+  teamId        String
+  team          Team          @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  walletId      String
+  requestedById String
+  message       String
+  /// Saldo disponível quando o pedido foi feito.
+  balanceCents  Int
+  status        ReleaseStatus @default(PENDING)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  reviewNote    String?
+  /// Saldo efetivamente liberado (o disponível no momento da aprovação).
+  releasedCents Int?
+  createdAt     DateTime      @default(now())
+
+  @@index([status, createdAt])
+  @@index([teamId])
+}
+
+/// Configurações do site que o admin altera pela interface (chave → valor em texto).
+model SiteSetting {
+  key         String   @id
+  value       String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
 }
 
 model TeamMember {

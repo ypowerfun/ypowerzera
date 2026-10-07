@@ -9,6 +9,8 @@ import { formatMoney } from "@/lib/money";
 import { getKyc } from "@/server/kyc";
 import { moneyConfig } from "@/server/money-config";
 import { requireUser } from "@/server/session";
+import { WalletUnavailable } from "@/components/wallet-off";
+import { isWalletOn } from "@/server/settings";
 import { leaderTeams } from "@/server/team-auth";
 
 export const metadata: Metadata = { title: "Criar desafio" };
@@ -16,6 +18,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewChallengePage({ searchParams }: { searchParams: Promise<{ time?: string; jogo?: string }> }) {
   const user = await requireUser("/desafios/novo");
+  if (!(await isWalletOn())) return <WalletUnavailable />;
   const sp = await searchParams;
   const [kyc, teams] = await Promise.all([getKyc(user.id), leaderTeams(user.id)]);
   const cfg = moneyConfig();

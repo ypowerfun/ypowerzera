@@ -15,6 +15,7 @@ import { requireActor, requireVerified } from "./permissions";
 import { getPixProvider, type TransferAuthRequest } from "./pix";
 import { rateLimit } from "./rate-limit";
 import { assessWithdrawalRisk, type RiskFlag } from "./risk";
+import { assertWalletOn, withdrawalsNeedAdminApproval } from "./settings";
 import { requireTeamLeader } from "./team-auth";
 import { getOrCreateTeamWallet, getPlatformWallet, postLedger, withdrawableBreakdown } from "./wallet";
 import type { Actor } from "./types";
@@ -34,9 +35,8 @@ export async function requestWithdrawal(
   actorIn: Actor | null,
   input: { teamId: string; amountCents: number; password: string; nonce: string },
 ): Promise<{ withdrawalId: string }> {
-  const env = getEnv();
-  if (!env.walletEnabled) throw new AppError("A carteira está desativada.", "FORBIDDEN");
-  if (env.payoutsPaused) throw new AppError("Saques temporariamente pausados para manutenção. Tente novamente mais tarde.", "FORBIDDEN");
+  await assertWalletOn();
+  if (getEnv().payoutsPaused) throw new AppError("Saques temporariamente pausados para manutenção. Tente novamente mais tarde.", "FORBIDDEN");
   const actor = requireActor(actorIn);
   requireVerified(actor);
   const cfg = moneyConfig();
@@ -51,7 +51,7 @@ export async function requestWithdrawal(
   if (input.amountCents > cfg.withdrawMaxCents) throw new AppError(`Saque máximo por pedido: ${formatMoney(cfg.withdrawMaxCents)}.`);
   if (cfg.withdrawFeeCents >= input.amountCents) throw new AppError("Valor menor que a tarifa de saque.");
 
-  const team = await requireTeamLeader(actor, input.teamId);
+  const team = await requireTeamLeader(actor, input.teamId, { allowReleased: true });
   const kyc = await requireKyc(actor.id, "verified");
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
   if (user.bannedAt) throw new AppError("Conta suspensa.", "FORBIDDEN");
@@ -111,7 +111,7 @@ export async function requestWithdrawal(
 
   await sendMail({
     to: user.email,
-    subject: "Código de confirmação de saque — Prime Arena One",
+    subject: "Código de confirmação de saque — Prime Arena",
     text: `Você pediu o saque de ${formatMoney(input.amountCents)} da equipe ${team.name}.\n\nCódigo de confirmação: ${code}\n(válido por ${cfg.otpTtlMinutes} minutos)\n\nSe NÃO foi você, ignore este e-mail e troque sua senha agora: o saque não será concluído sem este código.`,
   });
   return { withdrawalId: wd.id };
@@ -150,7 +150,7 @@ export async function confirmWithdrawal(actorIn: Actor | null, withdrawalId: str
   const wallet = await db.wallet.findUniqueOrThrow({ where: { id: w.walletId } });
   const now = new Date();
   const risk = await gatherRisk(w, user, kyc.reviewedAt, wallet.frozenAt !== null, now);
-  const review = risk.needsReview || w.amountCents > cfg.withdrawAutoApproveMaxCents;
+  const review = risk.needsReview || w.amountCents > cfg.withdrawAutoApproveMaxCents || (await withdrawalsNeedAdminApproval());
   const res = await db.withdrawal.updateMany({
     where: { id: w.id, status: "PENDING_CONFIRMATION" },
     data: {
@@ -166,7 +166,7 @@ export async function confirmWithdrawal(actorIn: Actor | null, withdrawalId: str
   await audit(actor.id, "withdrawal.confirm", "Withdrawal", w.id, { score: risk.score, flags: risk.flags, review });
   await sendMail({
     to: user.email,
-    subject: "Saque solicitado — Prime Arena One",
+    subject: "Saque solicitado — Prime Arena",
     text: review
       ? `Seu saque de ${formatMoney(w.amountCents)} foi enviado para análise de segurança. Você será avisado quando for decidido.\nNão reconhece? Cancele em Carteira e troque sua senha.`
       : `Seu saque de ${formatMoney(w.amountCents)} será enviado por Pix para o CPF final ${w.destinationCpfLast4} em ~${cfg.withdrawDelayMinutes} minutos.\nNão foi você? Cancele agora em Carteira e troque sua senha.`,
@@ -227,7 +227,7 @@ export async function cancelWithdrawal(actorIn: Actor | null, withdrawalId: stri
   const w = await db.withdrawal.findUnique({ where: { id: withdrawalId } });
   if (!w) throw new AppError("Saque não encontrado.", "NOT_FOUND");
   if (w.requestedById !== actor.id && actor.role !== "ADMIN") {
-    await requireTeamLeader(actor, w.teamId);
+    await requireTeamLeader(actor, w.teamId, { allowReleased: true });
   }
   const ok = await cancelInternal(w.id, `Cancelado por ${actor.role === "ADMIN" && w.requestedById !== actor.id ? "administrador" : "usuário"}.`);
   if (!ok) throw new AppError("Este saque não pode mais ser cancelado (já está em processamento ou finalizado).");
@@ -302,7 +302,7 @@ export async function processWithdrawal(id: string, now = new Date()): Promise<"
 
   const provider = getPixProvider();
   try {
-    const out = await provider.sendPix({ externalReference: w.id, amountCents: w.netCents, pixKey: cpf, description: "Saque Prime Arena One" });
+    const out = await provider.sendPix({ externalReference: w.id, amountCents: w.netCents, pixKey: cpf, description: "Saque Prime Arena" });
     await db.withdrawal.update({ where: { id }, data: { provider: provider.name, providerTransferId: out.transferId } });
     if (out.status === "DONE") await markPaid(id, out.endToEndId ?? null);
     else if (out.status === "FAILED") await markFailed(id, "Recusado pelo provedor.");

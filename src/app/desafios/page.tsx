@@ -7,6 +7,8 @@ import { formatDateTime } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { challengeFee, listOpenChallenges } from "@/server/challenges";
 import { getCurrentUser } from "@/server/session";
+import { WalletUnavailable } from "@/components/wallet-off";
+import { isWalletOn } from "@/server/settings";
 
 export const metadata: Metadata = { title: "Desafios" };
 export const dynamic = "force-dynamic";
@@ -17,6 +19,7 @@ const statusTone = { OPEN: "ok", ACCEPTED: "brand", REPORTED: "warn", DISPUTED: 
 export default async function ChallengesPage({ searchParams }: { searchParams: Promise<{ jogo?: string }> }) {
   const sp = await searchParams;
   const user = await getCurrentUser();
+  if (!(await isWalletOn())) return <WalletUnavailable />;
   const open = await listOpenChallenges({ gameId: sp.jogo || undefined });
   const myTeamIds = user ? (await db.teamMember.findMany({ where: { userId: user.id, role: "CAPTAIN" }, select: { teamId: true } })).map((m) => m.teamId) : [];
   const mine = myTeamIds.length
@@ -63,7 +66,7 @@ export default async function ChallengesPage({ searchParams }: { searchParams: P
                   <Card className="h-full transition hover:border-brand-soft/60 hover:shadow-glow">
                     <div className="flex items-center gap-3">{g && <GameBadge abbr={g.abbr} accent={g.accent} />}<div className="min-w-0"><p className="truncate font-bold">{c.creatorTeam.name}</p><p className="truncate text-xs text-muted">{g?.name} · {g?.modes.find((m) => m.id === c.modeId)?.label} · melhor de {c.bestOf}</p></div></div>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <div><p className="text-xs text-muted">Aposta de cada equipe</p><p className="text-xl font-black text-gold">{formatMoney(c.stakeCents)}</p></div>
+                      <div><p className="text-xs text-muted">Aposta de cada equipe</p><p className="text-xl font-black text-silver">{formatMoney(c.stakeCents)}</p></div>
                       <div><p className="text-xs text-muted">Vencedor recebe</p><p className="text-xl font-black text-ok">{formatMoney(c.stakeCents * 2 - fee)}</p></div>
                     </div>
                     <p className="mt-3 text-xs text-muted">Expira em {formatDateTime(c.expiresAt)}</p>

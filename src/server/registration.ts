@@ -156,7 +156,7 @@ async function buildRoster(tx: Tx, t: Tournament, actor: Actor, input: RegisterI
   } else {
     if (!input.teamId) throw new AppError("Selecione o time que vai participar.");
     const team = await tx.team.findUnique({ where: { id: input.teamId }, include: { members: true } });
-    if (!team) throw new AppError("Time não encontrado.", "NOT_FOUND");
+    if (!team || team.deletedAt) throw new AppError("Time não encontrado.", "NOT_FOUND");
     const me = team.members.find((m) => m.userId === actor.id);
     if (!me || (me.role !== "CAPTAIN" && actor.role !== "ADMIN")) throw new AppError("Só o capitão do time pode inscrevê-lo.", "FORBIDDEN");
     teamId = team.id;

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { respondInviteAction } from "@/app/actions/account";
 import { ActionForm } from "@/components/action-form";
+import { Flash } from "@/components/flash";
 import { Alert, Badge, ButtonLink, Card, Empty, PageTitle } from "@/components/ui";
 import { getGame } from "@/games";
 import { myTeams, pendingInvites } from "@/server/teams";
@@ -16,6 +18,7 @@ export default async function TeamsPage() {
   return (
     <>
       <PageTitle title="Meus times" subtitle="O capitão inscreve o time em campeonatos e movimenta a carteira da equipe." actions={<ButtonLink href="/times/novo">Criar time</ButtonLink>} />
+      <Suspense fallback={null}><Flash /></Suspense>
       {invites.length > 0 && (
         <div className="mb-6 space-y-2">
           {invites.map((i) => (

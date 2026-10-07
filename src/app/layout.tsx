@@ -3,12 +3,12 @@ import "./globals.css";
 import { Footer, Header } from "@/components/header";
 
 export const metadata: Metadata = {
-  title: { default: "Prime Arena One — campeonatos de esports", template: "%s · Prime Arena One" },
+  title: { default: "Prime Arena — campeonatos de esports", template: "%s · Prime Arena" },
   description: "Crie e dispute campeonatos de LoL, Valorant, CS2, Fortnite, Apex, Battlefield 6, Warzone, TFT, Street Fighter e EA FC, com chaves automáticas, carteira por equipe e desafios.",
-  applicationName: "Prime Arena One",
+  applicationName: "Prime Arena",
 };
 
-export const viewport: Viewport = { themeColor: "#040815", colorScheme: "dark" };
+export const viewport: Viewport = { themeColor: "#0b0c10", colorScheme: "dark" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

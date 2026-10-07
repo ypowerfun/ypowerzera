@@ -6,7 +6,6 @@ export const E2E_DB = "file:./e2e.db?connection_limit=1&socket_timeout=30";
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "./test-results",
-  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: false,
   workers: 1,
   timeout: 90_000,
@@ -21,7 +20,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: `npx next dev -p ${PORT}`,
+    command: `npx tsx e2e/prepare-db.ts && npx next dev -p ${PORT}`,
     url: `http://localhost:${PORT}/entrar`,
     timeout: 180_000,
     reuseExistingServer: false,

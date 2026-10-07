@@ -5,12 +5,13 @@ import { ActionForm } from "@/components/action-form";
 import { Card, PageTitle, Stat } from "@/components/ui";
 import { formatMoney } from "@/lib/money";
 import { adminOverview } from "@/server/admin-wallet";
+import { walletState } from "@/server/settings";
 
 export const metadata: Metadata = { title: "Admin", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminHome() {
-  const o = await adminOverview();
+  const [o, w] = await Promise.all([adminOverview(), walletState()]);
   const items = [
     ["KYC aguardando análise", o.kyc, "/admin/kyc"],
     ["Saques em análise de risco", o.review, "/admin/saques"],
@@ -18,6 +19,7 @@ export default async function AdminHome() {
     ["Depósitos retidos", o.held, "/admin/depositos"],
     ["Desafios em disputa", o.disputed, "/admin/desafios"],
     ["Carteiras congeladas", o.frozen, "/admin/carteiras"],
+    ["Saldos de times excluídos (revisão)", o.releasePending, "/admin/saldos"],
   ] as const;
   return (
     <div className="space-y-6">
@@ -26,6 +28,7 @@ export default async function AdminHome() {
         {items.map(([label, n, href]) => (
           <Link key={label} href={href} className="focus-ring rounded-xl"><Stat label={label} value={n} tone={n > 0 ? "warn" : "ok"} hint={n > 0 ? "Requer atenção →" : "Em dia"} /></Link>
         ))}
+        <Link href="/admin/configuracoes" className="focus-ring rounded-xl"><Stat label="Carteira de equipe" value={w.effective ? "Ativa" : w.envBlocked ? "Bloqueada no servidor" : !w.switchOn ? "Desativada" : "Configuração incompleta"} tone={w.effective ? "ok" : "warn"} hint="Ativar / desativar →" /></Link>
         <Stat label="Receita da plataforma (taxas)" value={formatMoney(o.platformCents)} tone="brand" hint="Carteira da plataforma" />
       </div>
       <Card>

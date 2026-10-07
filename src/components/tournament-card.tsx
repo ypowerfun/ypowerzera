@@ -12,7 +12,7 @@ const tone = { DRAFT: "neutral", REGISTRATION: "ok", CHECK_IN: "warn", LIVE: "ac
 export function TournamentCard({ t, count, orgName }: { t: Tournament; count: number; orgName?: string }) {
   const game = getGame(t.gameId);
   return (
-    <Link href={`/torneios/${t.slug}`} className="group block min-w-0 rounded-xl border border-line bg-surface/80 p-5 transition hover:-translate-y-0.5 hover:border-gold/50 hover:shadow-gold focus-ring">
+    <Link href={`/torneios/${t.slug}`} className="group block min-w-0 rounded-xl border border-line bg-surface/80 p-5 transition hover:-translate-y-0.5 hover:border-brand/50 hover:shadow-glow focus-ring">
       <div className="flex items-center gap-3">
         {game && <GameBadge abbr={game.abbr} accent={game.accent} />}
         <p className="min-w-0 truncate text-xs text-muted">{game?.name}</p>
@@ -25,7 +25,7 @@ export function TournamentCard({ t, count, orgName }: { t: Tournament; count: nu
         <div><dt className="text-muted">Inscrição</dt><dd className="font-semibold">{t.entryFeeCents ? formatMoney(t.entryFeeCents, t.currency) : "Grátis"}</dd></div>
         <div><dt className="text-muted">Vagas</dt><dd className="font-semibold">{count}/{t.maxParticipants}</dd></div>
       </dl>
-      {t.prizePoolCents > 0 && <p className="mt-3 flex items-center gap-1.5 text-xs"><CrownIcon className="h-3.5 w-3.5 text-gold" /><span className="text-muted">Premiação</span> <span className="font-black text-gold">{formatMoney(t.prizePoolCents, t.currency)}</span></p>}
+      {t.prizePoolCents > 0 && <p className="mt-3 flex items-center gap-1.5 text-xs"><CrownIcon className="h-3.5 w-3.5 text-silver" /><span className="text-muted">Premiação</span> <span className="font-black text-silver">{formatMoney(t.prizePoolCents, t.currency)}</span></p>}
     </Link>
   );
 }

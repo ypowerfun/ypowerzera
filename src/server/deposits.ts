@@ -10,6 +10,7 @@ import { moneyConfig, isWholeCredits } from "./money-config";
 import { getPixProvider } from "./pix";
 import { requireActor, requireVerified } from "./permissions";
 import { rateLimit } from "./rate-limit";
+import { assertWalletOn } from "./settings";
 import { requireTeamLeader } from "./team-auth";
 import { freezeWallet, getOrCreateTeamWallet, postLedger } from "./wallet";
 import { requireKyc } from "./kyc";
@@ -21,8 +22,7 @@ import type { Actor } from "./types";
  * → conferência de valor → conferência do CPF do pagador com o do titular (quando o provedor informa).
  */
 export async function createDeposit(actorIn: Actor | null, input: { teamId: string; amountCents: number }) {
-  const env = getEnv();
-  if (!env.walletEnabled) throw new AppError("A carteira está desativada.", "FORBIDDEN");
+  await assertWalletOn();
   const actor = requireActor(actorIn);
   requireVerified(actor);
   const cfg = moneyConfig();
@@ -75,7 +75,10 @@ export async function confirmDeposit(chargeId: string): Promise<ConfirmResult> {
 
   let hold: string | null = null;
   const payerHash = info.payerDocument ? hmacHex(onlyDigits(info.payerDocument), "cpf") : null;
-  if (info.amountCents !== dep.amountCents) {
+  const depTeam = await db.team.findUnique({ where: { id: dep.teamId }, select: { deletedAt: true } });
+  if (depTeam?.deletedAt) {
+    hold = "Pagamento recebido depois que a equipe foi excluída: retido para revisão do administrador.";
+  } else if (info.amountCents !== dep.amountCents) {
     hold = `Valor pago (${formatMoney(info.amountCents)}) diverge do valor da cobrança (${formatMoney(dep.amountCents)}).`;
   } else if (!payerHash && getEnv().pixRequirePayerDoc) {
     hold = "O provedor não informou o CPF de quem pagou. Confira no painel do banco se foi o titular e libere manualmente.";

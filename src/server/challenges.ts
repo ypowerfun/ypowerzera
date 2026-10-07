@@ -9,10 +9,10 @@ import { moneyConfig, isWholeCredits } from "./money-config";
 import { notify } from "./notifications";
 import { requireActor, requireVerified } from "./permissions";
 import { rateLimit } from "./rate-limit";
+import { assertWalletOn } from "./settings";
 import { requireTeamLeader } from "./team-auth";
 import { getOrCreateTeamWallet, getPlatformWallet, postLedger } from "./wallet";
 import type { Actor } from "./types";
-import { getEnv } from "@/lib/env";
 
 export interface LineupMember {
   userId: string;
@@ -77,7 +77,7 @@ export async function createChallenge(
   actorIn: Actor | null,
   input: { teamId: string; gameId: string; modeId: string; bestOf: number; stakeCents: number; lineupUserIds: string[]; invitedTeamId?: string; notes?: string; expiresInHours?: number },
 ): Promise<Challenge> {
-  if (!getEnv().walletEnabled) throw new AppError("Os desafios estão desativados.", "FORBIDDEN");
+  await assertWalletOn();
   const actor = requireActor(actorIn);
   requireVerified(actor);
   const cfg = moneyConfig();
@@ -95,7 +95,10 @@ export async function createChallenge(
   await requireKyc(actor.id, "verified");
   await assertTeamEligible(team);
   if (input.invitedTeamId === team.id) throw new AppError("Você não pode desafiar a própria equipe.");
-  if (input.invitedTeamId && !(await db.team.findUnique({ where: { id: input.invitedTeamId } }))) throw new AppError("Equipe convidada não encontrada.", "NOT_FOUND");
+  if (input.invitedTeamId) {
+    const invitedTeam = await db.team.findUnique({ where: { id: input.invitedTeamId }, select: { deletedAt: true } });
+    if (!invitedTeam || invitedTeam.deletedAt) throw new AppError("Equipe convidada não encontrada.", "NOT_FOUND");
+  }
   await rateLimit(`challenge:create:${actor.id}`, 20, 3600, "Muitos desafios criados. Aguarde um pouco.");
   const lineup = await buildLineup(team.id, input.lineupUserIds, input.gameId, mode.teamSize);
   const hours = Math.min(Math.max(input.expiresInHours ?? cfg.challengeOpenTtlHours, 1), 72);
@@ -131,6 +134,7 @@ export async function createChallenge(
 
 /** Aceita um desafio aberto. A transição OPEN→ACCEPTED é atômica: só UM adversário consegue. */
 export async function acceptChallenge(actorIn: Actor | null, challengeId: string, input: { teamId: string; lineupUserIds: string[] }): Promise<Challenge> {
+  await assertWalletOn();
   const actor = requireActor(actorIn);
   requireVerified(actor);
   const cfg = moneyConfig();

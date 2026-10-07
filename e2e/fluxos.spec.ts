@@ -6,8 +6,8 @@ test.describe.configure({ mode: "serial" });
 test.describe("público", () => {
   test("home, catálogo com os 10 jogos e torneios do seed", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/Prime Arena One/i);
-    await expect(page.locator("img[alt*='Prime Arena One']").first()).toBeVisible();
+    await expect(page).toHaveTitle(/Prime Arena/i);
+    await expect(page.locator("img[alt*='Prime Arena']").first()).toBeVisible();
 
     await page.goto("/jogos");
     for (const g of ["League of Legends", "VALORANT", "Counter-Strike 2", "Fortnite", "Apex Legends", "Battlefield 6", "Street Fighter 6", "Call of Duty: Warzone", "EA SPORTS FC", "Teamfight Tactics"]) {
@@ -15,11 +15,11 @@ test.describe("público", () => {
     }
 
     await page.goto("/torneios");
-    await expect(page.getByText("Copa Prime Arena One de Street Fighter 6")).toBeVisible();
-    await expect(page.getByText("Prime Arena One Valorant Cup #1")).toBeVisible();
+    await expect(page.getByText("Copa Prime Arena de Street Fighter 6")).toBeVisible();
+    await expect(page.getByText("Prime Arena Valorant Cup #1")).toBeVisible();
   });
 
-  test("tema azul escuro aplicado (fundo escuro, texto claro)", async ({ page }) => {
+  test("tema grafite com vermelho aplicado (fundo escuro, texto claro, botão principal vermelho)", async ({ page }) => {
     await page.goto("/");
     const [bg, fg] = await page.evaluate(() => {
       const s = getComputedStyle(document.body);
@@ -28,8 +28,8 @@ test.describe("público", () => {
     const lum = (c: string) => { const [r, g, b] = c.match(/\d+/g)!.map(Number); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
     expect(lum(bg)).toBeLessThan(60);
     expect(lum(fg)).toBeGreaterThan(160);
-    const [, , bl] = bg.match(/\d+/g)!.map(Number);
-    expect(bl).toBeGreaterThan(Number(bg.match(/\d+/g)![0])); // predomínio de azul
+    const primary = page.getByRole("link", { name: "Ver torneios", exact: true }).first();
+    expect(await primary.evaluate((e) => getComputedStyle(e).backgroundImage)).toContain("225, 29, 42"); // vermelho da marca (#e11d2a)
   });
 
   test("páginas protegidas exigem login e admin exige papel de admin", async ({ page }) => {
@@ -197,7 +197,7 @@ test.describe("responsividade", () => {
     }
     // o nome do campeonato aparece inteiro no cartão (não truncado ao lado do selo)
     await page.goto("/torneios");
-    await expect(page.getByRole("heading", { name: "Copa Prime Arena One de Street Fighter 6" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Copa Prime Arena de Street Fighter 6" })).toBeVisible();
 
     await loginOk(page, "lider1@primearena.local");
     for (const p of ["/carteira", "/desafios/novo", "/times", "/conta"]) {
@@ -208,11 +208,11 @@ test.describe("responsividade", () => {
   });
 });
 
-test.describe("marca Prime Arena One", () => {
+test.describe("marca Prime Arena", () => {
   test("nome, ícones, imagem de compartilhamento e arte oficial são servidos", async ({ page, request }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/Prime Arena One/);
-    await expect(page.getByRole("link", { name: /Prime Arena One — início/ })).toBeVisible();
+    await expect(page).toHaveTitle(/Prime Arena/);
+    await expect(page.getByRole("link", { name: /Prime Arena — início/ })).toBeVisible();
     await expect(page.getByText("PRiME ARENA MANAGER")).toHaveCount(0); // nome antigo não aparece mais
 
     // favicon e ícone de celular vêm da logo (arquivos icon.png / apple-icon.png do Next)
@@ -228,14 +228,14 @@ test.describe("marca Prime Arena One", () => {
     const og = await page.locator("meta[property='og:image']").getAttribute("content");
     expect(og).toBeTruthy();
     expect((await request.get(og!)).status()).toBe(200);
-    for (const src of ["/brand/prime-arena-one-512.webp", "/brand/prime-arena-one-1024.webp", "/brand/prime-arena-one-128.webp"]) {
+    for (const src of ["/brand/prime-arena-art-512.webp", "/brand/prime-arena-art-960.webp", "/brand/prime-arena-logo-h-104.webp", "/brand/prime-arena-logo-h-208.webp", "/brand/prime-arena-mark-128.webp"]) {
       const r = await request.get(src);
       expect(r.status(), src).toBe(200);
       expect(r.headers()["content-type"]).toContain("image/webp");
     }
 
     // a arte do destaque carregou de verdade (não é imagem quebrada)
-    const art = page.getByRole("img", { name: "Prime Arena One" }).first();
+    const art = page.getByRole("img", { name: "Prime Arena" }).first();
     await expect(art).toBeVisible();
     expect(await art.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth > 0)).toBe(true);
   });
@@ -244,14 +244,14 @@ test.describe("marca Prime Arena One", () => {
 test.describe("regressões da revisão visual", () => {
   const lum = (c: string) => { const [r, g, b] = c.match(/\d+/g)!.map(Number); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
 
-  test("botão dourado tem texto escuro (a cor do link não sobrescreve o utilitário)", async ({ page }) => {
+  test("botão claro tem texto escuro (a cor do link não sobrescreve o utilitário)", async ({ page }) => {
     await page.goto("/");
-    const gold = page.getByRole("link", { name: "Criar um campeonato", exact: true }).first();
-    expect(lum(await gold.evaluate((e) => getComputedStyle(e).color))).toBeLessThan(60); // texto escuro sobre o ouro
-    // links com text-brand-soft realmente ficam azuis (não herdam o branco do pai)
+    const light = page.getByRole("link", { name: "Criar um campeonato", exact: true }).first();
+    expect(lum(await light.evaluate((e) => getComputedStyle(e).color))).toBeLessThan(60); // texto escuro sobre o botão prateado
+    // links com text-brand-soft realmente ficam vermelhos (não herdam o branco do pai)
     const soft = page.getByRole("link", { name: /Ver todos/ }).first();
     const [r, , b] = (await soft.evaluate((e) => getComputedStyle(e).color)).match(/\d+/g)!.map(Number);
-    expect(b).toBeGreaterThan(r + 60);
+    expect(r).toBeGreaterThan(b + 60);
   });
 
   test("404 usa o tema escuro, com cabeçalho e caminhos de volta", async ({ page }) => {
@@ -274,5 +274,132 @@ test.describe("regressões da revisão visual", () => {
     const nav = page.getByRole("navigation", { name: "Administração" });
     await expect(nav.locator("[aria-current='page']")).toHaveText("KYC");
     await expect(nav.locator("[aria-current='page']")).toHaveCount(1);
+  });
+});
+
+test.describe("cargos, time excluído e chave da carteira", () => {
+  test("admin promove jogador a organizador e volta para jogador; jogador não organiza", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    // jogador comum: área do organizador restrita e sem formulário de criação
+    await loginOk(page, "jogador5@primearena.local");
+    await page.goto("/organizar");
+    await expect(page.getByText("Seu cargo é Jogador")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Criar organização" })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Principal" }).getByRole("link", { name: "Organizar" })).toHaveCount(0);
+    await logout(page);
+
+    await loginOk(page, "admin@primearena.local");
+    await page.goto("/admin/usuarios?q=jogador5");
+    const row = page.getByRole("row").filter({ hasText: "jogador5" });
+    await expect(row.getByText("Jogador", { exact: true })).toBeVisible();
+    await row.getByRole("button", { name: "Tornar organizador" }).click();
+    await expect(page.getByText("Cargo atualizado.")).toBeVisible();
+    await expect(page.getByRole("row").filter({ hasText: "jogador5" }).getByText("Organizador", { exact: true })).toBeVisible();
+    await logout(page);
+
+    await loginOk(page, "jogador5@primearena.local");
+    await page.goto("/organizar");
+    await expect(page.getByRole("button", { name: "Criar organização" })).toBeVisible();
+    await logout(page);
+
+    await loginOk(page, "admin@primearena.local");
+    await page.goto("/admin/usuarios?q=jogador5");
+    await page.getByRole("row").filter({ hasText: "jogador5" }).getByRole("button", { name: "Voltar para jogador" }).click();
+    await expect(page.getByText("Cargo atualizado.")).toBeVisible();
+    // o admin não tem botão de mudança de cargo na própria linha nem na de outros admins
+    await page.goto("/admin/usuarios?q=admin%40primearena");
+    await expect(page.getByRole("row").filter({ hasText: "admin@primearena.local" }).getByRole("button")).toHaveCount(0);
+    await logout(page);
+  });
+
+  test("admin vê todas as organizações no painel do organizador", async ({ page }) => {
+    await loginOk(page, "admin@primearena.local");
+    await page.goto("/organizar");
+    await expect(page.getByRole("heading", { name: "Todas as organizações" })).toBeVisible();
+    await expect(page.getByText("Prime Arena Oficial").first()).toBeVisible();
+    await expect(page.getByText("Admin da plataforma").first()).toBeVisible();
+    await logout(page);
+  });
+
+  test("time excluído: saldo bloqueado, pedido de revisão, liberação pelo admin e saque", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    await loginOk(page, "lider2@primearena.local");
+    await page.goto("/times");
+    await page.getByRole("link", { name: /Fênix Digital/ }).first().click();
+    await page.waitForURL(/\/times\/[^/]+$/, { timeout: 90_000 });
+    const teamUrl = page.url();
+    await expect(page.getByText(/ficará bloqueado/)).toBeVisible();
+    await page.getByRole("button", { name: "Excluir time" }).click();
+    await expect(page.getByText(/O saldo ficou BLOQUEADO/)).toBeVisible();
+    await expect(page.getByRole("link", { name: /Fênix Digital/ })).toHaveCount(0); // sumiu da lista de times
+
+    // a equipe excluída não movimenta mais o saldo; a Carteira mostra o bloqueio e o pedido de revisão
+    await page.goto("/carteira");
+    await expect(page.getByRole("heading", { name: "Equipes excluídas com saldo" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Equipes excluídas com saldo" }).locator("span", { hasText: /^bloqueado$/ })).toBeVisible();
+    await page.getByLabel(/Explique o pedido/).fill("O time foi desfeito e quero sacar o saldo para a minha conta.");
+    await page.getByRole("button", { name: "Pedir revisão do saldo" }).click();
+    await expect(page.getByText(/Pedido enviado/)).toBeVisible();
+    await expect(page.getByText(/Pedido de revisão enviado em/)).toBeVisible();
+    await logout(page);
+
+    // o admin analisa e libera
+    await loginOk(page, "admin@primearena.local");
+    await page.goto("/admin/saldos");
+    const card = page.locator("div").filter({ has: page.getByText("Fênix Digital") }).filter({ has: page.getByRole("button", { name: "Liberar saldo para saque" }) }).last();
+    await card.getByLabel("Justificativa da liberação").fill("Histórico conferido: depósitos e prêmios do próprio time.");
+    await card.getByRole("button", { name: "Liberar saldo para saque" }).click();
+    await expect(page.getByText("Saldo liberado para saque pelo ex-líder.")).toBeVisible();
+    await logout(page);
+
+    // o ex-líder agora vê o saldo liberado e pode ir ao saque (sem a opção de depositar)
+    await loginOk(page, "lider2@primearena.local");
+    await page.goto("/carteira");
+    await expect(page.getByText("liberado para saque").first()).toBeVisible();
+    await page.getByRole("link", { name: "Sacar o saldo" }).click();
+    await page.waitForURL(/\/carteira\/[^/]+$/, { timeout: 90_000 });
+    await expect(page.getByText("Saldo liberado.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Depositar via Pix" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Sacar por Pix" })).toBeVisible();
+    // o time excluído continua visível para o elenco, com o aviso
+    await page.goto(teamUrl);
+    await expect(page.getByText(/Este time foi excluído/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Excluir time" })).toHaveCount(0);
+    await logout(page);
+
+    // quem nunca foi do elenco não vê o time excluído
+    await loginOk(page, "jogador6@primearena.local");
+    expect((await page.goto(teamUrl))?.status()).toBe(404);
+    await logout(page);
+  });
+
+  test("chave da carteira: desativar esconde a aba e bloqueia as telas; religar restaura", async ({ page }) => {
+    page.on("dialog", (d) => d.accept());
+    const nav = page.getByRole("navigation", { name: "Principal" });
+    await loginOk(page, "admin@primearena.local");
+    await page.goto("/admin/configuracoes");
+    try {
+      await expect(page.getByText("Ativa para os usuários")).toBeVisible();
+      await page.getByRole("button", { name: "Desativar a carteira" }).click();
+      await expect(page.getByText(/Carteira desativada/)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Ativar a carteira" })).toBeVisible();
+
+      await page.goto("/");
+      await expect(nav.getByRole("link", { name: "Carteira" })).toHaveCount(0);
+      await expect(nav.getByRole("link", { name: "Desafios" })).toHaveCount(0);
+      for (const path of ["/carteira", "/desafios", "/desafios/novo"]) {
+        await page.goto(path);
+        await expect(page.getByText("Carteira indisponível no momento")).toBeVisible();
+      }
+    } finally {
+      await page.goto("/admin/configuracoes");
+      const on = page.getByRole("button", { name: "Ativar a carteira" });
+      if (await on.isVisible()) await on.click();
+      await expect(page.getByText(/Carteira ativada/)).toBeVisible();
+    }
+    await page.goto("/");
+    await expect(nav.getByRole("link", { name: "Carteira" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Desafios" })).toBeVisible();
+    await logout(page);
   });
 });

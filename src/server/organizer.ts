@@ -8,13 +8,17 @@ import type { Actor } from "./types";
 export async function organizerOverview(userId: string, isAdmin: boolean) {
   const memberships = await db.orgMember.findMany({ where: { userId }, include: { org: true } });
   const orgIds = memberships.map((m) => m.orgId);
+  // o admin gerencia TODAS as organizações; os demais, só aquelas de que fazem parte
+  const orgs = isAdmin
+    ? (await db.organization.findMany({ orderBy: { name: "asc" } })).map((o) => ({ id: o.id, name: o.name, role: (memberships.find((m) => m.orgId === o.id)?.role ?? "PLATFORM") as "OWNER" | "ADMIN" | "STAFF" | "PLATFORM" }))
+    : memberships.map((m) => ({ id: m.orgId, name: m.org.name, role: m.role as "OWNER" | "ADMIN" | "STAFF" | "PLATFORM" }));
   const tournaments = await db.tournament.findMany({
     where: isAdmin ? {} : { orgId: { in: orgIds } },
     orderBy: { startsAt: "desc" },
     take: 50,
     include: { org: { select: { name: true } }, _count: { select: { participants: { where: { status: { in: ["REGISTERED", "CHECKED_IN", "PENDING_PAYMENT"] } } } } } },
   });
-  return { memberships, tournaments };
+  return { memberships, orgs, tournaments };
 }
 
 export async function markPrizePaid(actorIn: Actor | null, awardId: string, note?: string) {

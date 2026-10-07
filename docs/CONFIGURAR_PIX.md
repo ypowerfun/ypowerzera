@@ -141,10 +141,25 @@ Ao clicar em *Gerar Pix*, o sistema cria um cliente e uma **cobrança Pix** no A
 
 ---
 
+## 4.1 Ativar a Carteira para os usuários
+
+A aba **Carteira**, os depósitos, os saques e os **Desafios** só aparecem para os usuários quando o admin ativa a chave em **Admin → Configurações → Carteira de equipe, depósitos e saques**. O site só permite ligar quando a configuração necessária está pronta (cada item mostra o que falta):
+
+- **Provedor de Pix real** (não o simulador) — seção 3;
+- **Chave de criptografia** dos CPFs (`DATA_ENCRYPTION_KEY`) — seção 3.2;
+- **Agendador** (`CRON_SECRET`) — seção 5.3;
+- **URL pública** com HTTPS (`APP_URL`) — seção 3.4.
+
+Em desenvolvimento (fora de produção) esses itens são dispensados e a chave já vem ligada. Desativada, a aba some, novos depósitos, saques e desafios são bloqueados, mas Pix já pago continua sendo creditado e saques já pedidos continuam na fila do admin.
+
+---
+
 ## 5. Saque 100% liberado pelo administrador
 
 ### 5.1 Ligar a liberação obrigatória
-No `.env`:
+**Pela interface (padrão):** em **Admin → Configurações → Liberação dos saques pelo administrador**, a opção vem **ligada**: todo saque, mesmo pequeno e sem sinal de risco, espera a sua análise. Você pode permitir saques pequenos automáticos ali mesmo (é auditado).
+
+**Pelo `.env`** (reforço, e vale também com a chave desligada para saques acima do limite):
 ```ini
 WITHDRAW_AUTO_APPROVE_MAX_CENTS="0"
 ```

@@ -26,11 +26,11 @@ export function ScrollTable({ children, className, tableClassName }: { children:
 
   return (
     <div className={cx("relative", className)}>
-      <div ref={ref} className="overflow-x-auto rounded-xl border border-line">
+      <div ref={ref} className="overflow-x-auto rounded-lg border border-line">
         <table className={cx("w-full min-w-[32rem] text-left text-sm", tableClassName)}>{children}</table>
       </div>
-      {edges.start && <span aria-hidden className="pointer-events-none absolute inset-y-px left-px w-8 rounded-l-xl bg-gradient-to-r from-bg to-transparent" />}
-      {edges.end && <span aria-hidden className="pointer-events-none absolute inset-y-px right-px w-10 rounded-r-xl bg-gradient-to-l from-bg to-transparent" />}
+      {edges.start && <span aria-hidden className="pointer-events-none absolute inset-y-px left-px w-8 rounded-l-lg bg-gradient-to-r from-bg to-transparent" />}
+      {edges.end && <span aria-hidden className="pointer-events-none absolute inset-y-px right-px w-10 rounded-r-lg bg-gradient-to-l from-bg to-transparent" />}
     </div>
   );
 }

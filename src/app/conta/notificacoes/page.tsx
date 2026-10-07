@@ -19,9 +19,9 @@ export default async function NotificationsPage() {
       {items.length === 0 ? <Empty title="Nada por aqui ainda" /> : (
         <div className="space-y-2">
           {items.map((n) => (
-            <Card key={n.id} className={cx("py-3", !n.readAt && "border-gold/50 shadow-gold")}>
+            <Card key={n.id} className={cx("py-3", !n.readAt && "border-brand/50 shadow-glow")}>
               <div className="flex items-start justify-between gap-3">
-                <div><p className="text-sm font-semibold">{!n.readAt && <><span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-gold align-middle" /><span className="sr-only">Não lida: </span></>}{n.href ? <Link href={n.href} className="hover:text-brand-soft">{n.title}</Link> : n.title}</p><p className="text-sm text-muted">{n.body}</p></div>
+                <div><p className="text-sm font-semibold">{!n.readAt && <><span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-brand align-middle" /><span className="sr-only">Não lida: </span></>}{n.href ? <Link href={n.href} className="hover:text-brand-soft">{n.title}</Link> : n.title}</p><p className="text-sm text-muted">{n.body}</p></div>
                 <span className="shrink-0 text-xs text-muted">{formatDateTime(n.createdAt)}</span>
               </div>
             </Card>

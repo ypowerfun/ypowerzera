@@ -33,7 +33,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
         <GameBadge abbr={game.abbr} accent={game.accent} size="lg" />
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="break-words text-3xl font-black">{game.name}</h1>
-          <span aria-hidden className="mt-2 block h-0.5 w-12 rounded-full bg-gradient-to-r from-gold to-transparent" />
+          <span aria-hidden className="mt-2 block h-0.5 w-12 rounded-full bg-gradient-to-r from-brand to-transparent" />
           <p className="mt-2 text-muted">{game.tagline}</p>
         </div>
         <ButtonLink href={`/organizar/novo?jogo=${game.id}`} className="w-full sm:w-auto">Criar campeonato de {game.abbr}</ButtonLink>
@@ -76,7 +76,7 @@ export default async function GamePage({ params }: { params: Promise<{ slug: str
               <p className="mt-1 text-sm text-muted">{p.description}</p>
               <ol className="mt-3 space-y-1 text-xs">
                 {p.stages.map((s, i) => (
-                  <li key={i} className="flex gap-2"><span className="font-bold text-gold">{i + 1}.</span><span><b>{s.name}:</b> <span className="text-muted">{describeStage(s.settings)}</span></span></li>
+                  <li key={i} className="flex gap-2"><span className="font-bold text-silver">{i + 1}.</span><span><b>{s.name}:</b> <span className="text-muted">{describeStage(s.settings)}</span></span></li>
                 ))}
               </ol>
               <p className="mt-3 text-xs text-muted">{p.minParticipants === p.maxParticipants ? `${p.minParticipants} participantes` : `${p.minParticipants} a ${p.maxParticipants} participantes (ideal: ${p.suggestedParticipants})`}</p>

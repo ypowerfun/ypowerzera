@@ -17,6 +17,7 @@ import { handlePixWebhook, handleTransferAuthorization } from "@/server/pix-webh
 import { mockFinishTransfer, mockPix, mockTransferAuthRequest } from "@/server/pix/mock";
 import { freezeWallet, reconcileAll, withdrawableBreakdown } from "@/server/wallet";
 import { changePassword } from "@/server/auth";
+import { setWithdrawalsNeedAdminApproval, withdrawalsNeedAdminApproval } from "@/server/settings";
 import { signPayload } from "@/lib/signature";
 
 const nonce = () => `nonce-${Math.random().toString(36).slice(2)}-${Date.now()}`;
@@ -295,7 +296,23 @@ describe("revisão, cancelamento e envio", () => {
     expect(await db.mockPixTransfer.count({ where: { externalReference: id } })).toBe(0);
   });
 
-  it("saque seguinte, pequeno e limpo, é aprovado automaticamente (com atraso)", async () => {
+  it("por padrão TODO saque exige a liberação do admin, até o pequeno e sem risco", async () => {
+    expect(await withdrawalsNeedAdminApproval()).toBe(true);
+    const { winner } = await leaderWithWinnings(300_000, 50_000);
+    const small = await confirmed(winner, 2_000);
+    expect(small.status).toBe("under_review");
+    const w = await db.withdrawal.findUniqueOrThrow({ where: { id: small.id } });
+    expect(w.status).toBe("UNDER_REVIEW");
+    expect(w.processAfter).toBeNull(); // sem aprovação do admin não há envio agendado
+    await reviewWithdrawal(await admin(), small.id, "approve", "Conferi o titular e o histórico");
+    const after = await db.withdrawal.findUniqueOrThrow({ where: { id: small.id } });
+    expect(after.status).toBe("APPROVED");
+    expect(after.processAfter!.getTime()).toBeGreaterThan(Date.now() + 20 * 60_000);
+  });
+
+  it("saque seguinte, pequeno e limpo, é aprovado automaticamente (com atraso) quando o admin desliga a exigência", async () => {
+    await setWithdrawalsNeedAdminApproval(await admin(), false);
+    try {
     const { winner } = await leaderWithWinnings(300_000, 50_000);
     const first = await approved(winner, 5_000);
     await processWithdrawal(first);
@@ -310,6 +327,9 @@ describe("revisão, cancelamento e envio", () => {
     // valor acima do limite automático volta a exigir revisão
     const big = await confirmed(winner, 60_000);
     expect(big.status).toBe("under_review");
+    } finally {
+      await setWithdrawalsNeedAdminApproval(await admin(), true);
+    }
   });
 
   it("tarifa de saque preserva a conservação do dinheiro", async () => {

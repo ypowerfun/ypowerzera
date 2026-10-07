@@ -91,7 +91,7 @@ export async function sendVerificationEmail(user: Pick<User, "id" | "email" | "d
   const token = await issueToken(user.id, "VERIFY_EMAIL", VERIFY_HOURS);
   await sendMail({
     to: user.email,
-    subject: "Confirme seu e-mail — Prime Arena One",
+    subject: "Confirme seu e-mail — Prime Arena",
     text: `Olá, ${user.displayName}!\n\nConfirme seu e-mail para poder se inscrever em campeonatos:\n${getEnv().appUrl}/verificar-email/${token}\n\nO link vale por ${VERIFY_HOURS} horas. Se você não criou esta conta, ignore este e-mail.`,
   });
 }
@@ -201,7 +201,7 @@ export async function requestPasswordReset(emailInput: string, meta: { ip?: stri
   const token = await issueToken(user.id, "RESET_PASSWORD", RESET_HOURS);
   await sendMail({
     to: user.email,
-    subject: "Redefinição de senha — Prime Arena One",
+    subject: "Redefinição de senha — Prime Arena",
     text: `Olá, ${user.displayName}!\n\nPara criar uma nova senha, acesse:\n${getEnv().appUrl}/redefinir-senha/${token}\n\nO link vale por ${RESET_HOURS} hora. Se não foi você, ignore este e-mail — sua senha atual continua valendo.`,
   });
 }

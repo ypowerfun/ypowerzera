@@ -5,15 +5,17 @@ import { ScrollTable } from "./scroll-table";
 
 export { cx };
 
+// Cantos chanfrados (clip-path) cortam bordas, sombras externas e o contorno de foco: por isso os botões usam fundo cheio,
+// anel interno (inset) e o foco também é desenhado por dentro.
 const btnBase =
-  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition focus-ring disabled:opacity-50 disabled:cursor-not-allowed";
+  "chamfer inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold tracking-wide transition focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_#fff] disabled:opacity-50 disabled:cursor-not-allowed";
 const btnVariants = {
-  primary: "bg-gradient-to-b from-brand-strong to-[#0d4bbf] text-white border border-brand-soft/40 shadow-glow hover:brightness-110",
-  gold: "bg-gradient-to-b from-[#ffd56e] to-gold-strong text-[#1b1203] border border-[#ffe19a]/60 shadow-gold hover:brightness-105",
-  secondary: "bg-elevated text-ink border border-line hover:border-brand-soft/60 hover:bg-[#12204a]",
+  primary: "bg-gradient-to-b from-brand to-[#a30d19] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.28)] hover:brightness-110",
+  light: "bg-gradient-to-b from-white to-[#cfd4df] text-[#0b0c10] hover:brightness-105",
+  secondary: "bg-elevated text-ink shadow-[inset_0_0_0_1px_var(--color-line)] hover:bg-[#232733]",
   ghost: "text-muted hover:text-ink hover:bg-elevated",
-  danger: "bg-danger/15 text-danger border border-danger/40 hover:bg-danger/25",
-  accent: "bg-accent/15 text-accent border border-accent/40 hover:bg-accent/25",
+  danger: "bg-danger/15 text-danger shadow-[inset_0_0_0_1px_rgb(255_93_108/0.45)] hover:bg-danger/25",
+  accent: "bg-accent/15 text-accent shadow-[inset_0_0_0_1px_rgb(143_184_255/0.4)] hover:bg-accent/25",
 } as const;
 
 export function buttonClass(variant: keyof typeof btnVariants = "primary", extra = "") {
@@ -30,7 +32,7 @@ export function ButtonLink({ href, variant = "primary", className, children, ...
 
 export function Card({ className, children, ...rest }: ComponentProps<"div">) {
   return (
-    <div className={cx("rounded-xl border border-line bg-surface/80 p-5 shadow-[inset_0_1px_0_rgb(255_255_255/0.04)] backdrop-blur", className)} {...rest}>
+    <div className={cx("rounded-lg border border-line bg-surface/80 p-5 shadow-[inset_0_1px_0_rgb(255_255_255/0.04)] backdrop-blur", className)} {...rest}>
       {children}
     </div>
   );
@@ -41,7 +43,7 @@ export function PageTitle({ title, subtitle, actions }: { title: string; subtitl
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{title}</h1>
-        <span aria-hidden className="mt-2 block h-0.5 w-12 rounded-full bg-gradient-to-r from-gold to-transparent" />
+        <span aria-hidden className="mt-2 block h-0.5 w-12 rounded-full bg-gradient-to-r from-brand to-transparent" />
         {subtitle && <p className="mt-2 max-w-2xl text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
@@ -56,7 +58,7 @@ const badgeTone = {
   warn: "border-warn/40 text-warn bg-warn/10",
   danger: "border-danger/40 text-danger bg-danger/10",
   accent: "border-accent/40 text-accent bg-accent/10",
-  gold: "border-gold/40 text-gold bg-gold/10",
+  silver: "border-silver/30 text-silver bg-white/5",
 } as const;
 
 export function Badge({ tone = "neutral", children, className }: { tone?: keyof typeof badgeTone; children: ReactNode; className?: string }) {
@@ -65,7 +67,7 @@ export function Badge({ tone = "neutral", children, className }: { tone?: keyof 
 
 export function Alert({ tone = "info", children, className }: { tone?: "info" | "ok" | "warn" | "danger"; children: ReactNode; className?: string }) {
   const t = {
-    info: "border-brand/40 bg-brand/10 text-brand-soft",
+    info: "border-accent/40 bg-accent/10 text-accent",
     ok: "border-ok/40 bg-ok/10 text-ok",
     warn: "border-warn/40 bg-warn/10 text-warn",
     danger: "border-danger/40 bg-danger/10 text-danger",
@@ -90,7 +92,7 @@ export function Field({ label, hint, error, children, htmlFor }: { label: string
   );
 }
 
-const inputBase = "w-full max-w-full rounded-lg border border-line bg-bg/70 px-3 py-2.5 text-sm text-ink placeholder:text-muted/90 focus-ring focus:border-brand-soft";
+const inputBase = "w-full max-w-full rounded-md border border-line bg-bg/70 px-3 py-2.5 text-sm text-ink placeholder:text-muted/90 focus-ring focus:border-brand-soft";
 
 export function Input({ className, ...rest }: ComponentProps<"input">) {
   return <input className={cx(inputBase, className)} {...rest} />;
@@ -115,11 +117,11 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   );
 }
 
-export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "ok" | "warn" | "brand" | "gold" }) {
+export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "ok" | "warn" | "brand" }) {
   return (
     <div className="min-w-0 rounded-xl border border-line bg-elevated/60 p-4">
       <p className="text-xs uppercase tracking-wider text-muted">{label}</p>
-      <p className={cx("mt-1 text-xl font-extrabold sm:text-2xl", tone === "ok" && "text-ok", tone === "warn" && "text-warn", tone === "brand" && "text-brand-soft", tone === "gold" && "text-gold")}>{value}</p>
+      <p className={cx("mt-1 text-xl font-extrabold sm:text-2xl", tone === "ok" && "text-ok", tone === "warn" && "text-warn", tone === "brand" && "text-brand-soft")}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );
@@ -151,7 +153,7 @@ export function SectionTitle({ id, children, action }: { id?: string; children: 
   return (
     <div className="mb-4 flex items-end justify-between gap-3">
       <h2 id={id} className="flex min-w-0 items-center gap-2.5 text-lg font-black uppercase italic tracking-wide sm:text-xl">
-        <span aria-hidden className="h-4 w-1.5 -skew-x-12 rounded-[2px] bg-gradient-to-b from-gold to-gold-deep" />
+        <span aria-hidden className="h-4 w-1.5 -skew-x-12 rounded-[2px] bg-gradient-to-b from-brand to-brand-strong" />
         {children}
       </h2>
       {action && <div className="shrink-0 whitespace-nowrap text-right">{action}</div>}

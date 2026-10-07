@@ -26,8 +26,25 @@ function needsSetup() {
   return !existsSync(path.resolve("prisma", url.slice("file:".length).split("?")[0])); // SQLite é relativo à pasta do schema
 }
 
+/** Roda em silêncio; só mostra a saída se falhar. */
+function quiet(label, cmd, args) {
+  const r = spawnSync(cmd, args, { shell: true, encoding: "utf8" });
+  if (r.status !== 0) {
+    console.error(`\n✖ Falhou: ${label}\n${r.stdout ?? ""}${r.stderr ?? ""}`);
+    process.exit(r.status ?? 1);
+  }
+}
+
 if (ifNeeded) {
-  if (!needsSetup()) process.exit(0);
+  if (!needsSetup()) {
+    // Ambiente já existe: só mantém o banco e o cliente em dia com o esquema (atualizações do projeto adicionam tabelas/colunas).
+    // Mudanças que apagariam dados NÃO são aplicadas sozinhas: o Prisma recusa e o erro aparece aqui.
+    if (databaseUrl().startsWith("file:")) {
+      quiet("Atualizando o esquema do banco", "npx", ["prisma", "db", "push", "--skip-generate"]);
+      quiet("Atualizando o cliente do banco", "npx", ["prisma", "generate"]);
+    }
+    process.exit(0);
+  }
   console.log("\n• Primeira execução neste computador: preparando o ambiente (leva menos de um minuto)…");
 }
 

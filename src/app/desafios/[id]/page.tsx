@@ -48,7 +48,7 @@ export default async function ChallengePage({ params, searchParams }: { params: 
       <PageTitle title={`${c.creatorTeam.name} × ${c.opponentTeam?.name ?? "aguardando adversário"}`} subtitle={<span className="inline-flex items-center gap-2"><GameBadge abbr={game.abbr} accent={game.accent} size="sm" />{game.name} · {mode.label} · melhor de {c.bestOf}</span>} actions={<Badge tone={statusTone[c.status]}>{statusLabel[c.status]}</Badge>} />
 
       <Card className="grid gap-4 text-center sm:grid-cols-3">
-        <div><p className="text-xs uppercase tracking-wider text-muted">Aposta de cada equipe</p><p className="text-3xl font-black text-gold">{formatMoney(c.stakeCents)}</p></div>
+        <div><p className="text-xs uppercase tracking-wider text-muted">Aposta de cada equipe</p><p className="text-3xl font-black text-silver">{formatMoney(c.stakeCents)}</p></div>
         <div><p className="text-xs uppercase tracking-wider text-muted">Pote</p><p className="text-3xl font-black">{formatMoney(c.stakeCents * 2)}</p><p className="text-xs text-muted">taxa {formatMoney(fee)} ({(c.feeBps / 100).toFixed(0)}%)</p></div>
         <div><p className="text-xs uppercase tracking-wider text-muted">Vencedor recebe</p><p className="text-3xl font-black text-ok">{formatMoney(winnerGets)}</p><p className="text-xs text-muted">lucro de {formatMoney(c.stakeCents - fee)}</p></div>
       </Card>

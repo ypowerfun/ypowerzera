@@ -1,33 +1,28 @@
 @import "tailwindcss";
 
 /*
-  Prime Arena One — tema AZUL DARK.
-  Paleta tirada da logo: azul elétrico (P), ouro e prata (A, coroa e ARENA), violeta neon da arquibancada
-  e o preto-azulado do fundo. O violeta é só decorativo (brilhos); texto usa azul, ouro, prata e cinza-azulado.
+  Prime Arena — tema GRAFITE com VERMELHO e PRATA, tirado da logo oficial: o "A" vermelho facetado, o logotipo
+  em prata metálico e o fundo grafite. O vermelho é a cor de ação (botão principal, aba ativa, destaques); a prata
+  é a tipografia de exibição. Verde/laranja/vermelho-erro só indicam estado; o azul-prata (accent) é informativo.
 */
 @theme {
-  --color-bg: #040815;
-  --color-surface: #08102a;
-  --color-elevated: #0e1a3f;
-  --color-line: #1c2d66;
-  --color-line-soft: #132050;
-  --color-ink: #eaf0ff;
-  --color-muted: #94a7dc;
-  --color-brand: #2f86ff;
-  --color-brand-strong: #1664e6;
-  --color-brand-soft: #66b6ff;
-  --color-accent: #22d3ee;
-  --color-gold: #ffc247;
-  --color-gold-strong: #f5a30b;
-  --color-gold-deep: #b45f12;
-  --color-violet: #7c4dff;
-  --color-silver: #dfe6f5;
+  --color-bg: #0b0c10;
+  --color-surface: #12141a;
+  --color-elevated: #1a1d25;
+  --color-line: #2a2e3a;
+  --color-line-soft: #1e222c;
+  --color-ink: #f3f4f8;
+  --color-muted: #9aa3b8;
+  --color-brand: #e11d2a;
+  --color-brand-strong: #c8101e;
+  --color-brand-soft: #ff7a82;
+  --color-accent: #8fb8ff;
+  --color-silver: #dfe3ec;
   --color-ok: #34d399;
-  --color-warn: #fb923c;
-  --color-danger: #f87171;
+  --color-warn: #fbbf24;
+  --color-danger: #ff5d6c;
   --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --shadow-glow: 0 0 0 1px rgb(47 134 255 / 0.35), 0 10px 34px -10px rgb(22 100 230 / 0.65);
-  --shadow-gold: 0 0 0 1px rgb(255 194 71 / 0.4), 0 10px 30px -10px rgb(245 163 11 / 0.55);
+  --shadow-glow: 0 0 0 1px rgb(225 29 42 / 0.35), 0 10px 34px -10px rgb(225 29 42 / 0.6);
 }
 
 :root {
@@ -42,27 +37,27 @@ body {
   min-height: 100vh;
   color: var(--color-ink);
   font-family: var(--font-sans);
-  /* luzes da arena: azul à esquerda, violeta à direita, um brilho dourado embaixo */
+  /* luz de arena: vermelho no canto, um brilho prateado frio do outro lado e brasa embaixo */
   background:
-    radial-gradient(1100px 560px at 8% -10%, rgb(22 100 230 / 0.3), transparent 60%),
-    radial-gradient(900px 520px at 100% -5%, rgb(124 77 255 / 0.2), transparent 58%),
-    radial-gradient(900px 420px at 50% 115%, rgb(245 163 11 / 0.1), transparent 60%),
+    radial-gradient(1100px 560px at 6% -12%, rgb(225 29 42 / 0.2), transparent 60%),
+    radial-gradient(900px 520px at 100% -8%, rgb(150 170 255 / 0.07), transparent 58%),
+    radial-gradient(900px 420px at 50% 118%, rgb(225 29 42 / 0.09), transparent 60%),
     var(--color-bg);
   background-attachment: fixed;
 }
 
-/* feixes diagonais sutis, ecoando as linhas angulares da logo */
+/* feixes diagonais sutis, ecoando as arestas do logotipo */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: repeating-linear-gradient(115deg, transparent 0 56px, rgb(130 165 255 / 0.03) 56px 57px);
+  background: repeating-linear-gradient(115deg, transparent 0 56px, rgb(255 255 255 / 0.022) 56px 57px);
 }
 
 ::selection {
-  background: rgb(47 134 255 / 0.5);
+  background: rgb(225 29 42 / 0.5);
 }
 
 /* links herdam a cor do pai: já é feito pelo preflight do Tailwind (@layer base); uma regra aqui, fora de camada, anularia todo text-* em <a> */
@@ -70,7 +65,7 @@ body::before {
 /* barras de rolagem discretas */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #4a63b8 transparent;
+  scrollbar-color: #4a5164 transparent;
 }
 
 input,
@@ -86,37 +81,41 @@ textarea {
 
 /* ───────── Utilitários da marca ───────── */
 
-/* títulos de exibição: itálico pesado em caixa alta, como o logotipo */
+/* títulos de exibição: peso máximo em caixa alta, como o logotipo */
 @utility display {
-  font-style: italic;
   font-weight: 900;
   text-transform: uppercase;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.01em;
 }
 
 /* prata metálico (PRIME) */
 @utility text-metal {
-  background-image: linear-gradient(180deg, #ffffff 0%, #dfe6f5 42%, #8d9bc6 100%);
+  background-image: linear-gradient(180deg, #ffffff 0%, #dfe3ec 42%, #8b93a8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-/* ouro metálico (coroa, ARENA) */
-@utility text-gold-metal {
-  background-image: linear-gradient(180deg, #fff3bd 0%, #ffc247 48%, #c9791a 100%);
+/* vermelho metálico (ARENA, destaques) */
+@utility text-red-metal {
+  background-image: linear-gradient(180deg, #ff8a90 0%, #e11d2a 50%, #9b0f17 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-/* filete de luz azul → violeta → ouro */
+/* filete de luz vermelho → prata */
 @utility glow-line {
   height: 1px;
-  background: linear-gradient(90deg, transparent, #2f86ff 22%, #7c4dff 50%, #ffc247 78%, transparent);
+  background: linear-gradient(90deg, transparent, #e11d2a 28%, #dfe3ec 50%, #e11d2a 72%, transparent);
 }
 
-/* cantoneiras douradas em cartões de destaque */
+/* cantos chanfrados, como as letras biseladas do logotipo (bordas e sombras externas são cortadas: use fundo, não borda) */
+@utility chamfer {
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+}
+
+/* cantoneiras vermelhas em cartões de destaque */
 @utility corners {
   position: relative;
 
@@ -127,8 +126,8 @@ textarea {
     width: 20px;
     height: 20px;
     pointer-events: none;
-    border: 2px solid var(--color-gold);
-    opacity: 0.85;
+    border: 2px solid var(--color-brand);
+    opacity: 0.9;
   }
 
   &::before {
@@ -136,7 +135,7 @@ textarea {
     left: -1px;
     border-right: 0;
     border-bottom: 0;
-    border-top-left-radius: 16px;
+    border-top-left-radius: 12px;
   }
 
   &::after {
@@ -144,7 +143,7 @@ textarea {
     bottom: -1px;
     border-left: 0;
     border-top: 0;
-    border-bottom-right-radius: 16px;
+    border-bottom-right-radius: 12px;
   }
 }
 

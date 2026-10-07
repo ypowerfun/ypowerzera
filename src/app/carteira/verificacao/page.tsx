@@ -4,12 +4,15 @@ import { ActionForm } from "@/components/action-form";
 import { Alert, Badge, Card, Field, Input, PageTitle } from "@/components/ui";
 import { getKyc } from "@/server/kyc";
 import { requireUser } from "@/server/session";
+import { WalletUnavailable } from "@/components/wallet-off";
+import { isWalletOn } from "@/server/settings";
 
 export const metadata: Metadata = { title: "Verificação de identidade" };
 export const dynamic = "force-dynamic";
 
 export default async function KycPage() {
   const user = await requireUser("/carteira/verificacao");
+  if (!(await isWalletOn())) return <WalletUnavailable />;
   const kyc = await getKyc(user.id);
   return (
     <div className="mx-auto max-w-xl space-y-5">

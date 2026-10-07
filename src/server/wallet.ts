@@ -146,6 +146,11 @@ export async function withdrawableBreakdown(tx: Tx, walletId: string, now = new 
   const unplayed = Math.max(0, deposited - played);
   const recentDeposits = Math.max(0, await sum("DEPOSIT", new Date(now.getTime() - cfg.depositHoldHours * 3600_000)));
   const recentWins = Math.max(0, await sum("PRIZE_WIN", new Date(now.getTime() - cfg.winHoldHours * 3600_000)));
+  // Saldo de time EXCLUÍDO e já liberado pelo admin: ele revisou o caso, então não vale a retenção de giro/72h.
+  const team = w.teamId ? await tx.team.findUnique({ where: { id: w.teamId }, select: { deletedAt: true, balanceReleasedAt: true } }) : null;
+  if (team?.deletedAt && team.balanceReleasedAt) {
+    return { balanceCents: w.balanceCents, lockedCents: w.lockedCents, unplayedDepositsCents: 0, recentDepositsCents: 0, recentWinsCents: 0, withdrawableCents: w.balanceCents };
+  }
   const retained = Math.max(unplayed, recentDeposits) + recentWins;
   return {
     balanceCents: w.balanceCents,
