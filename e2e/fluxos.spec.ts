@@ -28,7 +28,7 @@ test.describe("público", () => {
     const lum = (c: string) => { const [r, g, b] = c.match(/\d+/g)!.map(Number); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
     expect(lum(bg)).toBeLessThan(60);
     expect(lum(fg)).toBeGreaterThan(160);
-    const primary = page.getByRole("link", { name: "Ver torneios", exact: true }).first();
+    const primary = page.getByRole("link", { name: /Escolher um jogo/ }).first();
     expect(await primary.evaluate((e) => getComputedStyle(e).backgroundImage)).toContain("225, 29, 42"); // vermelho da marca (#e11d2a)
   });
 
@@ -246,7 +246,7 @@ test.describe("regressões da revisão visual", () => {
 
   test("botão claro tem texto escuro (a cor do link não sobrescreve o utilitário)", async ({ page }) => {
     await page.goto("/");
-    const light = page.getByRole("link", { name: "Criar um campeonato", exact: true }).first();
+    const light = page.getByRole("link", { name: "Ver torneios", exact: true }).first();
     expect(lum(await light.evaluate((e) => getComputedStyle(e).color))).toBeLessThan(60); // texto escuro sobre o botão prateado
     // links com text-brand-soft realmente ficam vermelhos (não herdam o branco do pai)
     const soft = page.getByRole("link", { name: /Ver todos/ }).first();
@@ -490,7 +490,7 @@ test.describe("banner da home, logos dos jogos e organização", () => {
     await expect(page.getByText("Organização atualizada.")).toBeVisible();
     await page.reload();
     await expect(page.getByRole("heading", { name: "Liga E2E Renomeada" })).toBeVisible();
-    await expect(page.getByText("Organização criada pelo teste.")).toBeVisible();
+    await expect(page.locator("p", { hasText: "Organização criada pelo teste." })).toBeVisible();
 
     // nome errado não exclui
     await card().getByText("Excluir organização…").click();
