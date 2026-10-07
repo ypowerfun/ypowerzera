@@ -49,13 +49,14 @@ export async function clearSessionCookie() {
 
 /**
  * IP e user-agent para limitação de tentativas e auditoria.
- * Em produção o cabeçalho x-forwarded-for só é usado com TRUST_PROXY=true (proxy que o sobrescreve);
+ * Em produção o cabeçalho x-forwarded-for só é usado com TRUST_PROXY=true (proxy seu na frente, como o Caddy);
  * caso contrário o IP fica "unknown" — um balde único, que falha fechado em vez de poder ser forjado.
  */
 export async function clientMeta(): Promise<{ ip: string; userAgent?: string }> {
   const h = await headers();
   const env = getEnv();
   const trusted = env.trustProxy ?? !env.isProd;
-  const forwarded = trusted ? h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") : null;
+  // Último item de x-forwarded-for: é o que o SEU proxy anotou. O primeiro pode vir escrito pelo próprio cliente.
+  const forwarded = trusted ? h.get("x-forwarded-for")?.split(",").map((x) => x.trim()).filter(Boolean).at(-1) || h.get("x-real-ip") : null;
   return { ip: (forwarded || "unknown").slice(0, 64), userAgent: h.get("user-agent") ?? undefined };
 }

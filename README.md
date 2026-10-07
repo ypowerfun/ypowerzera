@@ -9,7 +9,7 @@ Jogos: **League of Legends, VALORANT, Counter-Strike 2, Fortnite, Apex Legends, 
 ## Sumário
 
 - [O que tem](#o-que-tem) · [Rodando](#rodando-em-desenvolvimento) · [Testes](#testes) · [Formatos por jogo](#formatos-por-jogo)
-- [Cargos e permissões](#cargos-e-permissões) · [Carteira e desafios](#carteira-e-desafios) · [Modelo de segurança](#modelo-de-segurança) · [Produção](#produção) · [Antes de operar com dinheiro real](#antes-de-operar-com-dinheiro-real)
+- [Cargos e permissões](#cargos-e-permissões) · [Carteira e desafios](#carteira-e-desafios) · [Modelo de segurança](#modelo-de-segurança) · [Produção e hospedagem](#produção) · [Antes de operar com dinheiro real](#antes-de-operar-com-dinheiro-real)
 
 ## O que tem
 
@@ -115,15 +115,27 @@ Nenhum sistema é "à prova de fraude". O desenho reduz a superfície e faz as f
 
 ## Produção
 
-> **Pix real (depósito e saque com liberação do admin):** guia completo em [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md), da conta no provedor até o QR Code e o saque funcionando, e o que precisa ser resolvido antes (conformidade do provedor).
+**Colocar no ar (passo a passo, para quem não programa):**
 
-1. **Banco**: troque o `provider` em `prisma/schema.prisma` para `postgresql` (recomendado — SQLite é só para dev) e use `DATABASE_URL` de um Postgres com backup.
-2. **Segredos** (veja `.env.example`): `APP_SECRET` (≥ 32), `DATA_ENCRYPTION_KEY` (**faça backup**: sem ela os CPFs cifrados não se recuperam), `CRON_SECRET`, chaves do provedor de pagamento e de Pix.
-3. **Proxy**: defina `TRUST_PROXY=true` apenas atrás de um proxy/CDN que **sobrescreve** `x-forwarded-for`; caso contrário `false`.
-4. **Agendador**: chame `POST /api/cron/wallet` a cada 1–5 min com `Authorization: Bearer $CRON_SECRET` (envia saques liberados, expira cobranças/desafios, concilia).
-5. **Webhooks**: aponte o provedor para `/api/webhooks/pix` e `/api/webhooks/pix/transfer-authorization`; o Stripe para `/api/webhooks/stripe`.
+| Guia | Para quê |
+|---|---|
+| [`docs/HOSPEDAGEM.md`](docs/HOSPEDAGEM.md) | Do `.zip` ao site online com HTTPS: VPS, domínio, `.env`, `docker compose up -d --build`, administrador, backups, atualização |
+| [`docs/CONFIGURAR_EMAIL.md`](docs/CONFIGURAR_EMAIL.md) | Enviar o **e-mail de confirmação de conta** e de recuperação de senha (SMTP: Brevo, Resend, Gmail…) |
+| [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md) | Pix real (depósito e saque com liberação do admin), da conta no provedor até o QR Code, e o que resolver antes (conformidade) |
+
+O pacote inclui `Dockerfile`, `docker-compose.yml` (site + HTTPS automático com Caddy + agendador + backup diário) e `.env.production.example`. Comandos úteis: `npm run secrets` (gera os segredos), `npm run mail:test -- voce@exemplo.com` (testa o e-mail), `npm run verificar-site -- https://seusite.com.br` (confere a segurança do site no ar), `npm run backup` (cópia do banco). Em **Admin → Configurações → Verificação do site** há um checklist e o botão de e-mail de teste.
+
+**Lançamento em duas fases (recomendado):** primeiro só campeonatos (`WALLET_ENABLED="false"`, `PAYMENTS_PROVIDER="none"`), depois a carteira com Pix quando o provedor estiver aprovado e testado no sandbox.
+
+Em resumo, o que a produção exige (o site **recusa subir** se faltar; o motivo aparece nos logs):
+
+1. **Banco**: o caminho testado é **uma instância** com **SQLite em disco persistente + backup** (já pronto no `docker-compose.yml`). Postgres exigiria trocar o `provider` em `prisma/schema.prisma` e revalidar as transações serializáveis (nova tentativa em `P2034`) e os testes; não foi validado.
+2. **Segredos** (veja `.env.production.example`): `APP_SECRET` (≥ 32), `DATA_ENCRYPTION_KEY` (**faça backup**: sem ela os CPFs cifrados não se recuperam), `CRON_SECRET`, `ADMIN_EMAILS`, `SMTP_URL`, `APP_URL` com `https://`.
+3. **Proxy**: `TRUST_PROXY=true` apenas atrás de um proxy que **sobrescreve** `x-forwarded-for` (o Caddy do compose faz isso; o site usa o último endereço da lista). Sem proxy, `false`.
+4. **Agendador**: `POST /api/cron/wallet` a cada 1–5 min com `Authorization: Bearer $CRON_SECRET` (envia saques liberados, expira cobranças/desafios, concilia). O `docker-compose.yml` já faz isso a cada 2 min.
+5. **Webhooks** (Fase 2): aponte o provedor para `/api/webhooks/pix` e `/api/webhooks/pix/transfer-authorization`; o Stripe para `/api/webhooks/stripe`.
 6. **Freio de emergência**: `PAYOUTS_PAUSED=true` suspende todos os saques sem derrubar o resto.
-7. `npm run build && npm start`.
+7. Sem Docker: `npm ci && npm run build && npx prisma db push && npm start` (veja a seção 12 de `docs/HOSPEDAGEM.md`).
 
 ## Antes de operar com dinheiro real
 

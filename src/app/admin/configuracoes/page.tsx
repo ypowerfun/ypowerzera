@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { toggleWalletAction, toggleWithdrawApprovalAction } from "@/app/actions/admin";
+import { sendTestEmailAction, toggleWalletAction, toggleWithdrawApprovalAction } from "@/app/actions/admin";
 import { ActionForm } from "@/components/action-form";
 import { Alert, Badge, Card, PageTitle, buttonClass } from "@/components/ui";
 import { requireAdmin } from "@/server/session";
-import { walletState } from "@/server/settings";
+import { siteHealth, walletState } from "@/server/settings";
 
 export const metadata: Metadata = { title: "Admin · Configurações", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminSettings() {
   await requireAdmin();
-  const s = await walletState();
+  const [s, health] = await Promise.all([walletState(), siteHealth()]);
   const canEnable = !s.envBlocked && s.readiness.ready;
   const status = s.effective
     ? { tone: "ok" as const, label: "Ativa para os usuários" }
@@ -23,6 +23,29 @@ export default async function AdminSettings() {
   return (
     <div className="space-y-6">
       <PageTitle title="Configurações" subtitle="Controle o que os usuários veem e como o dinheiro circula." />
+
+      <Card className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black">Verificação do site</h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted">O que precisa estar certo para o site funcionar de verdade na internet. Itens em vermelho pedem ajuste no servidor (variáveis do <code>.env</code>).</p>
+          </div>
+          <Badge tone={health.every((i) => i.ok) ? "ok" : "warn"}>{health.every((i) => i.ok) ? "Tudo certo" : `${health.filter((i) => !i.ok).length} item(ns) para ajustar`}</Badge>
+        </div>
+        <ul className="divide-y divide-line-soft border border-line">
+          {health.map((i) => (
+            <li key={i.key} className="flex items-start gap-3 px-4 py-3 text-sm">
+              <span aria-hidden className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center text-xs font-black ${i.ok ? "bg-ok/20 text-ok" : "bg-danger/20 text-danger"}`}>{i.ok ? "✓" : "✕"}</span>
+              <span className="min-w-0">
+                <b>{i.label}</b>
+                <span className={`block text-xs ${i.ok ? "text-muted" : "text-danger"}`}><span className="sr-only">{i.ok ? "Pronto. " : "Pendente. "}</span>{i.hint}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <ActionForm action={sendTestEmailAction} className="" submit="Enviar e-mail de teste para mim" submitVariant="secondary" submitClassName="">{null}</ActionForm>
+        <p className="text-xs text-muted">Manda uma mensagem de teste para o e-mail da sua conta de administrador. Se ela chegar (olhe também o spam), a confirmação de conta dos usuários vai chegar.</p>
+      </Card>
 
       <Card className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3">

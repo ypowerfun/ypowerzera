@@ -2,6 +2,8 @@
 
 Este guia leva do "não tenho nada" até o QR Code de depósito e o saque funcionando, com **todo saque liberado por um administrador** antes de sair dinheiro.
 
+> **Ordem recomendada:** primeiro coloque o site no ar **só com campeonatos** (`WALLET_ENABLED="false"`) seguindo [`HOSPEDAGEM.md`](HOSPEDAGEM.md) e [`CONFIGURAR_EMAIL.md`](CONFIGURAR_EMAIL.md). Só depois, com o site funcionando e o Asaas aprovado, siga este guia para ligar o Pix (seção 4.1).
+
 > ⚠️ **Leia a seção 1 antes de gastar tempo.** O maior risco deste projeto não é técnico: é o seu provedor de pagamentos aceitar (ou não) este tipo de produto.
 
 ## Como funciona (visão geral)
@@ -70,20 +72,19 @@ O sandbox é um ambiente de teste do próprio Asaas. **Valide aqui todos os flux
 3. As chaves de sandbox e de produção são diferentes. URLs: sandbox `https://api-sandbox.asaas.com/v3`, produção `https://api.asaas.com/v3` (o sistema escolhe pela variável `ASAAS_ENV`).
 
 ### 3.2 Gerar os segredos
-Funciona no Windows, Mac e Linux (precisa do Node):
+Um comando gera tudo de uma vez (funciona no Windows, Mac e Linux; precisa do Node):
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"      # use para ASAAS_WEBHOOK_TOKEN
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"      # use para ASAAS_TRANSFER_AUTH_TOKEN (outro valor!)
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"      # use para CRON_SECRET
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # use para DATA_ENCRYPTION_KEY
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"      # use para APP_SECRET
+npm run secrets
 ```
 
-Os tokens de webhook do Asaas precisam ter de 32 a 255 caracteres, sem espaços, e **não podem ser a sua API Key**. O resultado de 64 caracteres acima atende.
+Ele imprime `APP_SECRET`, `DATA_ENCRYPTION_KEY`, `CRON_SECRET`, `ASAAS_WEBHOOK_TOKEN` e `ASAAS_TRANSFER_AUTH_TOKEN` (dois tokens **diferentes**), prontos para colar no `.env`. Se o site já está no ar, **não troque** `DATA_ENCRYPTION_KEY` nem `APP_SECRET`: gere só o que ainda falta.
+
+Os tokens de webhook do Asaas precisam ter de 32 a 255 caracteres, sem espaços, e **não podem ser a sua API Key**. Os gerados pelo comando atendem.
 
 ### 3.3 Variáveis do `.env`
 ```ini
+WALLET_ENABLED="true"               # no servidor, depois de salvar o .env: docker compose up -d
 PIX_PROVIDER="asaas"
 ASAAS_ENV="sandbox"
 ASAAS_API_KEY="(a chave de sandbox)"
@@ -97,7 +98,7 @@ WITHDRAW_AUTO_APPROVE_MAX_CENTS="0" # TODO saque exige o admin (seção 5)
 ```
 
 ### 3.4 Um endereço público com HTTPS
-O Asaas precisa **alcançar o seu servidor** para entregar os webhooks, então `localhost` não serve. Para testar da sua máquina use um túnel (por exemplo **Cloudflare Tunnel** ou **ngrok**), que dá um endereço `https://...` apontando para o seu `localhost:3000`. Em produção é o seu domínio.
+O Asaas precisa **alcançar o seu servidor** para entregar os webhooks, então `localhost` não serve. Se o site já está hospedado como em [`HOSPEDAGEM.md`](HOSPEDAGEM.md), o endereço é o seu domínio (o HTTPS é automático). Para testar da sua máquina, sem hospedagem, use um túnel (por exemplo **Cloudflare Tunnel** ou **ngrok**), que dá um endereço `https://...` apontando para o seu `localhost:3000`.
 
 ### 3.5 Webhook de cobranças e transferências
 No Asaas: **Integrações → Webhooks → criar** (o token é enviado no cabeçalho `asaas-access-token`):
@@ -175,6 +176,8 @@ Com `0`, **todo saque** (o mínimo é R$ 20) vai para **"Em análise"** e só sa
 6. O provedor avisa por webhook e o status vira *Pago*.
 
 ### 5.3 O agendador (sem ele, nada é enviado)
+**Com o `docker-compose.yml` deste projeto o agendador já roda sozinho** (o serviço `cron` chama o site a cada 2 minutos). Em **Admin → Configurações → Verificação do site** o item "Agendador" mostra quando foi a última rodada: se estiver vermelho, veja `docker compose logs cron`. O texto abaixo é para quem hospeda de outro jeito.
+
 Um saque aprovado só é enviado quando o endereço abaixo é chamado. Ele também expira cobranças, concilia o razão e liquida desafios. **Agende a cada 1 a 5 minutos:**
 
 ```
@@ -199,8 +202,8 @@ Se o provedor der uma resposta ambígua, o saque fica em **"enviando"** e **nunc
 ## 6. Ir para a produção
 1. **Provedor aprovado por escrito** para este tipo de produto (seção 1).
 2. Conta **de produção** no Asaas, com a documentação aprovada. **Gere a chave de produção e recrie os webhooks na conta de produção** (a de sandbox não vale lá).
-3. No `.env` de produção: `ASAAS_ENV="production"`, a chave de produção e os mesmos nomes de variáveis. O app **recusa subir** se faltar algo (veja `src/lib/env.ts`): `APP_SECRET` (32+), `DATA_ENCRYPTION_KEY`, `CRON_SECRET` (24+), `TRUST_PROXY`, as variáveis do Asaas e a configuração dos pagamentos de inscrição.
-4. **Banco Postgres** (não SQLite), com backup. **Faça backup da `DATA_ENCRYPTION_KEY`**: sem ela os CPFs cifrados não se recuperam.
+3. No `.env` de produção: `ASAAS_ENV="production"`, a chave de produção e os mesmos nomes de variáveis. O app **recusa subir** se faltar algo (veja `src/lib/env.ts` e `.env.production.example`): `APP_URL` com https, `SMTP_URL`, `ADMIN_EMAILS`, `APP_SECRET` (32+), `DATA_ENCRYPTION_KEY`, `CRON_SECRET` (24+), `TRUST_PROXY`, as variáveis do Asaas e a configuração dos pagamentos de inscrição (`PAYMENTS_PROVIDER="none"` se não usar Stripe).
+4. **Banco e backup.** O projeto roda com **SQLite no volume do servidor** (um servidor só) e o `docker-compose.yml` faz **uma cópia por dia** (guarda 14). Copie essas cópias para **fora do servidor** com frequência (veja `HOSPEDAGEM.md`). **Faça backup da `DATA_ENCRYPTION_KEY`**: sem ela os CPFs cifrados não se recuperam. Postgres exigiria adaptar o projeto e testar de novo; não é o caminho testado aqui.
 5. **IP fixo** do servidor na chave de API (seção 3.7), se escolher o fluxo sem aprovação dupla.
 6. **Limites baixos no começo** (`DEPOSIT_MAX_CENTS`, `WITHDRAW_MAX_CENTS`, `WITHDRAW_DAILY_TEAM_CENTS`) e o primeiro teste real com **R$ 10**.
 7. **Freio de emergência:** `PAYOUTS_PAUSED="true"` suspende todos os saques sem derrubar o resto.
@@ -213,6 +216,7 @@ Se o provedor der uma resposta ambígua, o saque fica em **"enviando"** e **nunc
 ## 7. Limitações que você precisa conhecer
 - **O adaptador do Asaas nunca foi testado contra o sandbox.** Foi escrito pela documentação pública, e a rede onde ele foi desenvolvido bloqueia o site da documentação. Os pontos conferidos por resumos da documentação (formato do webhook de autorização, tokens, URLs de sandbox e produção, geração de chave) batem com o adaptador, mas **só o teste da seção 3.8 prova que funciona**. Ele é defensivo: se algo vier diferente do esperado, o depósito não credita e o saque devolve o saldo.
 - **O CPF de quem pagou o depósito não é conferido com o Asaas.** O objeto de pagamento que o adaptador consulta não traz o documento do pagador, e não confirmei se existe outro endpoint para isso. Sem essa informação, o sistema credita o depósito, e o que protege o saque é: só sai para o CPF do titular, retenção de 72 h, giro obrigatório, pontuação de risco (depósito sem pagador verificado pesa) e a sua liberação manual. **Recomendo `PIX_REQUIRE_PAYER_DOC="true"`**: todo depósito cujo pagador o provedor não informou fica em **Admin → Depósitos retidos** para você conferir no painel do banco e liberar. É mais trabalho manual e mais seguro, até a verificação do pagador estar validada no sandbox.
+- **Um servidor só.** O projeto foi pensado e testado para **uma** instância do site com SQLite. Não rode duas cópias do site ao mesmo tempo apontando para o mesmo banco.
 - **Tarifas e limites do provedor** (tarifa por cobrança Pix, tarifa por transferência, limite noturno do Pix) não estão no sistema: consulte a tabela de preços do Asaas.
 - Nenhum sistema é 100% à prova de fraude: faça um teste de invasão independente antes de abrir ao público.
 

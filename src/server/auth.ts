@@ -4,7 +4,7 @@ import { AppError } from "@/lib/errors";
 import { dummyPasswordHash, hashPassword, randomToken, sha256, verifyPassword } from "@/lib/crypto";
 import { getEnv } from "@/lib/env";
 import { moneyConfig } from "./money-config";
-import { sendMail } from "./mailer";
+import { safeMailError, sendMail } from "./mailer";
 import { isRateLimited, rateLimit, resetRateLimit } from "./rate-limit";
 import type { Role, User } from "@prisma/client";
 
@@ -74,7 +74,13 @@ export async function registerUser(input: unknown, meta: { ip?: string } = {}): 
   const user = await db.user.create({
     data: { email, username, displayName, passwordHash: await hashPassword(password) },
   });
-  await sendVerificationEmail(user);
+  // Se o SMTP estiver fora do ar, a conta já existe: o cadastro não pode falhar (quem tentasse de novo ouviria "já existe uma
+  // conta" e ficaria sem como confirmar). O aviso vai para o log e a pessoa pede o reenvio em "Minha conta".
+  try {
+    await sendVerificationEmail(user);
+  } catch (e) {
+    console.error(`[mail] Não consegui enviar a confirmação de conta para o usuário ${user.id}: ${safeMailError(e)}`);
+  }
   return toSafeUser(user);
 }
 
@@ -101,11 +107,19 @@ export async function resendVerification(userId: string): Promise<void> {
   if (!user) throw new AppError("Usuário não encontrado.", "NOT_FOUND");
   if (user.emailVerifiedAt) throw new AppError("Seu e-mail já está verificado.");
   await rateLimit(`verify-resend:${userId}`, 3, 3600, "Você já pediu vários e-mails. Aguarde um pouco.");
-  await sendVerificationEmail(user);
+  try {
+    await sendVerificationEmail(user);
+  } catch (e) {
+    console.error(`[mail] Não consegui reenviar a confirmação de conta para o usuário ${user.id}: ${safeMailError(e)}`);
+    throw new AppError("Não foi possível enviar o e-mail agora. Tente novamente em alguns minutos.");
+  }
 }
 
 export async function verifyEmail(token: string): Promise<void> {
-  const row = await db.authToken.findUnique({ where: { tokenHash: sha256(token) } });
+  const row = await db.authToken.findUnique({ where: { tokenHash: sha256(token) }, include: { user: { select: { emailVerifiedAt: true } } } });
+  // Outlook/Hotmail, Gmail e antivírus costumam abrir o link antes da pessoa: se o link já foi usado e a conta está
+  // confirmada, o clique da pessoa também mostra "confirmado" (um link usado não revela nada nem confirma outra conta).
+  if (row && row.type === "VERIFY_EMAIL" && row.usedAt && row.user.emailVerifiedAt) return;
   if (!row || row.type !== "VERIFY_EMAIL" || row.usedAt || row.expiresAt < new Date()) {
     throw new AppError("Link de verificação inválido ou expirado.");
   }
@@ -199,11 +213,16 @@ export async function requestPasswordReset(emailInput: string, meta: { ip?: stri
   // Resposta idêntica exista a conta ou não (evita enumeração de e-mails).
   if (!user || user.bannedAt) return;
   const token = await issueToken(user.id, "RESET_PASSWORD", RESET_HOURS);
-  await sendMail({
-    to: user.email,
-    subject: "Redefinição de senha — Prime Arena",
-    text: `Olá, ${user.displayName}!\n\nPara criar uma nova senha, acesse:\n${getEnv().appUrl}/redefinir-senha/${token}\n\nO link vale por ${RESET_HOURS} hora. Se não foi você, ignore este e-mail — sua senha atual continua valendo.`,
-  });
+  try {
+    await sendMail({
+      to: user.email,
+      subject: "Redefinição de senha — Prime Arena",
+      text: `Olá, ${user.displayName}!\n\nPara criar uma nova senha, acesse:\n${getEnv().appUrl}/redefinir-senha/${token}\n\nO link vale por ${RESET_HOURS} hora. Se não foi você, ignore este e-mail — sua senha atual continua valendo.`,
+    });
+  } catch (e) {
+    // A resposta é a mesma exista a conta ou não: um erro só quando a conta existe revelaria quem tem cadastro.
+    console.error(`[mail] Não consegui enviar a redefinição de senha para o usuário ${user.id}: ${safeMailError(e)}`);
+  }
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {

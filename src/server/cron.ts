@@ -5,6 +5,7 @@ import { runChallengeMaintenance } from "./challenges";
 import { expireDeposits } from "./deposits";
 import { expireStaleReservations } from "./orders";
 import { runReconciliation } from "./admin-wallet";
+import { markCronRun } from "./settings";
 import { expireStaleWithdrawalConfirmations, processDueWithdrawals, reconcileProcessing } from "./withdrawals";
 
 export function cronAuthorized(authorization: string | null): boolean {
@@ -25,5 +26,6 @@ export async function runWalletCron() {
     expireStaleReservations(db),
   ]);
   const ledger = await runReconciliation();
+  await markCronRun(); // é assim que o admin vê, em Configurações, que o agendador está rodando
   return { deposits, withdrawals, expiredConfirmations, reconciled, challenges, reservations, ledgerOk: ledger.ok, mismatches: ledger.mismatches.slice(0, 5) };
 }

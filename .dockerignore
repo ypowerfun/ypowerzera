@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.production.example
+*.db
+*.db-journal
+prisma/backups
+.dev-mail
+test-results
+playwright-report
+tsconfig.tsbuildinfo
+e2e
+tests
+docs
+*.zip

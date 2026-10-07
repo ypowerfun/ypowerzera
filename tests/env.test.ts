@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { assertProductionConfig } from "@/lib/env";
 
-const KEYS = ["NODE_ENV", "VITEST", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"];
+const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"];
 const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
 afterEach(() => {
   for (const k of KEYS) {
@@ -14,6 +14,9 @@ function prod(over: Record<string, string> = {}) {
   const env = process.env as Record<string, string>;
   env.NODE_ENV = "production";
   Object.assign(env, {
+    APP_URL: "https://arena.example.com",
+    SMTP_URL: "smtps://user:pass@smtp.example.com:465",
+    ADMIN_EMAILS: "dono@example.com",
     APP_SECRET: "x".repeat(40),
     TRUST_PROXY: "true",
     PAYMENTS_PROVIDER: "stripe",
@@ -48,6 +51,26 @@ describe("configuração de produção", () => {
     let msg = "";
     try { assertProductionConfig(); } catch (e) { msg = (e as Error).message; }
     for (const part of ["APP_SECRET", "PAYMENTS_PROVIDER=mock", "PIX_PROVIDER=mock", "DATA_ENCRYPTION_KEY", "CRON_SECRET"]) expect(msg).toContain(part);
+  });
+
+  it("aceita campeonatos só gratuitos (PAYMENTS_PROVIDER=none) e recusa valores que não existem", () => {
+    prod({ PAYMENTS_PROVIDER: "none", STRIPE_SECRET_KEY: "", STRIPE_WEBHOOK_SECRET: "" });
+    expect(() => assertProductionConfig()).not.toThrow();
+    prod({ PAYMENTS_PROVIDER: "strype" });
+    expect(() => assertProductionConfig()).toThrow(/PAYMENTS_PROVIDER="strype" não existe/);
+    prod({ PIX_PROVIDER: "asas" });
+    expect(() => assertProductionConfig()).toThrow(/PIX_PROVIDER="asas" não existe/);
+  });
+
+  it("exige o endereço público https, o SMTP e o e-mail do administrador", () => {
+    prod({ APP_URL: "http://meusite.com.br" });
+    expect(() => assertProductionConfig()).toThrow(/APP_URL/);
+    prod({ APP_URL: "http://localhost:3000" }); // ensaio local da versão de produção
+    expect(() => assertProductionConfig()).not.toThrow();
+    prod({ SMTP_URL: "" });
+    expect(() => assertProductionConfig()).toThrow(/SMTP_URL/);
+    prod({ ADMIN_EMAILS: "" });
+    expect(() => assertProductionConfig()).toThrow(/ADMIN_EMAILS/);
   });
 
   it("não valida nada fora de produção", () => {

@@ -6,6 +6,7 @@ import type { PaymentProvider } from "./types";
 
 export function getProvider(): PaymentProvider {
   const env = getEnv();
+  if (env.paymentsProvider === "none") throw new AppError("Pagamentos de inscrição indisponíveis neste site: os campeonatos são gratuitos.");
   if (env.paymentsProvider === "stripe") {
     if (!env.stripeSecretKey) throw new AppError("Pagamentos indisponíveis: Stripe não configurado.");
     return stripeProvider;

@@ -1,0 +1,80 @@
+# Prime Arena em produção: site + HTTPS automático (Caddy) + agendador + backup diário.
+# Passo a passo completo: docs/HOSPEDAGEM.md
+#   1) copie .env.production.example para .env e preencha
+#   2) docker compose up -d --build
+services:
+  app:
+    build: .
+    image: prime-arena:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "file:/data/primearena.db?connection_limit=1&socket_timeout=30"
+    volumes:
+      - data:/data
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/entrar"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # Chama o agendador do site a cada 2 minutos: envia os saques aprovados, expira Pix e desafios, concilia o razão.
+  cron:
+    image: curlimages/curl:8.10.1
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        while true; do
+          curl -fsS -m 60 -X POST -H "Authorization: Bearer $$CRON_SECRET" http://app:3000/api/cron/wallet > /dev/null || echo "agendador: falhou (o site está subindo?)"
+          sleep 120
+        done
+
+  # Uma cópia consistente do banco por dia (guarda as 14 mais recentes em /data/backups, dentro do volume "data").
+  backup:
+    image: prime-arena:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "file:/data/primearena.db?connection_limit=1&socket_timeout=30"
+    volumes:
+      - data:/data
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        sleep 300
+        while true; do
+          node scripts/backup-db.mjs --keep 14 || echo "backup: falhou"
+          sleep 86400
+        done
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

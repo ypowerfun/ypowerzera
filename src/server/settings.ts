@@ -2,7 +2,9 @@ import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { getEnv, isValidDataEncryptionKey } from "@/lib/env";
 import { audit } from "./audit";
+import { sendTestMail } from "./mailer";
 import { requireActor, requireAdmin } from "./permissions";
+import { rateLimit } from "./rate-limit";
 import type { Actor } from "./types";
 
 /**
@@ -13,6 +15,7 @@ import type { Actor } from "./types";
  */
 const K_WALLET = "wallet.enabled";
 const K_WITHDRAW_ADMIN = "withdraw.requireAdminApproval";
+const K_CRON_LAST = "cron.lastRunAt";
 
 async function read(key: string): Promise<string | null> {
   return (await db.siteSetting.findUnique({ where: { key } }))?.value ?? null;
@@ -114,4 +117,67 @@ export async function setWithdrawalsNeedAdminApproval(actorIn: Actor | null, req
   requireAdmin(actor);
   await write(K_WITHDRAW_ADMIN, required ? "true" : "false", actor.id);
   await audit(actor.id, "settings.withdraw_admin_approval", "SiteSetting", K_WITHDRAW_ADMIN, { required });
+}
+
+// ───────── Verificação do site (a lista que o admin vê em Configurações) ─────────
+
+/** O agendador (/api/cron/wallet) chama isto a cada rodada: é como o admin enxerga que ele está funcionando. */
+export async function markCronRun(now = new Date()): Promise<void> {
+  const value = now.toISOString();
+  await db.siteSetting.upsert({ where: { key: K_CRON_LAST }, create: { key: K_CRON_LAST, value }, update: { value } });
+}
+
+const CRON_STALE_MINUTES = 15;
+
+function agoLabel(from: Date, now: Date): string {
+  const min = Math.max(0, Math.round((now.getTime() - from.getTime()) / 60_000));
+  if (min < 1) return "agora há pouco";
+  if (min < 60) return `há ${min} min`;
+  if (min < 48 * 60) return `há ${Math.round(min / 60)} h`;
+  return `há ${Math.round(min / 1440)} dias`;
+}
+
+/** O que precisa estar certo para o site funcionar de verdade na internet. Cada item diz o que está bem ou o que falta. */
+export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
+  const env = getEnv();
+  const items: ReadinessItem[] = [];
+
+  const urlOk = env.appUrl.startsWith("https://") && !/localhost|127\.0\.0\.1/.test(env.appUrl);
+  items.push({ key: "url", label: "Endereço público com https", ok: urlOk, hint: urlOk ? `Os links dos e-mails usam ${env.appUrl}.` : `APP_URL está como ${env.appUrl}. Em produção use o endereço https:// do site, senão os links dos e-mails ficam errados.` });
+
+  const smtpOk = !!env.smtpUrl;
+  items.push({ key: "smtp", label: "E-mail de confirmação de conta (SMTP)", ok: smtpOk, hint: smtpOk ? `Envio configurado; remetente: ${env.mailFrom}. Use o botão abaixo para testar.` : "SMTP_URL não está configurado: ninguém recebe o e-mail de confirmação (docs/CONFIGURAR_EMAIL.md)." });
+
+  const lastRaw = await read(K_CRON_LAST);
+  const last = lastRaw ? new Date(lastRaw) : null;
+  const cronOk = !!last && !Number.isNaN(last.getTime()) && now.getTime() - last.getTime() <= CRON_STALE_MINUTES * 60_000;
+  items.push({
+    key: "cron",
+    label: "Agendador (saques, Pix expirado, desafios)",
+    ok: cronOk,
+    hint: cronOk ? `Rodou ${agoLabel(last!, now)}.` : last ? `Parado: a última rodada foi ${agoLabel(last, now)}. Sem ele os saques aprovados não saem e os Pix expirados não são limpos.` : "Ainda não rodou. Ele precisa chamar /api/cron/wallet a cada 1 a 5 minutos (já vem pronto no docker-compose).",
+  });
+
+  const payOk = env.paymentsProvider === "none" || env.paymentsProvider === "stripe" || !env.isProd;
+  const payHint = env.paymentsProvider === "none" ? "Sem pagamento de inscrição: os campeonatos são gratuitos." : env.paymentsProvider === "stripe" ? "Stripe configurado para as inscrições pagas." : env.isProd ? "O pagamento simulado não pode ficar ligado em produção." : "Pagamento simulado (só testes).";
+  items.push({ key: "payments", label: "Pagamento de inscrição em campeonato", ok: payOk, hint: payHint });
+
+  const secretOk = env.appSecret.length >= 32 && !env.appSecret.includes("troque") && !env.appSecret.includes("dev-only");
+  items.push({ key: "secret", label: "Chave secreta do site (APP_SECRET)", ok: secretOk || !env.isProd, hint: secretOk ? "Definida." : "Defina uma APP_SECRET forte (rode: npm run secrets)." });
+
+  const proxyOk = env.trustProxy !== null;
+  items.push({ key: "proxy", label: "IP de origem dos visitantes (TRUST_PROXY)", ok: proxyOk || !env.isProd, hint: proxyOk ? (env.trustProxy ? "Confiando no proxy (Caddy): os limites de tentativa valem por visitante." : "Ignorando x-forwarded-for: todos caem no mesmo limite.") : "Defina TRUST_PROXY=true quando houver um proxy como o Caddy na frente." });
+
+  return items;
+}
+
+/** Botão "Enviar e-mail de teste" (Admin → Configurações): manda uma mensagem para o próprio admin e diz o que deu errado. */
+export async function sendTestMailToAdmin(actorIn: Actor | null): Promise<void> {
+  const actor = requireActor(actorIn);
+  requireAdmin(actor);
+  if (!actor.email) throw new AppError("Sua conta não tem e-mail cadastrado.");
+  await rateLimit(`mail-test:${actor.id}`, 5, 3600, "Muitos testes seguidos. Aguarde alguns minutos.");
+  const r = await sendTestMail(actor.email);
+  await audit(actor.id, "settings.mail_test", "SiteSetting", "mail", { ok: r.ok });
+  if (!r.ok) throw new AppError(`Não foi possível enviar: ${r.error}`);
 }

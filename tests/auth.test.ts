@@ -136,12 +136,15 @@ describe("cadastro e login", () => {
 describe("verificação de e-mail", () => {
   beforeEach(clean);
 
-  it("token verifica uma vez só", async () => {
+  it("o token confirma a conta uma só vez; reabrir o link depois só repete o 'confirmado' (leitores de e-mail abrem links antes da pessoa)", async () => {
     const u = await registerUser(valid);
     const token = tokenFromMail("ana@example.com", "verificar-email");
     await verifyEmail(token);
-    expect((await db.user.findUnique({ where: { id: u.id } }))!.emailVerifiedAt).not.toBeNull();
-    await expect(verifyEmail(token)).rejects.toThrow(/inválido/);
+    const confirmedAt = (await db.user.findUnique({ where: { id: u.id } }))!.emailVerifiedAt;
+    expect(confirmedAt).not.toBeNull();
+    await expect(verifyEmail(token)).resolves.toBeUndefined(); // mesma resposta, sem refazer nada
+    expect((await db.user.findUnique({ where: { id: u.id } }))!.emailVerifiedAt).toEqual(confirmedAt); // a data de confirmação não muda
+    await expect(verifyEmail("token-inexistente")).rejects.toThrow(/inválido/);
     await expect(resendVerification(u.id)).rejects.toThrow(/já está verificado/);
   });
 

@@ -24,7 +24,8 @@ export function getEnv() {
     isTest,
     appUrl: (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, ""),
     appSecret: process.env.APP_SECRET ?? "",
-    paymentsProvider: (process.env.PAYMENTS_PROVIDER ?? "mock") as "mock" | "stripe",
+    /** "none" = sem pagamento de inscrição (campeonatos só gratuitos); a carteira por Pix é outro assunto (PIX_PROVIDER). */
+    paymentsProvider: (process.env.PAYMENTS_PROVIDER ?? "mock") as "mock" | "stripe" | "none",
     allowMockPayments: bool(process.env.ALLOW_MOCK_PAYMENTS, false),
     stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
@@ -64,11 +65,26 @@ export function assertProductionConfig() {
   if (env.trustProxy === null) {
     problems.push("Defina TRUST_PROXY=true (atrás de proxy/CDN que sobrescreve x-forwarded-for) ou TRUST_PROXY=false. Sem isso o IP de origem poderia ser forjado para burlar os limites de tentativas.");
   }
+  if (!["mock", "stripe", "none"].includes(env.paymentsProvider)) {
+    problems.push(`PAYMENTS_PROVIDER="${env.paymentsProvider}" não existe: use stripe, none (sem pagamento de inscrição) ou, só para testes, mock.`);
+  }
   if (env.paymentsProvider === "mock" && !env.allowMockPayments) {
-    problems.push("PAYMENTS_PROVIDER=mock é recusado em produção (use stripe ou defina ALLOW_MOCK_PAYMENTS=true, não recomendado).");
+    problems.push("PAYMENTS_PROVIDER=mock é recusado em produção (use stripe, ou none para campeonatos só gratuitos; ALLOW_MOCK_PAYMENTS=true não é recomendado).");
+  }
+  if (!/^https:\/\//i.test(env.appUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(env.appUrl)) {
+    problems.push("APP_URL precisa ser o endereço público do site com https:// (ex.: https://meusite.com.br): ele vai nos links dos e-mails de confirmação e de redefinição de senha.");
+  }
+  if (!env.smtpUrl) {
+    problems.push("SMTP_URL é obrigatório em produção: sem ele nenhum e-mail de confirmação de conta sai e ninguém consegue confirmar o cadastro (veja docs/CONFIGURAR_EMAIL.md).");
+  }
+  if (env.adminEmails.length === 0) {
+    problems.push("ADMIN_EMAILS é obrigatório em produção: é assim que o seu e-mail vira administrador depois de confirmado (o seed de demonstração não roda em produção).");
   }
   if (env.paymentsProvider === "stripe" && (!env.stripeSecretKey || !env.stripeWebhookSecret)) {
     problems.push("STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENTS_PROVIDER=stripe.");
+  }
+  if (!["mock", "asaas"].includes(env.pixProvider)) {
+    problems.push(`PIX_PROVIDER="${env.pixProvider}" não existe: use asaas (ou, só para testes, mock).`);
   }
   if (env.walletEnabled) {
     if (!isValidDataEncryptionKey(env.dataEncryptionKey)) problems.push("DATA_ENCRYPTION_KEY (32 bytes em base64/hex) é obrigatório para proteger o CPF dos usuários.");

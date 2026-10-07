@@ -12,7 +12,7 @@ import { requireAdmin, toActor } from "@/server/session";
 import { setUserRole } from "@/server/users-admin";
 import { deleteTeam } from "@/server/teams";
 import { reviewBalanceRequest } from "@/server/team-release";
-import { setWalletEnabled, setWithdrawalsNeedAdminApproval } from "@/server/settings";
+import { sendTestMailToAdmin, setWalletEnabled, setWithdrawalsNeedAdminApproval } from "@/server/settings";
 
 /** Executa a ação; em sucesso volta à lista com um código de confirmação (a linha tratada some, e o formulário com ela). */
 function adminAction(run: (actor: ReturnType<typeof toActor>, fd: FormData) => Promise<unknown>, code: string | ((fd: FormData) => string), path: string) {
@@ -66,6 +66,9 @@ export const reviewBalanceRequestAction = adminAction(
   (fd) => (str(fd, "decision") === "approve" ? "saldo-liberado" : "saldo-recusado"),
   "/admin/saldos",
 );
+
+/** Admin → Configurações → "Enviar e-mail de teste para mim". */
+export const sendTestEmailAction = adminAction((a) => sendTestMailToAdmin(a), "email-teste", "/admin/configuracoes");
 
 export const toggleWalletAction = adminAction((a, fd) => setWalletEnabled(a, str(fd, "enabled") === "on"), (fd) => (str(fd, "enabled") === "on" ? "carteira-ligada" : "carteira-desligada"), "/admin/configuracoes");
 
