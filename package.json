@@ -24,7 +24,12 @@
     "mail:test": "tsx --env-file-if-exists=.env scripts/mail-test.ts",
     "verificar-site": "node scripts/check-site.mjs",
     "e2e": "playwright test",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "generate:d1": "prisma generate --generator d1worker && prisma generate --generator d1node",
+    "generate:meta": "node scripts/gen-model-meta.mjs",
+    "build:sites": "opennextjs-cloudflare build",
+    "preview:sites": "node scripts/sites-local.mjs",
+    "test:d1": "TEST_DB=d1 vitest run"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.20.9",

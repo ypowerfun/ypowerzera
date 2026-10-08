@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
+// PA_TARGET=sites monta o site para o ChatGPT Sites (Cloudflare Workers + D1): npm run build:sites. Veja docs/SITES.md.
+const sites = process.env.PA_TARGET === "sites";
 
 // Linha de base de CSP. O Next injeta scripts inline de hidratação, então `script-src` mantém 'unsafe-inline'
 // (um CSP com nonce exigiria renderização 100% dinâmica); o ganho está nas demais diretivas:
@@ -20,6 +22,19 @@ const csp = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // No Sites troca-se o banco (Prisma + SQLite → D1 com o motor de transações), o cliente Prisma (versão sem motor nativo,
+  // compilada em WebAssembly) e o nodemailer (a hospedagem não abre conexões SMTP; o e-mail sai por API HTTP).
+  ...(sites
+    ? {
+        turbopack: {
+          resolveAlias: {
+            "@prisma/client": "./src/generated/prisma-d1/client.ts",
+            "@/lib/db": "./src/lib/db.d1.ts",
+            nodemailer: "./src/lib/stubs/nodemailer.ts",
+          },
+        },
+      }
+    : {}),
   async headers() {
     return [
       {

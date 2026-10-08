@@ -1,0 +1,9 @@
+# Variáveis para testar localmente com `npm run preview:sites` (copie para .dev.vars; NUNCA envie o .dev.vars a ninguém).
+APP_URL=http://localhost:8787
+APP_SECRET=troque-por-um-texto-aleatorio-com-pelo-menos-32-caracteres
+DATA_ENCRYPTION_KEY=
+CRON_SECRET=troque-por-um-texto-aleatorio-com-pelo-menos-24-caracteres
+ADMIN_EMAILS=seu@email.com
+MAIL_FROM="Prime Arena <nao-responda@seudominio.com.br>"
+# RESEND_API_KEY=
+# BREVO_API_KEY=

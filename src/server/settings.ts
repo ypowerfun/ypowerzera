@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
-import { getEnv, isValidDataEncryptionKey } from "@/lib/env";
+import { getEnv, isValidDataEncryptionKey, mailProviderReady } from "@/lib/env";
 import { audit } from "./audit";
 import { sendTestMail } from "./mailer";
 import { requireActor, requireAdmin } from "./permissions";
@@ -145,8 +145,9 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
   const urlOk = env.appUrl.startsWith("https://") && !/localhost|127\.0\.0\.1/.test(env.appUrl);
   items.push({ key: "url", label: "Endereço público com https", ok: urlOk, hint: urlOk ? `Os links dos e-mails usam ${env.appUrl}.` : `APP_URL está como ${env.appUrl}. Em produção use o endereço https:// do site, senão os links dos e-mails ficam errados.` });
 
-  const smtpOk = !!env.smtpUrl;
-  items.push({ key: "smtp", label: "E-mail de confirmação de conta (SMTP)", ok: smtpOk, hint: smtpOk ? `Envio configurado; remetente: ${env.mailFrom}. Use o botão abaixo para testar.` : "SMTP_URL não está configurado: ninguém recebe o e-mail de confirmação (docs/CONFIGURAR_EMAIL.md)." });
+  const smtpOk = mailProviderReady(env);
+  const viaLabel = { resend: "Resend", brevo: "Brevo", smtp: "SMTP", none: "" }[env.mailProvider];
+  items.push({ key: "smtp", label: "E-mail de confirmação de conta", ok: smtpOk, hint: smtpOk ? `Envio configurado (${viaLabel}); remetente: ${env.mailFrom}. Use o botão abaixo para testar.` : "Nenhum envio de e-mail configurado (RESEND_API_KEY, BREVO_API_KEY ou SMTP_URL): ninguém recebe o e-mail de confirmação (docs/CONFIGURAR_EMAIL.md)." });
 
   const lastRaw = await read(K_CRON_LAST);
   const last = lastRaw ? new Date(lastRaw) : null;
@@ -165,8 +166,8 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
   const secretOk = env.appSecret.length >= 32 && !env.appSecret.includes("troque") && !env.appSecret.includes("dev-only");
   items.push({ key: "secret", label: "Chave secreta do site (APP_SECRET)", ok: secretOk || !env.isProd, hint: secretOk ? "Definida." : "Defina uma APP_SECRET forte (rode: npm run secrets)." });
 
-  const proxyOk = env.trustProxy !== null;
-  items.push({ key: "proxy", label: "IP de origem dos visitantes (TRUST_PROXY)", ok: proxyOk || !env.isProd, hint: proxyOk ? (env.trustProxy ? "Confiando no proxy (Caddy): os limites de tentativa valem por visitante." : "Ignorando x-forwarded-for: todos caem no mesmo limite.") : "Defina TRUST_PROXY=true quando houver um proxy como o Caddy na frente." });
+  const proxyOk = env.trustProxy !== null || env.runtime === "sites";
+  items.push({ key: "proxy", label: "IP de origem dos visitantes (TRUST_PROXY)", ok: proxyOk || !env.isProd, hint: env.runtime === "sites" ? "ChatGPT Sites: o IP real vem da Cloudflare (cf-connecting-ip), que o visitante não consegue forjar." : proxyOk ? (env.trustProxy ? "Confiando no proxy (Caddy): os limites de tentativa valem por visitante." : "Ignorando x-forwarded-for: todos caem no mesmo limite.") : "Defina TRUST_PROXY=true quando houver um proxy como o Caddy na frente." });
 
   return items;
 }

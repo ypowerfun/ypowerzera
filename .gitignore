@@ -29,3 +29,8 @@ playwright-report/
 
 # cliente D1 para testes em Node (gerado por `prisma generate`; o de Workers fica no repositório)
 src/generated/prisma-d1-node/
+
+# ChatGPT Sites / Cloudflare (gerado pelo build e pelo wrangler)
+.open-next/
+.wrangler/
+.dev.vars

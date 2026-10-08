@@ -67,6 +67,14 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   }
 }
 
+/** Elenco repetido: um jogador não pode estar em duas inscrições do mesmo campeonato. */
+function duplicatePlayer(e: unknown): never {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+    throw new AppError("Um dos jogadores do elenco já está inscrito neste campeonato em outra inscrição.", "CONFLICT");
+  }
+  throw e;
+}
+
 export async function registerForTournament(actorIn: Actor | null, input: RegisterInput): Promise<RegisterResult> {
   const actor = requireActor(actorIn);
   requireVerified(actor);
@@ -120,15 +128,13 @@ export async function registerForTournament(actorIn: Actor | null, input: Regist
               roster: roster as unknown as Prisma.InputJsonValue,
               customAnswers: answers as unknown as Prisma.InputJsonValue,
               reservedUntil: status === "PENDING_PAYMENT" ? new Date(now.getTime() + 30 * 60_000) : null,
-              rosterEntries: { create: roster.map((r) => ({ tournamentId: t.id, userId: r.userId, role: r.role })) },
             },
           })
-          .catch((e: unknown) => {
-            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-              throw new AppError("Um dos jogadores do elenco já está inscrito neste campeonato em outra inscrição.", "CONFLICT");
-            }
-            throw e;
-          });
+          .catch(duplicatePlayer);
+        // o elenco entra em passo separado (a escrita aninhada não é desfazível no D1 do ChatGPT Sites); a transação segue tudo-ou-nada
+        await tx.rosterEntry
+          .createMany({ data: roster.map((r) => ({ participantId: participant.id, tournamentId: t.id, userId: r.userId, role: r.role })) })
+          .catch(duplicatePlayer);
 
         if (status === "PENDING_PAYMENT") {
           const order = await createRegistrationOrder(tx, { userId: actor.id, tournament: t, participantId: participant.id, coupon, now });

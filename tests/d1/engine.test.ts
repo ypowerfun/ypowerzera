@@ -218,7 +218,7 @@ describe("confirmação e desfazer", () => {
     const k = key();
     await expect(
       db.$transaction(async (tx) => {
-        await tx.$transaction(async (inner) => {
+        await (tx as unknown as { $transaction: (fn: (i: typeof tx) => Promise<void>) => Promise<void> }).$transaction(async (inner) => {
           await inner.siteSetting.create({ data: { key: k, value: "x" } });
         });
         throw new Error("desfaz");

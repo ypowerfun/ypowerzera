@@ -30,9 +30,8 @@ export async function createOrganization(actorIn: Actor | null, input: { name: s
   await rateLimit(`org-create:${actor.id}`, 5, 86400, "Você já criou várias organizações hoje.");
   const slug = await uniqueSlug(parsed.data.name, async (s) => !!(await db.organization.findUnique({ where: { slug: s } })));
   const org = await db.$transaction(async (tx) => {
-    const o = await tx.organization.create({
-      data: { name: parsed.data.name, slug, description: parsed.data.description, members: { create: { userId: actor.id, role: "OWNER" } } },
-    });
+    const o = await tx.organization.create({ data: { name: parsed.data.name, slug, description: parsed.data.description } });
+    await tx.orgMember.create({ data: { orgId: o.id, userId: actor.id, role: "OWNER" } });
     await audit(actor.id, "org.create", "Organization", o.id, { name: o.name }, tx);
     return o;
   });

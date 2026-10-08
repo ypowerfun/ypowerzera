@@ -35,8 +35,11 @@ export async function createTeam(actorIn: Actor | null, input: unknown) {
   const clash = await db.team.findFirst({ where: { name: { equals: name }, deletedAt: null }, select: { id: true } });
   if (clash) throw new AppError("Já existe um time com esse nome.", "CONFLICT");
   const slug = await uniqueSlug(name, async (s) => !!(await db.team.findUnique({ where: { slug: s } })));
-  return db.team.create({
-    data: { name, tag, gameId: game?.id ?? null, description, slug, ownerId: actor.id, members: { create: { userId: actor.id, role: "CAPTAIN" } } },
+  // time e capitão juntos: tudo-ou-nada (e sem escrita aninhada, que o motor do D1 não consegue desfazer)
+  return db.$transaction(async (tx) => {
+    const team = await tx.team.create({ data: { name, tag, gameId: game?.id ?? null, description, slug, ownerId: actor.id } });
+    await tx.teamMember.create({ data: { teamId: team.id, userId: actor.id, role: "CAPTAIN" } });
+    return team;
   });
 }
 

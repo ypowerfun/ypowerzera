@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Footer, Header } from "@/components/header";
+import { ensureBootChecks } from "@/server/boot-guard";
 
 export const metadata: Metadata = {
   // Sem isso as imagens de compartilhamento (WhatsApp, Discord) apontam para http://localhost:3000 em produção.
@@ -12,7 +13,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#0b0c10", colorScheme: "dark" };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  await ensureBootChecks(); // só age no ChatGPT Sites (PA_RUNTIME=sites)
   return (
     <html lang="pt-BR">
       <body className="flex min-h-screen flex-col antialiased">

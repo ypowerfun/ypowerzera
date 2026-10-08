@@ -1,0 +1,26 @@
+{
+  // Configuração do Cloudflare Workers + D1 (a base do ChatGPT Sites). Veja docs/SITES.md.
+  // As SENHAS (APP_SECRET, CRON_SECRET, chaves do Stripe/Resend...) NÃO ficam aqui: cadastre-as como "secrets" nas
+  // configurações do site (ou com `wrangler secret put NOME`). Só valores públicos entram em "vars".
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "primearena",
+  "main": "worker.ts",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "primearena",
+      "database_id": "COLOQUE-AQUI-O-ID-DO-BANCO-D1",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "PA_RUNTIME": "sites",
+    "PAYMENTS_PROVIDER": "none",
+    "WALLET_ENABLED": "false"
+  },
+  // Agendador (a cada 2 minutos): saques devidos, Pix expirado, desafios. Se a hospedagem não suportar, veja docs/SITES.md.
+  "triggers": { "crons": ["*/2 * * * *"] }
+}

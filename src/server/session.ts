@@ -56,6 +56,11 @@ export async function clearSessionCookie() {
 export async function clientMeta(): Promise<{ ip: string; userAgent?: string }> {
   const h = await headers();
   const env = getEnv();
+  // No ChatGPT Sites todo pedido passa pela Cloudflare, que SOBRESCREVE cf-connecting-ip (o visitante não consegue forjá-lo).
+  if (env.runtime === "sites") {
+    const cf = h.get("cf-connecting-ip")?.trim();
+    return { ip: cf ? normalizeClientIp(cf) : "unknown", userAgent: h.get("user-agent") ?? undefined };
+  }
   const trusted = env.trustProxy ?? !env.isProd;
   // Último item de x-forwarded-for: é o que o SEU proxy anotou. O primeiro pode vir escrito pelo próprio cliente.
   const forwarded = trusted ? h.get("x-forwarded-for")?.split(",").map((x) => x.trim()).filter(Boolean).at(-1) || h.get("x-real-ip") : null;

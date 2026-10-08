@@ -16,6 +16,25 @@ export function isValidDataEncryptionKey(key: string): boolean {
   return raw.length >= 32;
 }
 
+export type MailProvider = "resend" | "brevo" | "smtp" | "none";
+
+function pickMailProvider(): MailProvider {
+  const explicit = (process.env.MAIL_PROVIDER ?? "").trim().toLowerCase();
+  if (explicit === "resend" || explicit === "brevo" || explicit === "smtp") return explicit;
+  if (process.env.RESEND_API_KEY) return "resend";
+  if (process.env.BREVO_API_KEY) return "brevo";
+  if (process.env.SMTP_URL) return "smtp";
+  return "none";
+}
+
+/** O provedor escolhido tem o que precisa para enviar? */
+export function mailProviderReady(e: { mailProvider: MailProvider; smtpUrl: string; resendApiKey: string; brevoApiKey: string }): boolean {
+  if (e.mailProvider === "resend") return !!e.resendApiKey;
+  if (e.mailProvider === "brevo") return !!e.brevoApiKey;
+  if (e.mailProvider === "smtp") return !!e.smtpUrl;
+  return false;
+}
+
 export function getEnv() {
   const isProd = process.env.NODE_ENV === "production";
   const isTest = process.env.NODE_ENV === "test" || !!process.env.VITEST;
@@ -33,6 +52,13 @@ export function getEnv() {
     reservationMinutes: int(process.env.RESERVATION_MINUTES, 30),
     mailFrom: process.env.MAIL_FROM ?? "Prime Arena <no-reply@primearena.local>",
     smtpUrl: process.env.SMTP_URL ?? "",
+    /** E-mail por API HTTP (único tipo que funciona no ChatGPT Sites / Cloudflare Workers, que não falam SMTP). */
+    resendApiKey: process.env.RESEND_API_KEY ?? "",
+    brevoApiKey: process.env.BREVO_API_KEY ?? "",
+    /** Quem envia: MAIL_PROVIDER explícito ou, se vazio, o primeiro configurado (Resend, Brevo, SMTP). "none" = nada configurado. */
+    mailProvider: pickMailProvider(),
+    /** "sites" = rodando no ChatGPT Sites (Cloudflare Workers + D1). Definido pelo wrangler.jsonc; no servidor próprio fica "server". */
+    runtime: (process.env.PA_RUNTIME === "sites" ? "sites" : "server") as "sites" | "server",
     adminEmails: (process.env.ADMIN_EMAILS ?? "")
       .split(",")
       .map((s) => s.trim().toLowerCase())
@@ -64,7 +90,7 @@ export function assertProductionConfig() {
   if (env.appSecret.length < 32 || env.appSecret.includes("troque") || env.appSecret.includes("dev-only")) {
     problems.push("APP_SECRET precisa ter pelo menos 32 caracteres e não pode ser o valor de exemplo.");
   }
-  if (env.trustProxy === null) {
+  if (env.trustProxy === null && env.runtime !== "sites") {
     problems.push("Defina TRUST_PROXY=true (atrás de proxy/CDN que sobrescreve x-forwarded-for) ou TRUST_PROXY=false. Sem isso o IP de origem poderia ser forjado para burlar os limites de tentativas.");
   }
   if (!["mock", "stripe", "none"].includes(env.paymentsProvider)) {
@@ -76,8 +102,14 @@ export function assertProductionConfig() {
   if (!/^https:\/\//i.test(env.appUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(env.appUrl)) {
     problems.push("APP_URL precisa ser o endereço público do site com https:// (ex.: https://meusite.com.br): ele vai nos links dos e-mails de confirmação e de redefinição de senha.");
   }
-  if (!env.smtpUrl) {
-    problems.push("SMTP_URL é obrigatório em produção: sem ele nenhum e-mail de confirmação de conta sai e ninguém consegue confirmar o cadastro (veja docs/CONFIGURAR_EMAIL.md).");
+  if (!mailProviderReady(env)) {
+    problems.push(
+      env.runtime === "sites"
+        ? "Configure o envio de e-mail por API: RESEND_API_KEY (ou BREVO_API_KEY). Sem isso nenhum e-mail de confirmação de conta sai e ninguém consegue confirmar o cadastro (veja docs/CONFIGURAR_EMAIL.md)."
+        : "SMTP_URL (ou RESEND_API_KEY / BREVO_API_KEY) é obrigatório em produção: sem isso nenhum e-mail de confirmação de conta sai e ninguém consegue confirmar o cadastro (veja docs/CONFIGURAR_EMAIL.md).",
+    );
+  } else if (env.runtime === "sites" && env.mailProvider === "smtp") {
+    problems.push("No ChatGPT Sites o SMTP não funciona (a hospedagem não abre conexões SMTP). Use RESEND_API_KEY ou BREVO_API_KEY.");
   }
   // Recusa o padrão de desenvolvimento (@primearena.local) e domínios reservados (.local/.invalid/.test) SÓ no final do endereço:
   // "app.test-arena.com.br" e "loja.local.com.br" são domínios legítimos.
