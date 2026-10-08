@@ -36,6 +36,25 @@ describe("chave da Carteira (admin)", () => {
     await expect(assertWalletOn()).resolves.toBeUndefined();
   });
 
+  it("em PRODUÇÃO a chave nunca tocada nasce DESLIGADA (a configuração pronta não expõe a carteira sozinha); o admin liga com um clique", async () => {
+    const env = process.env as Record<string, string>;
+    env.NODE_ENV = "production";
+    env.PIX_PROVIDER = "asaas";
+    env.ASAAS_API_KEY = "k";
+    env.ASAAS_WEBHOOK_TOKEN = "w".repeat(40);
+    env.ASAAS_TRANSFER_AUTH_TOKEN = "t".repeat(40);
+    env.DATA_ENCRYPTION_KEY = "a".repeat(44);
+    env.CRON_SECRET = "c".repeat(32);
+    env.APP_URL = "https://arena.example.com";
+    expect(walletReadiness().ready).toBe(true);
+    const before = await walletState();
+    expect(before).toMatchObject({ switchOn: false, effective: false });
+    expect(await isWalletOn()).toBe(false);
+    await expect(assertWalletOn()).rejects.toThrow(/desativada/);
+    await setWalletEnabled(await admin(), true);
+    expect(await isWalletOn()).toBe(true);
+  });
+
   it("desligada: nenhuma operação NOVA de dinheiro passa", async () => {
     const l = await makeLeader();
     await fund(l, 20_000);
@@ -98,7 +117,9 @@ describe("chave da Carteira (admin)", () => {
     const bad = walletReadiness();
     expect(bad.ready).toBe(false);
     expect(bad.items.filter((i) => !i.ok).map((i) => i.key).sort()).toEqual(["cron", "encryption", "pix", "url"]);
-    // a chave está ligada (padrão), mas a carteira não aparece para os usuários
+    // a chave foi ligada antes de a configuração quebrar, mas a carteira não aparece para os usuários
+    await db.siteSetting.upsert({ where: { key: "wallet.enabled" }, create: { key: "wallet.enabled", value: "true" }, update: { value: "true" } });
+    expect((await walletState()).switchOn).toBe(true);
     expect(await isWalletOn()).toBe(false);
     await expect(assertWalletOn()).rejects.toThrow(/incompleta/);
     await setWalletEnabled(await admin(), false); // desligar sempre pode

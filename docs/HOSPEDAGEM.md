@@ -39,7 +39,7 @@ Se o seu servidor é **Ubuntu ou Debian novo** (22.04, 24.04 ou Debian 12), este
 No **seu computador**, envie o zip (ajuste o nome e o IP):
 
 ```bash
-scp prime-arena-1.0.zip root@IP_DO_SERVIDOR:/root/
+scp prime-arena-*.zip root@IP_DO_SERVIDOR:/root/
 ```
 
 No **servidor** (`ssh root@IP_DO_SERVIDOR`):
@@ -47,7 +47,7 @@ No **servidor** (`ssh root@IP_DO_SERVIDOR`):
 ```bash
 apt-get update && apt-get install -y unzip
 mkdir -p /opt/primearena && cd /opt/primearena
-unzip /root/prime-arena-1.0.zip
+unzip /root/prime-arena-*.zip
 bash scripts/instalar-servidor.sh
 ```
 
@@ -121,7 +121,7 @@ Boas práticas que valem ouro: use **chave SSH** em vez de senha, desative o log
 No **seu computador**, na pasta onde está o `.zip` (ajuste o nome do arquivo):
 
 ```bash
-scp prime-arena-1.0.zip root@IP_DO_SEU_VPS:/root/
+scp prime-arena-*.zip root@IP_DO_SEU_VPS:/root/
 ```
 
 (No Windows você também pode usar o WinSCP ou o FileZilla, protocolo SFTP.)
@@ -130,7 +130,7 @@ No **servidor**:
 
 ```bash
 mkdir -p /opt/primearena && cd /opt/primearena
-unzip /root/prime-arena-1.0.zip
+unzip /root/prime-arena-*.zip
 ls          # deve listar: Dockerfile  docker-compose.yml  Caddyfile  package.json  src  prisma  ...
 ```
 

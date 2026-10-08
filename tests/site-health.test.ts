@@ -6,7 +6,7 @@ import { lastMailTo } from "@/server/mailer";
 import { runWalletCron } from "@/server/cron";
 import { markCronRun, sendTestMailToAdmin, siteHealth } from "@/server/settings";
 
-const ENV_KEYS = ["APP_URL", "SMTP_URL", "NODE_ENV", "PAYMENTS_PROVIDER", "TRUST_PROXY"];
+const ENV_KEYS = ["APP_URL", "SMTP_URL", "NODE_ENV", "PAYMENTS_PROVIDER", "TRUST_PROXY", "STRIPE_SECRET_KEY", "STRIPE_ALLOW_TEST_KEY"];
 const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const get = async (key: string) => (await siteHealth()).find((i) => i.key === key)!;
 
@@ -61,6 +61,17 @@ describe("verificação do site (Admin → Configurações)", () => {
     expect((await get("payments")).ok).toBe(false);
     process.env.PAYMENTS_PROVIDER = "none";
     expect((await get("payments")).ok).toBe(true);
+  });
+
+  it("chave de TESTE do Stripe liberada em produção vira item vermelho; sem ela o item nem aparece", async () => {
+    const list = async () => (await siteHealth()).find((i) => i.key === "stripe-test");
+    process.env.STRIPE_SECRET_KEY = "sk_test_abcdefghijklmnop";
+    delete process.env.STRIPE_ALLOW_TEST_KEY;
+    expect(await list()).toBeUndefined();
+    process.env.STRIPE_ALLOW_TEST_KEY = "true";
+    expect((await list())?.ok).toBe(false);
+    process.env.STRIPE_SECRET_KEY = "sk_live_abcdefghijklmnop";
+    expect(await list()).toBeUndefined();
   });
 
   it("proxy: em produção exige escolher o TRUST_PROXY", async () => {

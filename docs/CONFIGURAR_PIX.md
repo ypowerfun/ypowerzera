@@ -2,6 +2,9 @@
 
 Este guia leva do "não tenho nada" até o QR Code de depósito e o saque funcionando, com **todo saque liberado por um administrador** antes de sair dinheiro.
 
+> ### Você está no ChatGPT Sites (ou vai usar o Stripe)? Pule direto para a **seção 10**.
+> As seções 1 a 9 são do **Asaas** e do servidor próprio: **não cadastre nenhuma variável `ASAAS_*`** no Sites. Antes de começar a seção 10, leia o aviso **"A Carteira aparece para os usuários"** em [`SITES.md`](SITES.md), seção 6, e faça o ensaio com chave de teste **num site separado** (seção 10.3, passo 3).
+
 > **Ordem recomendada:** primeiro coloque o site no ar **só com campeonatos** (`WALLET_ENABLED="false"`) seguindo [`HOSPEDAGEM.md`](HOSPEDAGEM.md) e [`CONFIGURAR_EMAIL.md`](CONFIGURAR_EMAIL.md). Só depois, com o site funcionando e o Asaas aprovado, siga este guia para ligar o Pix (seção 4.1).
 
 > **Prefere cobrar os depósitos pelo Stripe em vez do Asaas?** Veja a **seção 10 (Depósitos pelo Stripe)**. Atenção: com o Stripe os **saques são pagos à mão** por um administrador, porque o Stripe não envia Pix para terceiros.
@@ -146,14 +149,14 @@ Ao clicar em *Gerar Pix*, o sistema cria um cliente e uma **cobrança Pix** no A
 
 ## 4.1 Ativar a Carteira para os usuários
 
-A aba **Carteira**, os depósitos, os saques e os **Desafios** só aparecem para os usuários quando o admin ativa a chave em **Admin → Configurações → Carteira de equipe, depósitos e saques**. O site só permite ligar quando a configuração necessária está pronta (cada item mostra o que falta):
+A aba **Carteira**, os depósitos, os saques e os **Desafios** só aparecem para os usuários quando duas coisas são verdadeiras ao mesmo tempo: a variável `WALLET_ENABLED="true"` **e** o administrador clica em **Ativar a carteira**, em **Admin → Configurações → Carteira de equipe, depósitos e saques**. Em produção a chave do administrador **começa desligada**: salvar as variáveis **não** expõe o dinheiro; só o clique no botão. O site só permite ligar quando a configuração necessária está pronta (cada item mostra o que falta):
 
 - **Provedor de Pix real** (não o simulador) — seção 3;
 - **Chave de criptografia** dos CPFs (`DATA_ENCRYPTION_KEY`) — seção 3.2;
 - **Agendador** (`CRON_SECRET`) — seção 5.3;
 - **URL pública** com HTTPS (`APP_URL`) — seção 3.4.
 
-Em desenvolvimento (fora de produção) esses itens são dispensados e a chave já vem ligada. Desativada, a aba some, novos depósitos, saques e desafios são bloqueados, mas Pix já pago continua sendo creditado e saques já pedidos continuam na fila do admin.
+Em desenvolvimento (fora de produção) esses itens são dispensados e a chave já vem ligada. **Antes de clicar em Ativar:** tenha o backup do banco testado e a consulta jurídica da seção 1. Para desligar de emergência: o botão **Desativar a carteira** (mesma tela) ou `WALLET_ENABLED="false"`. Desativada, a aba some, novos depósitos, saques e desafios são bloqueados, mas Pix já pago continua sendo creditado e saques já pedidos continuam na fila do admin.
 
 ---
 
@@ -269,10 +272,15 @@ Com `PIX_PROVIDER="stripe"` o depósito é cobrado por uma **página de pagament
 1. Uma conta **Stripe do Brasil** aprovada, com o **Pix ativado** (Painel do Stripe → Configurações → Métodos de pagamento → Pix; o nome exato dos menus muda de tempos em tempos). A Stripe pode pedir dados e uma análise antes de liberar o Pix.
 2. **Conformidade:** a Stripe mantém uma lista de negócios restritos que costuma incluir jogos de azar e apostas. Descreva o produto exatamente como ele é (desafios entre equipes valendo créditos, taxa sobre o pote) e peça uma resposta **por escrito** antes de operar. O mesmo vale para as regras do ChatGPT Sites. Vale tudo o que está na seção 1.
 3. O site no ar com HTTPS (`APP_URL`), `DATA_ENCRYPTION_KEY` e `CRON_SECRET` definidos (seções 3.2 e 5.3, ou `SITES.md`), como no Asaas.
+4. **Um backup do banco que você consiga restaurar** (`SITES.md`, seção 9). Sem isso, não ligue a carteira: ela guarda dinheiro e CPFs.
 
 ### 10.3 Passo a passo
 
-**Faça tudo primeiro no modo de teste do Stripe** (chave de teste), sem dinheiro de verdade.
+**Faça o ensaio primeiro com chave de teste (`sk_test_…`), mas NUNCA no site com usuários de verdade.** O site trata os créditos de um ensaio como dinheiro real: um depósito de teste que o administrador libera vira saldo de verdade, que pode ganhar desafios e ser sacado. Por isso:
+
+- **Ensaie num site separado**, com banco D1 próprio e vazio e um endereço que ninguém conheça. Ao terminar, **apague esse site e o banco dele**.
+- **Nunca ligue `STRIPE_PIX_AUTO_CREDIT` no ensaio** (o site recusa subir com essa combinação).
+- **Nunca copie `STRIPE_ALLOW_TEST_KEY` para o site definitivo.** Se um dia ela ficar ligada no site real, o painel mostra um item vermelho "Chave de TESTE do Stripe em uso" em *Admin → Configurações*; e, se sobrar crédito de teste, confira em *Admin → Carteiras* e remova com *Ajuste manual*.
 
 1. **Chave secreta.** No painel do Stripe: **Desenvolvedores → Chaves de API**. Copie a **Chave secreta** (`sk_test_…` no modo de teste, `sk_live_…` em produção). Ela vira o `STRIPE_SECRET_KEY`. Nunca mostre essa chave a ninguém (nem a uma IA). Se preferir uma *chave restrita* (`rk_…`), ela precisa de permissão de escrita em *Checkout Sessions* e de leitura em *PaymentIntents* e *Charges*; isso não foi validado, então teste no modo de teste.
 2. **Webhook.** **Desenvolvedores → Webhooks → Adicionar endpoint** (no painel novo pode aparecer como *Workbench* → *Adicionar destino*):
@@ -284,34 +292,35 @@ Com `PIX_PROVIDER="stripe"` o depósito é cobrado por uma **página de pagament
    - Se você já usa o Stripe para as inscrições em campeonatos, o endereço é o **mesmo**: só acrescente os eventos que faltam (`charge.refunded` e `charge.dispute.created`) ao endpoint existente. Não cadastre também `/api/webhooks/pix`.
    - O modo de teste e o modo real têm endpoints e segredos **diferentes**: crie um endpoint em cada um.
    - Mesmo que algum aviso se perca, o agendador reconsulta os Pix pendentes e, aos poucos, os depósitos já creditados (estornos perdidos).
-3. **Variáveis** (no ChatGPT Sites, vão nos segredos do site; em servidor próprio, no `.env`):
+3. **Cadastre nesta ordem.** Salvar em etapas pode deixar o site inteiro fora do ar (resposta 503, inclusive os campeonatos da Fase 1) até a **última** etapa, porque o site recusa subir com a carteira ligada e algo faltando. Por isso a variável que liga tudo vai **por último**. (No ChatGPT Sites: *segredo* = valor que fica escondido depois de salvo; *variável normal* = valor visível. O `CRON_SECRET` e o `APP_URL` já existem desde a Fase 1.)
+   1. **Segredos:** `DATA_ENCRYPTION_KEY` (gere com `npm run secrets -- --sites` e guarde fora do ChatGPT), `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
+   2. **Variáveis normais:**
 
 ```ini
-WALLET_ENABLED="true"
 PIX_PROVIDER="stripe"
-STRIPE_SECRET_KEY="sk_test_..."          # troque por sk_live_... só no final
-STRIPE_WEBHOOK_SECRET="whsec_..."
-STRIPE_ALLOW_TEST_KEY="true"             # SÓ enquanto estiver ensaiando com sk_test_ no site no ar; apague ao ir para sk_live_
 PIX_REQUIRE_PAYER_DOC="true"             # depósito sem o CPF do pagador fica retido (já é o padrão em produção)
 WITHDRAW_AUTO_APPROVE_MAX_CENTS="0"      # TODO saque espera um admin (seção 5.1)
-APP_URL="https://SEU-ENDERECO"
-DATA_ENCRYPTION_KEY="(base64)"
-CRON_SECRET="(token)"
 # STRIPE_PIX_COLLECT_TAX_ID="false"      # só se o Stripe recusar o campo de CPF (veja 10.6)
 # STRIPE_PIX_AUTO_CREDIT="true"          # crédito automático (mais arriscado; veja o aviso em 10.1)
 ```
 
-   Não precisa de nenhuma variável do Asaas. Em produção o site **recusa subir** com `PIX_PROVIDER="stripe"` sem as duas chaves e recusa uma chave de teste (`sk_test_…`) **a menos que** `STRIPE_ALLOW_TEST_KEY="true"` (use só para ensaiar; o painel de verificação mostra o alerta).
-4. **Ligue a carteira** em **Admin → Configurações** (seção 4.1). A lista de pendências mostra "Provedor de Pix (Stripe)".
+   3. **Por último:** `WALLET_ENABLED="true"`. O `wrangler.jsonc` já traz `WALLET_ENABLED="false"` como variável normal: altere o valor **em um só lugar** (no arquivo **ou** nas configurações do site, e anote qual) e **nunca** cadastre como segredo um nome que já está em `vars`. Um novo envio do site não pode devolver o valor a `false` sem você perceber: confira depois de cada publicação.
+   4. **Só no site de ENSAIO** (nunca no definitivo): `STRIPE_ALLOW_TEST_KEY="true"`. Sem ela, o site recusa a chave `sk_test_…`.
+
+   Não precisa de nenhuma variável do Asaas. Em produção o site **recusa subir** com `PIX_PROVIDER="stripe"` sem as duas chaves, recusa uma chave de teste (`sk_test_…`) **a menos que** `STRIPE_ALLOW_TEST_KEY="true"`, e recusa `STRIPE_PIX_AUTO_CREDIT="true"` com chave de teste.
+4. **Ative a carteira** em **Admin → Configurações → Ativar a carteira** (seção 4.1). Só nesse clique ela aparece para os usuários. A lista de pendências mostra "Provedor de Pix (Stripe)" e o que mais faltar.
+5. **Trocar do ensaio para o dinheiro de verdade:** no site **definitivo** (outro banco, sem créditos de teste) cadastre a chave `sk_live_…` e o `whsec_…` do modo real, **sem** `STRIPE_ALLOW_TEST_KEY`. Comece com limites baixos.
 
 ### 10.4 Como testar no modo de teste do Stripe
+
+> Faça isto **só no site de ensaio** (seção 10.3, início): os créditos de teste valem como dinheiro real no banco desse site.
 
 1. Entre como líder (com identidade verificada), abra a carteira da equipe, informe um valor e clique em **Gerar Pix**. Aparece o botão **Pagar com Pix**.
 2. Clique nele: abre a página do Stripe. Informe o **CPF do titular** no campo "CPF do titular da conta" e os demais dados; escolha o Pix. (O Stripe pode pedir também o CPF dele; no modo de teste vale `000.000.000-00`.)
 3. No modo de teste a página não mostra um QR de verdade: use o botão **Simular leitura** (*Simulate scan*). Abre uma página de teste do Stripe em que você escolhe **autorizar** o pagamento (ou **expirar**).
-4. Em alguns segundos o site recebe o aviso do Stripe e reconsulta. O depósito aparece em **Admin → Depósitos retidos** ("Pix recebido pelo Stripe: aguardando a conferência do administrador"). Confira o nome do pagador no painel do Stripe e clique em **Creditar**: a carteira recebe o crédito **uma vez só**, mesmo que o aviso chegue repetido. No painel do Stripe, **Desenvolvedores → Webhooks → seu endpoint**, as entregas devem aparecer com resposta **200**.
+4. Em alguns segundos o site recebe o aviso do Stripe e reconsulta. O depósito aparece em **Admin → Depósitos retidos** ("Pix recebido pelo Stripe: aguardando a conferência do administrador"). Confira o nome do pagador no painel do Stripe e clique em **Creditar na carteira**: a carteira recebe o crédito **uma vez só**, mesmo que o aviso chegue repetido. No painel do Stripe, **Desenvolvedores → Webhooks → seu endpoint**, as entregas devem aparecer com resposta **200**.
 5. Teste também: **expirar** (o depósito vira "Expirado" e não credita), e um **reembolso** feito pelo painel do Stripe (**Pagamentos → o pagamento → Reembolsar**): antes do crédito, o depósito é fechado; depois, o crédito é retirado, a carteira é congelada e, se o saldo já foi gasto, vira dívida.
-6. Para testar na sua máquina sem hospedagem, a CLI do Stripe encaminha os avisos: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` (ela imprime o `whsec_…` a usar no `.env`).
+6. Para testar na sua máquina sem hospedagem, a CLI do Stripe encaminha os avisos: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` (ela imprime o `whsec_…` a usar no `.env` da sua máquina; na prévia do Sites a porta é a `8787`: `localhost:8787`).
 
 ### 10.5 Saques manuais (a limitação do Stripe)
 
@@ -339,7 +348,7 @@ Cuidados: o dinheiro dos depósitos fica no seu saldo do Stripe e chega ao seu b
 | Sintoma | Verifique |
 |---|---|
 | "O provedor de pagamentos recusou…" ao gerar o Pix | O log do site (no servidor próprio: `docker compose logs app`; no Sites: o log de execução do site) mostra `[stripe-pix] POST /checkout/sessions → <código> <tipo> <erro> param=<campo>`. Pix ativado na conta? Chave certa para o modo (teste ou real)? Se o `param` for `custom_fields…`, use `STRIPE_PIX_COLLECT_TAX_ID="false"`. |
-| O site não sobe e fala em "chave de TESTE" | Em produção `sk_test_…` só é aceita com `STRIPE_ALLOW_TEST_KEY="true"` (10.3). |
+| O site não sobe e fala em "chave de TESTE" | Em produção `sk_test_…` só é aceita com `STRIPE_ALLOW_TEST_KEY="true"`, e só no site de ensaio (10.3). No site definitivo o certo é trocar para `sk_live_…`, não ligar essa variável. |
 | Pagou e o saldo não subiu | Os eventos do webhook estão marcados (10.3, passo 2) e o endpoint mostra resposta 200? O `STRIPE_WEBHOOK_SECRET` é o do endpoint certo (teste ≠ real)? O depósito pode estar em **Depósitos retidos** (é o normal no Stripe). O agendador também reconsulta Pix pagos cujo aviso se perdeu. |
 | Saque "Aguardando pagamento" parado | É o esperado no Stripe: um admin precisa pagar (10.5). Veja **Admin → Saques → Para pagar à mão**. |
 | "Outro administrador já pegou este saque" | Outro admin reservou o pagamento; combine com ele ou espere 24 horas. |

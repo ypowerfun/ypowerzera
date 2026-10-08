@@ -131,7 +131,7 @@ Nenhum sistema é "à prova de fraude". O desenho reduz a superfície e faz as f
 
 **Mais curto ainda:** em um servidor Ubuntu/Debian novo, `bash scripts/instalar-servidor.sh` faz 4 perguntas e instala tudo (Docker, firewall, segredos, `.env`, HTTPS).
 
-**Hospedagem no ChatGPT Sites (Cloudflare Workers + banco D1):** o mesmo código também é montado para o Sites com `npm run build:sites`. Veja [`docs/SITES.md`](docs/SITES.md) e o texto pronto [`PROMPT_PARA_O_CHATGPT.md`](PROMPT_PARA_O_CHATGPT.md). Para testar localmente: `npm run preview:sites`, `npm run smoke:sites` e `npm run test:d1`.
+**Hospedagem no ChatGPT Sites (Cloudflare Workers + banco D1):** o mesmo código também é montado para o Sites com `npm run build:sites`. Veja [`docs/SITES.md`](docs/SITES.md) e o texto pronto [`PROMPT_PARA_O_CHATGPT.md`](PROMPT_PARA_O_CHATGPT.md). Para testar localmente: `npm run preview:sites`, `npm run smoke:sites` e `npm run test:d1`. Para montar o `.zip` de entrega (só os arquivos versionados, conferido): `npm run empacotar`.
 
 O pacote inclui `Dockerfile`, `docker-compose.yml` (site + HTTPS automático com Caddy + agendador + backup diário) e `.env.production.example`. Comandos úteis: `npm run secrets` (gera os segredos), `npm run mail:test -- voce@exemplo.com` (testa o e-mail), `npm run verificar-site -- https://seusite.com.br` (confere a segurança do site no ar), `npm run backup` (cópia do banco). Em **Admin → Configurações → Verificação do site** há um checklist e o botão de e-mail de teste.
 

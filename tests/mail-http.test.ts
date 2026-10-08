@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assertProductionConfig, getEnv, mailProviderReady } from "@/lib/env";
-import { hintForMailError, parseMailFrom, safeMailError, sendViaBrevo, sendViaResend } from "@/server/mailer";
+import { hintForMailError, parseMailFrom, safeMailError, sendMail, sendViaBrevo, sendViaResend } from "@/server/mailer";
 
 /** Envio de e-mail por API HTTP (Resend/Brevo): o único que funciona no ChatGPT Sites (Cloudflare Workers não falam SMTP). */
 
-const KEYS = ["MAIL_PROVIDER", "RESEND_API_KEY", "BREVO_API_KEY", "SMTP_URL", "MAIL_FROM", "PA_RUNTIME", "NODE_ENV", "VITEST", "APP_URL", "APP_SECRET", "ADMIN_EMAILS", "TRUST_PROXY", "PAYMENTS_PROVIDER", "WALLET_ENABLED", "PIX_PROVIDER"];
+const KEYS = ["MAIL_PROVIDER", "RESEND_API_KEY", "BREVO_API_KEY", "SMTP_URL", "MAIL_FROM", "PA_RUNTIME", "NODE_ENV", "VITEST", "APP_URL", "APP_SECRET", "ADMIN_EMAILS", "TRUST_PROXY", "PAYMENTS_PROVIDER", "WALLET_ENABLED", "PIX_PROVIDER", "PA_LOCAL_PREVIEW"];
 const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
 const set = (o: Record<string, string | undefined>) => {
   for (const [k, v] of Object.entries(o)) {
@@ -38,6 +38,26 @@ describe("escolha do provedor de e-mail", () => {
     expect(mailProviderReady(getEnv())).toBe(false);
     set({ RESEND_API_KEY: "re_123456789" });
     expect(mailProviderReady(getEnv())).toBe(true);
+  });
+});
+
+describe("prévia local (PA_LOCAL_PREVIEW)", () => {
+  it("não chama o provedor de e-mail: imprime o texto (com o link) no terminal", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      set({ NODE_ENV: "development", VITEST: undefined, APP_URL: "http://localhost:8787", PA_LOCAL_PREVIEW: "1", RESEND_API_KEY: "re_chave_de_mentira" });
+      await sendMail({ to: "dono@exemplo.com", subject: "Confirme sua conta", text: "Abra https://localhost/confirmar?t=abc" });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(log.mock.calls.map((c) => String(c[0])).join("\n")).toContain("https://localhost/confirmar?t=abc");
+      // sem a prévia local, o mesmo envio vai para o Resend
+      set({ PA_LOCAL_PREVIEW: undefined });
+      await sendMail({ to: "dono@exemplo.com", subject: "Confirme sua conta", text: "x" });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 

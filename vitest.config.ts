@@ -13,7 +13,7 @@ export default defineConfig({
     alias: d1
       ? [
           { find: /^@prisma\/client$/, replacement: path.join(src, "generated/prisma-d1-node/client.ts") },
-          { find: /^@\/lib\/db$/, replacement: path.join(src, "lib/db.d1test.ts") },
+          { find: /^@\/lib\/db$/, replacement: path.resolve(__dirname, "tests/d1/db.d1test.ts") },
           { find: /^@\//, replacement: `${src}/` },
         ]
       : [{ find: /^@\//, replacement: `${src}/` }],

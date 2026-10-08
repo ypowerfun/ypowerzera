@@ -28,7 +28,7 @@ export default async function AdminSettings() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-black">Verificação do site</h2>
-            <p className="mt-1 max-w-2xl text-sm text-muted">O que precisa estar certo para o site funcionar de verdade na internet. Itens em vermelho pedem ajuste no servidor (variáveis do <code>.env</code>).</p>
+            <p className="mt-1 max-w-2xl text-sm text-muted">O que precisa estar certo para o site funcionar de verdade na internet. Itens em vermelho pedem ajuste nas configurações do servidor ou do site (no ChatGPT Sites: as configurações do site; no servidor próprio: o <code>.env</code>).</p>
           </div>
           <Badge tone={health.every((i) => i.ok) ? "ok" : "warn"}>{health.every((i) => i.ok) ? "Tudo certo" : `${health.filter((i) => !i.ok).length} item(ns) para ajustar`}</Badge>
         </div>
@@ -69,7 +69,7 @@ export default async function AdminSettings() {
               </li>
             ))}
           </ul>
-          {missing.length > 0 && <p className="mt-2 text-xs text-muted">Termine estes itens no servidor (variáveis de ambiente). O passo a passo está em <code>docs/CONFIGURAR_PIX.md</code>.</p>}
+          {missing.length > 0 && <p className="mt-2 text-xs text-muted">Termine estes itens nas configurações do servidor ou do site (variáveis de ambiente). O passo a passo está em <code>docs/CONFIGURAR_PIX.md</code>.</p>}
         </div>
 
         {s.switchOn ? (

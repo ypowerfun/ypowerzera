@@ -43,10 +43,11 @@ export function mailProviderReady(e: { mailProvider: MailProvider; smtpUrl: stri
 export function getEnv() {
   const isProd = process.env.NODE_ENV === "production";
   const isTest = process.env.NODE_ENV === "test" || !!process.env.VITEST;
+  const appUrl = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   return {
     isProd,
     isTest,
-    appUrl: (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, ""),
+    appUrl,
     appSecret: process.env.APP_SECRET ?? "",
     /** "none" = sem pagamento de inscrição (campeonatos só gratuitos); a carteira por Pix é outro assunto (PIX_PROVIDER). */
     paymentsProvider: (process.env.PAYMENTS_PROVIDER ?? "mock") as "mock" | "stripe" | "none",
@@ -64,7 +65,9 @@ export function getEnv() {
     mailProvider: pickMailProvider(),
     /** "sites" = rodando no ChatGPT Sites (Cloudflare Workers + D1). Definido pelo wrangler.jsonc; no servidor próprio fica "server". */
     /** SÓ no seu computador (npm run preview:sites / smoke:sites): aceita APP_URL http://localhost na prévia do Sites. Nunca defina no site de verdade. */
-    localPreview: bool(process.env.PA_LOCAL_PREVIEW, false),
+    // (Só vale com APP_URL em localhost: com um endereço público a variável é ignorada aqui e recusada na subida, para o site de verdade nunca
+    // trocar o envio de e-mails por um texto no log.)
+    localPreview: bool(process.env.PA_LOCAL_PREVIEW, false) && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(appUrl),
     runtime: (process.env.PA_RUNTIME === "sites" || inCloudflareWorkers() ? "sites" : "server") as "sites" | "server",
     adminEmails: (process.env.ADMIN_EMAILS ?? "")
       .split(",")
@@ -87,7 +90,7 @@ export function getEnv() {
      * VERIFICADO: mais cômodo, porém contornável. Ligue só se aceitar esse risco.
      */
     stripePixAutoCredit: bool(process.env.STRIPE_PIX_AUTO_CREDIT, false),
-    /** Permite chave de TESTE (sk_test_) em produção, para ensaiar o fluxo do Stripe no site de verdade. Aparece como alerta no painel. */
+    /** Permite chave de TESTE (sk_test_) em produção, SÓ para ensaiar o fluxo do Stripe num site separado, sem usuários de verdade (os créditos do ensaio valem como dinheiro real). Aparece como item vermelho em Admin → Configurações e não combina com STRIPE_PIX_AUTO_CREDIT. */
     stripeAllowTestKey: bool(process.env.STRIPE_ALLOW_TEST_KEY, false),
     walletEnabled: bool(process.env.WALLET_ENABLED, true),
     payoutsPaused: bool(process.env.PAYOUTS_PAUSED, false),
@@ -116,7 +119,7 @@ export function assertProductionConfig() {
     problems.push(`PAYMENTS_PROVIDER="${env.paymentsProvider}" não existe: use stripe, none (sem pagamento de inscrição) ou, só para testes, mock.`);
   }
   if (env.paymentsProvider === "mock" && !env.allowMockPayments) {
-    problems.push("PAYMENTS_PROVIDER=mock é recusado em produção (use stripe, ou none para campeonatos só gratuitos; ALLOW_MOCK_PAYMENTS=true não é recomendado).");
+    problems.push("PAYMENTS_PROVIDER=mock é recusado em produção (use stripe, ou none para campeonatos só gratuitos; NUNCA ligue ALLOW_MOCK_PAYMENTS num site de verdade).");
   }
   if (!/^https:\/\//i.test(env.appUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(env.appUrl)) {
     problems.push("APP_URL precisa ser o endereço público do site com https:// (ex.: https://meusite.com.br): ele vai nos links dos e-mails de confirmação e de redefinição de senha.");
@@ -142,6 +145,9 @@ export function assertProductionConfig() {
     }
     if (env.cronSecret.length < 24) problems.push("No ChatGPT Sites, defina CRON_SECRET (24+ caracteres): sem ele o agendador (limpeza, Pix expirado, desafios) não roda.");
   }
+  if (bool(process.env.PA_LOCAL_PREVIEW, false) && !env.localPreview) {
+    problems.push("PA_LOCAL_PREVIEW só vale na prévia no seu computador (APP_URL http://localhost…). Apague essa variável das configurações do site: com ela o site de verdade não enviaria os e-mails.");
+  }
   if (env.adminEmails.length === 0) {
     problems.push("ADMIN_EMAILS é obrigatório em produção: é assim que o seu e-mail vira administrador depois de confirmado (o seed de demonstração não roda em produção).");
   }
@@ -153,12 +159,18 @@ export function assertProductionConfig() {
   if (usesStripe && /^[sr]k_test_/.test(env.stripeSecretKey) && !env.stripeAllowTestKey) {
     problems.push("STRIPE_SECRET_KEY é uma chave de TESTE (sk_test_…): um site público não receberia dinheiro de verdade. Use a chave sk_live_… da Stripe (ou, só para ensaiar o fluxo, defina STRIPE_ALLOW_TEST_KEY=true e lembre de trocar depois).");
   }
+  if (usesStripe && env.stripePixAutoCredit && /^[sr]k_test_/.test(env.stripeSecretKey)) {
+    problems.push("STRIPE_PIX_AUTO_CREDIT=true não pode ser usado com chave de TESTE (sk_test_): qualquer pessoa receberia crédito grátis ao simular o pagamento. Apague STRIPE_PIX_AUTO_CREDIT durante o ensaio.");
+  }
   if (!["mock", "asaas", "stripe"].includes(env.pixProvider)) {
     problems.push(`PIX_PROVIDER="${env.pixProvider}" não existe: use asaas ou stripe (ou, só para testes, mock).`);
   }
   if (env.walletEnabled) {
     if (!isValidDataEncryptionKey(env.dataEncryptionKey)) problems.push("DATA_ENCRYPTION_KEY (32 bytes em base64/hex) é obrigatório para proteger o CPF dos usuários.");
     if (env.pixProvider === "mock" && !env.allowMockPix) problems.push("PIX_PROVIDER=mock é recusado em produção (use asaas ou stripe).");
+    if (env.runtime === "sites" && env.pixProvider === "asaas") {
+      problems.push("No ChatGPT Sites o Pix da carteira usa PIX_PROVIDER=stripe. O Asaas não foi testado nos Workers (a aprovação automática de saques do Asaas pede um IP fixo e os Workers não têm IP fixo); use o servidor próprio para o Asaas.");
+    }
     if (env.pixProvider === "asaas" && (!env.asaasApiKey || !env.asaasWebhookToken || !env.asaasTransferAuthToken)) {
       problems.push("ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e ASAAS_TRANSFER_AUTH_TOKEN são obrigatórios com PIX_PROVIDER=asaas.");
     }

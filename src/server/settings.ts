@@ -69,7 +69,7 @@ export function walletReadiness(): WalletReadiness {
 export interface WalletState {
   /** Desligada por variável de ambiente (WALLET_ENABLED=false): o admin não consegue religar pela interface. */
   envBlocked: boolean;
-  /** A chave que o admin controla. */
+  /** A chave que o admin controla (em produção, enquanto ele não a ligar, fica desligada). */
   switchOn: boolean;
   readiness: WalletReadiness;
   /** O que os usuários realmente veem: chave ligada E configuração pronta. */
@@ -80,7 +80,9 @@ export interface WalletState {
 export async function walletState(): Promise<WalletState> {
   const env = getEnv();
   const [wallet, wd] = await Promise.all([read(K_WALLET), read(K_WITHDRAW_ADMIN)]);
-  const switchOn = wallet !== "false";
+  // Chave nunca tocada pelo admin: em PRODUÇÃO nasce DESLIGADA (ligar exige o clique em "Ativar a carteira", depois de a configuração
+  // estar pronta); em desenvolvimento e nos testes nasce ligada. Assim, salvar a última variável da Fase 2 nunca expõe o dinheiro sozinho.
+  const switchOn = wallet === null ? !env.isProd : wallet !== "false";
   const readiness = walletReadiness();
   return { envBlocked: !env.walletEnabled, switchOn, readiness, effective: env.walletEnabled && switchOn && readiness.ready, withdrawRequireAdmin: wd !== "false" };
 }
@@ -165,7 +167,7 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
           ? `${engine.pending} operação(ões) em andamento agora.`
           : "Tudo certo: nenhuma transação interrompida."
         : engine.dead > 0
-          ? `${engine.dead} registro(s) em quarentena (_JournalDead): uma transação não pôde ser desfeita. Confira a conciliação da carteira e peça ajuda (docs/SITES.md, seção 2).`
+          ? `${engine.dead} registro(s) em quarentena (_JournalDead): uma transação não pôde ser desfeita. Confira a conciliação da carteira e peça ajuda (docs/SITES.md, Apêndice A).`
           : "Uma transação foi interrompida e será desfeita sozinha na próxima operação de escrita.",
     });
   }
@@ -177,7 +179,7 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
     key: "cron",
     label: "Agendador (saques, Pix expirado, desafios)",
     ok: cronOk,
-    hint: cronOk ? `Rodou ${agoLabel(last!, now)}.` : last ? `Parado: a última rodada foi ${agoLabel(last, now)}. Sem ele os saques aprovados não saem e os Pix expirados não são limpos.` : "Ainda não rodou. Ele precisa chamar /api/cron/wallet a cada 1 a 5 minutos (já vem pronto no docker-compose).",
+    hint: cronOk ? `Rodou ${agoLabel(last!, now)}.` : last ? `Parado: a última rodada foi ${agoLabel(last, now)}. Sem ele os saques aprovados não saem e os Pix expirados não são limpos.` : env.runtime === "sites" ? "Ainda não rodou. No ChatGPT Sites ele depende do Cron do Cloudflare (já configurado no wrangler.jsonc) ou de um serviço externo (docs/SITES.md, seção 5). Na Fase 1 (campeonatos grátis) isto só atrasa a limpeza de sessões e links vencidos." : "Ainda não rodou. Ele precisa chamar /api/cron/wallet a cada 1 a 5 minutos (já vem pronto no docker-compose).",
   });
 
   const payOk = env.paymentsProvider === "none" || env.paymentsProvider === "stripe" || !env.isProd;
@@ -186,6 +188,11 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
 
   const secretOk = env.appSecret.length >= 32 && !env.appSecret.includes("troque") && !env.appSecret.includes("dev-only");
   items.push({ key: "secret", label: "Chave secreta do site (APP_SECRET)", ok: secretOk || !env.isProd, hint: secretOk ? "Definida." : "Defina uma APP_SECRET forte (rode: npm run secrets)." });
+
+  // Chave de TESTE do Stripe liberada em produção (STRIPE_ALLOW_TEST_KEY): só serve para ensaiar num site separado. Nunca em site com usuários de verdade.
+  if (env.stripeAllowTestKey && /^[sr]k_test_/.test(env.stripeSecretKey)) {
+    items.push({ key: "stripe-test", label: "Chave de TESTE do Stripe em uso", ok: false, hint: "O site está usando sk_test_ com STRIPE_ALLOW_TEST_KEY=true: os créditos deste ensaio valem como dinheiro real na carteira. Use só num site de ensaio sem usuários de verdade; no site definitivo troque por sk_live_ e APAGUE STRIPE_ALLOW_TEST_KEY (docs/CONFIGURAR_PIX.md, seção 10)." });
+  }
 
   const proxyOk = env.trustProxy !== null || env.runtime === "sites";
   items.push({ key: "proxy", label: "IP de origem dos visitantes (TRUST_PROXY)", ok: proxyOk || !env.isProd, hint: env.runtime === "sites" ? "ChatGPT Sites: o IP real vem da Cloudflare (cf-connecting-ip), que o visitante não consegue forjar." : proxyOk ? (env.trustProxy ? "Confiando no proxy (Caddy): os limites de tentativa valem por visitante." : "Ignorando x-forwarded-for: todos caem no mesmo limite.") : "Defina TRUST_PROXY=true quando houver um proxy como o Caddy na frente." });

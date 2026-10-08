@@ -20,6 +20,8 @@
     "reset": "node scripts/reset-db.mjs",
     "db:reset": "node scripts/reset-db.mjs",
     "secrets": "node scripts/gen-secrets.mjs",
+    "secrets:sites": "node scripts/gen-secrets.mjs --sites",
+    "empacotar": "node scripts/empacotar.mjs",
     "backup": "node scripts/backup-db.mjs",
     "mail:test": "tsx --env-file-if-exists=.env scripts/mail-test.ts",
     "verificar-site": "node scripts/check-site.mjs",
@@ -31,7 +33,7 @@
     "preview:sites": "node scripts/sites-local.mjs",
     "test:d1": "TEST_DB=d1 vitest run",
     "export:d1": "node scripts/export-to-d1.mjs",
-    "smoke:sites": "node scripts/sites-smoke.mjs",
+    "smoke:sites": "npm run build:sites && node scripts/sites-smoke.mjs",
     "test:d1:fuzz": "D1_SLOW=1 vitest run tests/d1/engine-sweep.test.ts tests/d1/engine-fuzz.test.ts"
   },
   "dependencies": {

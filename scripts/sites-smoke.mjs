@@ -14,6 +14,10 @@ const PORT = Number(process.env.SMOKE_PORT || 8799);
 const BASE = `http://localhost:${PORT}`;
 const persist = mkdtempSync(path.join(os.tmpdir(), "sites-smoke-"));
 const devVars = path.join(root, ".dev.vars");
+if (!existsSync(path.join(root, ".open-next", "worker.js"))) {
+  console.error("O site ainda não foi montado: rode `npm run build:sites` antes (o teste de fumaça usa o pacote de .open-next/).");
+  process.exit(1);
+}
 const hadDevVars = existsSync(devVars);
 if (hadDevVars) {
   console.error("Já existe um .dev.vars; renomeie-o antes de rodar o teste de fumaça (ele cria o seu próprio).");
@@ -63,7 +67,7 @@ try {
   const ins = demoSql("INSERT INTO User (id, email, username, displayName, passwordHash, role, updatedAt) VALUES ('demo1', 'admin@primearena.local', 'admin_demo', 'Admin', 'x', 'ADMIN', '2026-01-01T00:00:00.000+00:00')");
   check("conta de demonstração inserida no D1 (para testar a trava)", ins.status === 0);
 
-  server = spawn("npx", ["wrangler", "dev", "--local", "--port", String(PORT), "--persist-to", persist, "--log-level", "warn"], { cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: true });
+  server = spawn("npx", ["wrangler", "dev", "--local", "--test-scheduled", "--port", String(PORT), "--persist-to", persist, "--log-level", "warn"], { cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: true });
   let serverLog = "";
   server.stdout.on("data", (d) => (serverLog += d));
   server.stderr.on("data", (d) => (serverLog += d));
@@ -99,6 +103,20 @@ try {
   const cronOk = await fetch(`${BASE}/api/cron/wallet`, { method: "POST", headers: { authorization: "Bearer smoke-cron-secret-0123456789abcdef" } });
   check("cron com segredo roda (grava no D1)", cronOk.status === 200, String(cronOk.status));
 
+  // o handler scheduled() é o que o Cron Trigger do Cloudflare chama: apaga a marca de "última rodada" e dispara de verdade
+  const d1 = (cmd) => wrangler(["d1", "execute", "primearena", "--local", "--persist-to", persist, "--json", "--command", cmd]);
+  d1("DELETE FROM SiteSetting WHERE key = 'cron.lastRunAt'");
+  const sched = await fetch(`${BASE}/cdn-cgi/handler/scheduled`);
+  let marked = false;
+  for (let i = 0; i < 20 && !marked; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      const out = JSON.parse(d1("SELECT value FROM SiteSetting WHERE key = 'cron.lastRunAt'").stdout);
+      marked = (out[0]?.results?.length ?? 0) === 1;
+    } catch {}
+  }
+  check("o handler scheduled() do Worker (Cron Trigger) roda a rotina do agendador", sched.status === 200 && marked, `${sched.status}`);
+
   const { chromium } = await import("@playwright/test");
   const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM_PATH || undefined });
   const page = await browser.newPage();
@@ -120,7 +138,7 @@ try {
   check("cadastro cria a conta e entra", !afterSignup.includes("/cadastro") || (await page.getByText(/confirm/i).count()) > 0, afterSignup);
 
   // confirma o e-mail direto no banco (o link de verdade vai por e-mail)
-  const upd = wrangler(["d1", "execute", "primearena", "--local", "--persist-to", persist, "--command", `UPDATE User SET emailVerifiedAt = ${Date.now()} WHERE email = '${email}'`]);
+  const upd = wrangler(["d1", "execute", "primearena", "--local", "--persist-to", persist, "--command", `UPDATE User SET emailVerifiedAt = '${new Date().toISOString().replace("Z", "+00:00")}' WHERE email = '${email}'`]);
   check("e-mail marcado como confirmado (D1)", upd.status === 0);
 
   await page.context().clearCookies();

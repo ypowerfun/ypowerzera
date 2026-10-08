@@ -100,6 +100,12 @@ export async function sendMail(msg: MailMessage): Promise<void> {
     testOutbox.push(msg);
     return;
   }
+  // Prévia no seu computador (npm run preview:sites, PA_LOCAL_PREVIEW=1): não chama Resend/Brevo; o texto (com o link de confirmação)
+  // aparece no terminal. É assim que se confirma a conta de administrador numa prévia sem provedor de e-mail de verdade.
+  if (env.localPreview) {
+    console.log(`\n[mail (prévia local: nada foi enviado) → ${msg.to}] ${msg.subject}\n${msg.text}\n`);
+    return;
+  }
   if (env.mailProvider === "resend" && env.resendApiKey) return sendViaResend(msg);
   if (env.mailProvider === "brevo" && env.brevoApiKey) return sendViaBrevo(msg);
   if (env.mailProvider === "smtp" && env.smtpUrl) {

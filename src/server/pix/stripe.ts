@@ -12,7 +12,7 @@ import type { ChargeInfo, PixEvent, PixProvider } from "./types";
  *  - o QR Code fica numa página hospedada pelo Stripe: o endereço dela vai em `pixCopyPaste` (sem mudar o banco) e a tela mostra
  *    o botão "Pagar com Pix" em vez do QR + copia-e-cola;
  *  - o Stripe NÃO paga Pix a terceiros: `canSendPix` é falso e o saque é pago à mão pelo administrador (veja withdrawals.ts);
- *  - o CPF de quem pagou só existe se o pagador o digitar na página do Stripe (`tax_id_collection`). É um dado DECLARADO, não
+ *  - o CPF de quem pagou só existe se o pagador o digitar na página do Stripe (campo personalizado `custom_fields` do Checkout). É um dado DECLARADO, não
  *    confirmado pelo banco: sem ele (ou com outro CPF) o depósito fica retido para o administrador conferir.
  *
  * ⚠️ NÃO VALIDADO contra a API real: a documentação oficial (docs.stripe.com) não pôde ser aberta ao escrever isto. Por isso é

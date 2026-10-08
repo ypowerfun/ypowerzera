@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { assertProductionConfig } from "@/lib/env";
 
-const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "MAIL_FROM", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "WALLET_ENABLED", "STRIPE_ALLOW_TEST_KEY"];
+const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "MAIL_FROM", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "WALLET_ENABLED", "STRIPE_ALLOW_TEST_KEY", "STRIPE_PIX_AUTO_CREDIT", "PA_LOCAL_PREVIEW", "PA_RUNTIME"];
 const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
 afterEach(() => {
   for (const k of KEYS) {
@@ -63,6 +63,28 @@ describe("configuração de produção", () => {
     expect(() => assertProductionConfig()).toThrow(/STRIPE_ALLOW_TEST_KEY/);
     prod({ PIX_PROVIDER: "stripe", STRIPE_SECRET_KEY: "sk_test_abcdefghijklmnop", STRIPE_WEBHOOK_SECRET: "whsec_x", STRIPE_ALLOW_TEST_KEY: "true" });
     expect(() => assertProductionConfig()).not.toThrow();
+  });
+
+  it("STRIPE_PIX_AUTO_CREDIT=true com chave de TESTE é recusado mesmo com STRIPE_ALLOW_TEST_KEY (dinheiro grátis ao simular)", () => {
+    const test = { PIX_PROVIDER: "stripe", STRIPE_SECRET_KEY: "sk_test_abcdefghijklmnop", STRIPE_WEBHOOK_SECRET: "whsec_x", STRIPE_ALLOW_TEST_KEY: "true", STRIPE_PIX_AUTO_CREDIT: "true" };
+    prod(test);
+    expect(() => assertProductionConfig()).toThrow(/STRIPE_PIX_AUTO_CREDIT=true não pode ser usado com chave de TESTE/);
+    prod({ ...test, STRIPE_SECRET_KEY: "sk_live_abcdefghijklmnop" });
+    expect(() => assertProductionConfig()).not.toThrow(); // com a chave real é uma escolha consciente do dono
+  });
+
+  it("no ChatGPT Sites a carteira não aceita PIX_PROVIDER=asaas (só stripe)", () => {
+    prod({ PA_RUNTIME: "sites", PIX_PROVIDER: "asaas" });
+    expect(() => assertProductionConfig()).toThrow(/PIX_PROVIDER=stripe/);
+    prod({ PA_RUNTIME: "sites", PIX_PROVIDER: "stripe", STRIPE_SECRET_KEY: "sk_live_abcdefghijklmnop", STRIPE_WEBHOOK_SECRET: "whsec_x" });
+    expect(() => assertProductionConfig()).not.toThrow(/Asaas/);
+  });
+
+  it("PA_LOCAL_PREVIEW com endereço público é recusado (só vale na prévia em localhost)", () => {
+    prod({ PA_LOCAL_PREVIEW: "1" });
+    expect(() => assertProductionConfig()).toThrow(/PA_LOCAL_PREVIEW só vale na prévia/);
+    prod({ PA_LOCAL_PREVIEW: "1", APP_URL: "http://localhost:8787" });
+    expect(() => assertProductionConfig()).not.toThrow(/PA_LOCAL_PREVIEW/);
   });
 
   it("PIX_PROVIDER=stripe: recusa chave de TESTE (sk_test_ e rk_test_) e a menciona uma vez só quando as inscrições também usam o Stripe", () => {

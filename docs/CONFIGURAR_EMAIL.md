@@ -1,6 +1,9 @@
 # Como enviar o e-mail de confirmação de conta (e a recuperação de senha)
 
-Quando alguém cria uma conta no site, o site manda um e-mail com um link: **"Confirme seu e-mail para poder se inscrever em campeonatos"**. O mesmo caminho envia o e-mail de "esqueci minha senha". Para isso o site precisa de uma conta de **envio de e-mail (SMTP)**. Este guia leva você do zero até o primeiro e-mail chegando.
+Quando alguém cria uma conta no site, o site manda um e-mail com um link: **"Confirme seu e-mail para poder se inscrever em campeonatos"**. O mesmo caminho envia o e-mail de "esqueci minha senha". Para isso o site precisa de uma conta de **envio de e-mail (SMTP ou API)**. Este guia leva você do zero até o primeiro e-mail chegando.
+
+> ### Você vai usar o ChatGPT Sites?
+> Leia **apenas** as seções **2 (escolha: use o Resend)**, **3 (verificar o domínio)** e **4B**. As seções 4, 5, 6 (opção B) e 8 são do **servidor próprio**; **não** crie um arquivo `.env` na pasta do projeto. Só use o `MAIL_FROM` depois que o Resend mostrar o domínio como **Verified** (pode levar horas); antes disso o Resend só entrega para o seu próprio e-mail.
 
 > **Resumo em 5 passos:** (1) escolha um provedor de envio, (2) verifique o seu domínio, (3) pegue o endereço SMTP **ou a chave de API** (obrigatória no ChatGPT Sites: veja a seção 4B), (4) cole em `SMTP_URL` / `RESEND_API_KEY` / `BREVO_API_KEY` e `MAIL_FROM`, (5) teste com `npm run mail:test -- seu@email.com` ou pelo botão em **Admin → Configurações**.
 
@@ -34,7 +37,7 @@ Não use o servidor de e-mail do seu computador nem o do VPS: e-mails enviados a
 | **Zoho Mail / e-mail do domínio** | Se você já tem e-mail profissional no domínio | Limites baixos de envio por dia |
 | **Gmail com senha de app** | Só para **testes**; limites baixos e o Google pode bloquear | Exige verificação em duas etapas e uma "senha de app" |
 
-Para o lançamento, **recomendo Brevo ou Resend** com o **seu domínio** verificado.
+Para o lançamento, **recomendo Brevo ou Resend** com o **seu domínio** verificado. **No ChatGPT Sites escolha o Resend**: a chave deve ser uma só, e o Brevo pode restringir a API por endereço IP (os Workers da Cloudflare não têm IP fixo); isso não foi verificado.
 
 ---
 
@@ -110,7 +113,7 @@ A hospedagem do ChatGPT Sites (Cloudflare Workers) **não abre conexões SMTP**.
 | `MAIL_FROM` | `Prime Arena <nao-responda@seudominio.com.br>` | endereço do **seu domínio verificado** no provedor (passo 3 acima) |
 | `MAIL_PROVIDER` | `resend` ou `brevo` (opcional) | só precisa se você configurar mais de um; sem isso o site usa o primeiro que achar (Resend, depois Brevo, depois SMTP) |
 
-No Sites, cadastre `RESEND_API_KEY` (ou `BREVO_API_KEY`) como **segredo** (secret) nas configurações do site, nunca em arquivo ou conversa. O teste do passo 6 (botão em **Admin → Configurações**) funciona do mesmo jeito. Erros comuns e o que significam:
+No Sites, cadastre `RESEND_API_KEY` (ou `BREVO_API_KEY`) como **segredo** (secret) nas configurações do site, nunca em arquivo ou conversa. O botão **Enviar e-mail de teste para mim** (**Admin → Configurações**, só aparece depois que você já é administrador) funciona do mesmo jeito. **Só use o `MAIL_FROM` depois que o Resend mostrar o domínio como Verified**; antes disso ele só entrega para o seu próprio e-mail. Erros comuns e o que significam:
 
 | Mensagem | O que fazer |
 |---|---|
@@ -185,4 +188,4 @@ Se o teste passa mas os usuários não recebem:
 
 ## 8. Para quem só quer testar no computador (sem provedor)
 
-Sem `SMTP_URL`, **em desenvolvimento** (`npm run dev`) o site não envia nada: grava o e-mail em um arquivo na pasta `.dev-mail/` e mostra o texto no terminal, inclusive o link de confirmação. Basta copiar o link e abrir no navegador. Isso **só funciona em desenvolvimento**; em produção o `SMTP_URL` é obrigatório.
+Sem `SMTP_URL`, **em desenvolvimento** (`npm run dev`) o site não envia nada: grava o e-mail em um arquivo na pasta `.dev-mail/` e mostra o texto no terminal, inclusive o link de confirmação. Basta copiar o link e abrir no navegador. Isso **só funciona em desenvolvimento**; em produção é obrigatório um envio configurado (`SMTP_URL`, `RESEND_API_KEY` ou `BREVO_API_KEY`). Na prévia do ChatGPT Sites no seu computador (`npm run preview:sites`) o texto do e-mail aparece no terminal.
