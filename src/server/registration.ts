@@ -1,3 +1,6 @@
+import { changeD1CheckIn, withdrawD1FreeRegistration } from "./d1/registration-lifecycle";
+import { sitesDatabase } from "@/lib/sites-d1";
+import { commitFreeRegistration } from "./d1/free-registration";
 import { Prisma, type Participant, type Tournament } from "@prisma/client";
 import { db, type Tx } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -78,6 +81,19 @@ export async function registerForTournament(actorIn: Actor | null, input: Regist
     await rateLimit(`coupon:${actor.id}`, 15, 3600, "Muitas tentativas de cupom. Aguarde um pouco e tente de novo.");
   }
 
+  const d1 = sitesDatabase();
+  if (d1) {
+    const t = await db.tournament.findUnique({ where: { id: input.tournamentId } });
+    if (!t) throw new AppError("Campeonato não encontrado.", "NOT_FOUND");
+    if (t.entryFeeCents !== 0) throw new AppError("Inscrições pagas ainda não estão disponíveis.");
+    if (registrationWindow(t) !== "open") throw new AppError("As inscrições não estão abertas.");
+    if (input.couponCode?.trim()) throw new AppError("Este campeonato é gratuito; não é preciso cupom.");
+    const roster = await buildRoster(db, t, actor, input);
+    const customAnswers = validateCustomAnswers((t.customFields as unknown as CustomField[] | null) ?? [], input.customAnswers ?? {});
+    const result = await commitFreeRegistration(d1, { ...roster, tournamentId: t.id, tournamentUpdatedAt: t.updatedAt.getTime(),
+      actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", customAnswers, now: Date.now() });
+    return { participantId: result.id, status: result.status as RegisterResult["status"] };
+  }
   return withRetry(() =>
     db.$transaction(
       async (tx) => {
@@ -211,6 +227,11 @@ export async function withdrawRegistration(actorIn: Actor | null, participantId:
   if (!["DRAFT", "REGISTRATION", "CHECK_IN"].includes(p.tournament.status)) {
     throw new AppError("O campeonato já começou. Peça à organização para desclassificar a inscrição.");
   }
+  const d1 = sitesDatabase();
+  if (d1) {
+    await withdrawD1FreeRegistration(d1, { participantId, actorId: actor.id, actorIsAdmin: actor.role === "ADMIN" });
+    return;
+  }
   const refundable = !mine || refundsOnWithdrawal(p.tournament);
   await db.$transaction(async (tx) => {
     for (const o of p.orders.filter((x) => x.status === "PENDING")) {
@@ -240,6 +261,8 @@ export async function checkIn(actorIn: Actor | null, participantId: string): Pro
   }
   if (p.status === "CHECKED_IN") return;
   if (p.status !== "REGISTERED") throw new AppError("Só inscrições confirmadas podem fazer check-in.");
+  const d1 = sitesDatabase();
+  if (d1) return changeD1CheckIn(d1, { participantId, actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", undo: false });
   await db.participant.update({ where: { id: p.id }, data: { status: "CHECKED_IN", checkedInAt: new Date() } });
 }
 
@@ -249,6 +272,8 @@ export async function undoCheckIn(actorIn: Actor | null, participantId: string):
   if (!p) throw new AppError("Inscrição não encontrada.", "NOT_FOUND");
   if (p.userId !== actor.id) await assertTournamentAccess(actor, p.tournament, "staff");
   if (!["REGISTRATION", "CHECK_IN"].includes(p.tournament.status)) throw new AppError("O campeonato já começou.");
+  const d1 = sitesDatabase();
+  if (d1) return changeD1CheckIn(d1, { participantId, actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", undo: true });
   if (p.status === "CHECKED_IN") await db.participant.update({ where: { id: p.id }, data: { status: "REGISTERED", checkedInAt: null } });
 }
 

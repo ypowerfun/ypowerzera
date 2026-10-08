@@ -1,3 +1,5 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { reserveD1RateLimit } from "./d1/rate-limit";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -9,6 +11,8 @@ import { AppError } from "@/lib/errors";
  * simultâneos NÃO passam todos pelo limite (um "ler, depois gravar" deixaria todos lerem count=0).
  */
 async function reserve(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+  const d1 = sitesDatabase();
+  if (d1) return reserveD1RateLimit(d1, key, limit, windowSeconds);
   for (let attempt = 0; attempt < 4; attempt++) {
     const now = new Date();
     // 1) janela aberta e com folga: soma 1
@@ -42,11 +46,15 @@ export async function rateLimit(key: string, limit: number, windowSeconds: numbe
 }
 
 export async function resetRateLimit(key: string): Promise<void> {
+  const d1 = sitesDatabase();
+  if (d1) { await d1.prepare("DELETE FROM RateLimit WHERE key=?").bind(key).run(); return; }
   await db.rateLimit.deleteMany({ where: { key } });
 }
 
 /** Devolve uma tentativa reservada (por exemplo, um login que deu certo não deve gastar o limite do IP). */
 export async function refundRateLimit(key: string): Promise<void> {
+  const d1 = sitesDatabase();
+  if (d1) { await d1.prepare("UPDATE RateLimit SET count=count-1 WHERE key=? AND resetAt>? AND count>0").bind(key,Date.now()).run(); return; }
   await db.rateLimit.updateMany({ where: { key, resetAt: { gt: new Date() }, count: { gt: 0 } }, data: { count: { decrement: 1 } } });
 }
 
@@ -58,6 +66,8 @@ export async function isRateLimited(key: string, limit: number): Promise<boolean
 
 /** Apaga janelas vencidas (o cron chama; sem isso a tabela só cresce). */
 export async function purgeExpiredRateLimits(): Promise<number> {
+  const d1 = sitesDatabase();
+  if (d1) return (await d1.prepare("DELETE FROM RateLimit WHERE resetAt<?").bind(Date.now()-3600_000).run()).meta.changes;
   const r = await db.rateLimit.deleteMany({ where: { resetAt: { lt: new Date(Date.now() - 3600_000) } } });
   return r.count;
 }

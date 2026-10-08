@@ -1,3 +1,5 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { createD1Tournament, transitionD1Tournament } from "./d1/tournaments";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { safeHttpUrl } from "@/lib/url";
@@ -153,9 +155,7 @@ export async function createTournament(actorIn: Actor | null, rawInput: CreateTo
   const checkInOpens = input.checkInOpensAt ?? (input.requireCheckIn ? new Date(input.startsAt.getTime() - 60 * 60_000) : null);
   const checkInCloses = input.checkInClosesAt ?? (input.requireCheckIn ? input.startsAt : null);
 
-  const t = await db.$transaction(async (tx) => {
-    const created = await tx.tournament.create({
-      data: {
+  const data: Prisma.TournamentUncheckedCreateInput = {
         orgId: input.orgId,
         slug,
         name: input.name,
@@ -188,7 +188,15 @@ export async function createTournament(actorIn: Actor | null, rawInput: CreateTo
         seedSalt: randomBytes(12).toString("hex"),
         customFields: (input.customFields ?? []) as unknown as Prisma.InputJsonValue,
         mapPool: (input.mapPool ?? undefined) as unknown as Prisma.InputJsonValue | undefined,
-      },
+      };
+  const d1 = sitesDatabase();
+  if (d1) {
+    const id = await createD1Tournament(d1, actor, data, stages);
+    return db.tournament.findUniqueOrThrow({ where: { id } });
+  }
+  const t = await db.$transaction(async (tx) => {
+    const created = await tx.tournament.create({
+      data,
     });
     await tx.stage.createMany({
       data: stages.map((s, i) => ({ tournamentId: created.id, order: i + 1, name: s.name, type: s.settings.type, settings: s.settings as unknown as Prisma.InputJsonValue })),
@@ -310,6 +318,8 @@ export async function publishTournament(actorIn: Actor | null, id: string) {
     const { paymentsAvailable } = await import("./payments");
     if (!paymentsAvailable()) throw new AppError("Pagamentos indisponíveis: configure o provedor para publicar campeonatos pagos.");
   }
+  const d1 = sitesDatabase();
+  if (d1) return transitionD1Tournament(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", tournamentId: id, updatedAt: t.updatedAt.getTime(), checkIn: false });
   await db.tournament.update({ where: { id }, data: { status: "REGISTRATION", publishedAt: new Date() } });
   await audit(actor.id, "tournament.publish", "Tournament", id);
 }
@@ -318,6 +328,8 @@ export async function openCheckIn(actorIn: Actor | null, id: string) {
   const actor = requireActor(actorIn);
   const t = await loadManaged(actor, id, "staff");
   if (t.status !== "REGISTRATION") throw new AppError("O check-in só pode ser aberto com as inscrições abertas.");
+  const d1 = sitesDatabase();
+  if (d1) return transitionD1Tournament(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", tournamentId: id, updatedAt: t.updatedAt.getTime(), checkIn: true });
   await db.tournament.update({ where: { id }, data: { status: "CHECK_IN" } });
   const ps = await db.participant.findMany({ where: { tournamentId: id, status: "REGISTERED" }, select: { userId: true } });
   await notify(ps.map((p) => p.userId), "checkin.open", "Check-in aberto", `Faça o check-in em ${t.name} para garantir sua vaga.`, `/torneios/${t.slug}`);

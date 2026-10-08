@@ -1,2 +1,4 @@
-import { defineCloudflareConfig } from '@opennextjs/cloudflare';
-export default defineCloudflareConfig();
+import { defineCloudflareConfig } from "@opennextjs/cloudflare";
+const config = defineCloudflareConfig();
+config.buildCommand = "SITES_BUILD=1 npm run build";
+export default config;

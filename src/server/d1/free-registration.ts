@@ -12,10 +12,11 @@ export interface ValidatedRegistration {
   tournamentId: string;
   tournamentUpdatedAt: number | string;
   actorId: string;
+  actorIsAdmin?: boolean;
   teamId: string | null;
   name: string;
   tag: string | null;
-  roster: Array<{ userId: string; role: string; handle: string; [key: string]: unknown }>;
+  roster: Array<{ userId: string; role: string; handle: string }>;
   customAnswers: Record<string, string>;
   now: number;
 }
@@ -25,7 +26,7 @@ export interface ValidatedRegistration {
  * platform, and roster structure. Database-dependent authorization is rechecked
  * inside the INSERT. Capacity selection, roster uniqueness, and audit are one
  * D1 batch; a roster conflict rolls back the reservation and audit together.
- * Not wired to the application until all D1 repositories have been migrated.
+ * Called by the Worker registration service; native SQLite retains its original transaction.
  */
 export async function commitFreeRegistration(db: Database, input: ValidatedRegistration) {
   const existing = await db.prepare('SELECT "id", "status" FROM "Participant" WHERE "tournamentId"=? AND "userId"=?')
@@ -54,7 +55,7 @@ export async function commitFreeRegistration(db: Database, input: ValidatedRegis
         OR
         (t."teamSize">1 AND EXISTS (SELECT 1 FROM "Team" tm JOIN "TeamMember" captain ON captain."teamId"=tm."id"
           WHERE tm."id"=? AND tm."deletedAt" IS NULL AND captain."userId"=u."id"
-          AND (captain."role"='CAPTAIN' OR u."role"='ADMIN'))
+          AND (captain."role"='CAPTAIN' OR u."role"='ADMIN' OR ?=1))
           AND (SELECT COUNT(*) FROM json_each(?) WHERE json_extract(value,'$.role')='starter')=t."teamSize"
           AND (SELECT COUNT(*) FROM json_each(?) WHERE json_extract(value,'$.role')='sub')<=t."maxSubs"
           AND EXISTS (SELECT 1 FROM json_each(?) WHERE json_extract(value,'$.userId')=u."id")
@@ -64,10 +65,12 @@ export async function commitFreeRegistration(db: Database, input: ValidatedRegis
       AND NOT EXISTS (SELECT 1 FROM json_each(?) r WHERE json_extract(r.value,'$.role') NOT IN ('starter','sub')
         OR NOT EXISTS (SELECT 1 FROM "User" player JOIN "GameAccount" ga ON ga."userId"=player."id"
           WHERE player."id"=json_extract(r.value,'$.userId') AND player."bannedAt" IS NULL
-          AND ga."gameId"=t."gameId" AND ga."handle"=json_extract(r.value,'$.handle')))
+          AND ga."gameId"=t."gameId" AND ga."handle"=json_extract(r.value,'$.handle')
+          AND (t."platform" IS NULL OR t."platform"='Todas' OR json_extract(ga."data",'$.platform') IS NULL
+            OR json_extract(ga."data",'$.platform')=t."platform")))
   `).bind(id, input.teamId, input.name, input.tag, input.now, rosterJson, JSON.stringify(input.customAnswers), input.now,
     input.actorId, input.tournamentId, input.tournamentUpdatedAt, input.now, input.now,
-    input.teamId, rosterJson, rosterJson, rosterJson, input.teamId, rosterJson, rosterJson, rosterJson, rosterJson, input.teamId, rosterJson);
+    input.teamId, rosterJson, rosterJson, rosterJson, input.teamId, input.actorIsAdmin ? 1 : 0, rosterJson, rosterJson, rosterJson, rosterJson, input.teamId, rosterJson);
   const statements = [reserve];
   for (const member of input.roster) statements.push(db.prepare(`
     INSERT INTO "RosterEntry" ("id","participantId","tournamentId","userId","role")

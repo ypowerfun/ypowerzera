@@ -1,3 +1,5 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { createD1Organization } from "./d1/create-groups";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -29,6 +31,11 @@ export async function createOrganization(actorIn: Actor | null, input: { name: s
   if (!parsed.success) throw new AppError(parsed.error.issues[0].message);
   await rateLimit(`org-create:${actor.id}`, 5, 86400, "Você já criou várias organizações hoje.");
   const slug = await uniqueSlug(parsed.data.name, async (s) => !!(await db.organization.findUnique({ where: { slug: s } })));
+  const d1 = sitesDatabase();
+  if (d1) {
+    const id = await createD1Organization(d1, { actorId: actor.id, isAdmin: actor.role === "ADMIN", name: parsed.data.name, description: parsed.data.description ?? null, slug });
+    return db.organization.findUniqueOrThrow({ where: { id } });
+  }
   const org = await db.$transaction(async (tx) => {
     const o = await tx.organization.create({
       data: { name: parsed.data.name, slug, description: parsed.data.description, members: { create: { userId: actor.id, role: "OWNER" } } },

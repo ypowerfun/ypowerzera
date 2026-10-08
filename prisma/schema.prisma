@@ -1,6 +1,12 @@
+generator worker {
+  provider = "prisma-client-js"
+  output = "../node_modules/@primearena/prisma-worker"
+  engineType = "client"
+}
+
 // Prime Arena — plataforma de campeonatos de esports.
 //
-// Desenvolvimento: SQLite. Produção: troque `provider` para "postgresql" e ajuste DATABASE_URL.
+// Desenvolvimento: SQLite nativo. Sites: cliente WASM com D1 e operações atômicas em batches preparados.
 // Todos os valores monetários são inteiros em centavos.
 
 generator client {
@@ -258,6 +264,7 @@ model GameAccount {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, gameId])
+  @@unique([gameId, handle])
 }
 
 // ───────────────────────── Organizações e times ─────────────────────────

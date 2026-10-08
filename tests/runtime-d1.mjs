@@ -1,12 +1,19 @@
+import {applyD1Schema} from './helpers/d1-schema.mjs';
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-import ts from 'typescript';
+import {build} from 'esbuild';
 import {Miniflare} from 'miniflare';
-const source=ts.transpileModule(readFileSync('src/server/d1/free-registration.ts','utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-const mf=new Miniflare({modules:true,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],script:source+`\nexport default {async fetch(request,env){try{return Response.json(await commitFreeRegistration(env.DB,await request.json()));}catch(e){return Response.json({error:e.message},{status:409});}}}`});
+const bundle=await build({stdin:{resolveDir:process.cwd(),contents:`
+import {commitFreeRegistration} from './src/server/d1/free-registration';
+import {changeD1CheckIn,withdrawD1FreeRegistration} from './src/server/d1/registration-lifecycle';
+export default {async fetch(request,env){try{const input=await request.json();const path=new URL(request.url).pathname;
+if(path==='/checkin'){await changeD1CheckIn(env.DB,input);return Response.json({ok:true});}
+if(path==='/withdraw'){await withdrawD1FreeRegistration(env.DB,input);return Response.json({ok:true});}
+return Response.json(await commitFreeRegistration(env.DB,input));}catch(e){return Response.json({error:e.message},{status:409});}}}`},bundle:true,write:false,format:'esm',platform:'browser',external:['node:*']});
+const mf=new Miniflare({modules:true,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],script:bundle.outputFiles[0].text});
 try{
  const db=await mf.getD1Database('DB');
- for(const sql of readFileSync('migration/new-models.sql','utf8').split(';').map(x=>x.trim()).filter(Boolean))await db.prepare(sql).run();
+ await applyD1Schema(db);
  await db.prepare('INSERT INTO Organization(id,slug,name) VALUES (?,?,?)').bind('org','org','Prime').run();
  for(let i=0;i<21;i++){
   const id='u'+i;
@@ -15,7 +22,7 @@ try{
  }
  const tournament=async(id,max=3,teamSize=1)=>db.prepare('INSERT INTO Tournament(id,orgId,slug,name,gameId,modeId,status,startsAt,maxParticipants,seedSalt,updatedAt,teamSize) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,'org',id,id,'game','mode','REGISTRATION',100,max,'salt',1,teamSize).run();
  const input=(t,user,extra={})=>({tournamentId:t,tournamentUpdatedAt:1,actorId:user,teamId:null,name:user,tag:null,roster:[{userId:user,role:'starter',handle:user}],customAnswers:{},now:10,...extra});
- const commit=async(data)=>{const r=await mf.dispatchFetch('https://runtime.invalid',{method:'POST',body:JSON.stringify(data)});return {status:r.status,data:await r.json()};};
+ const commit=async(data,path='')=>{const r=await mf.dispatchFetch('https://runtime.invalid'+path,{method:'POST',body:JSON.stringify(data)});return {status:r.status,data:await r.json()};};
  const count=async(table,t)=>Number((await db.prepare(`SELECT COUNT(*) AS n FROM "${table}" WHERE "tournamentId"=?`).bind(t).first()).n);
  await tournament('solo');
  const results=await Promise.all(Array.from({length:20},(_,i)=>commit(input('solo','u'+i))));
@@ -42,5 +49,21 @@ try{
  await tournament('failure');
  await db.prepare(`CREATE TRIGGER fail_audit BEFORE INSERT ON AuditLog WHEN NEW.entityId='failure' BEGIN SELECT RAISE(ABORT,'injected failure'); END`).run();
  assert.equal((await commit(input('failure','u3'))).status,409);assert.equal(await count('Participant','failure'),0);assert.equal(await count('RosterEntry','failure'),0);
- console.log('PASS: capacity 3/20 concurrent; idempotency; cross-team roster conflict; rollback including audit; stale and banned authorization.');
+ const participant=results.find(x=>x.data.status==='REGISTERED').data;
+ const owner=(await db.prepare('SELECT userId FROM Participant WHERE id=?').bind(participant.id).first()).userId;
+ const life={participantId:participant.id,actorId:owner,actorIsAdmin:false,now:20};
+ assert.equal((await commit(life,'/checkin')).status,409);
+ await db.prepare("UPDATE Tournament SET status='CHECK_IN' WHERE id='solo'").run();
+ assert.equal((await commit({...life,actorId:'u20'},'/checkin')).status,409);
+ assert.equal((await commit(life,'/checkin')).status,200);
+ assert.equal((await commit({...life,undo:true},'/checkin')).status,200);
+ await db.prepare("CREATE TRIGGER fail_withdraw BEFORE INSERT ON AuditLog WHEN NEW.action='participant.withdraw' BEGIN SELECT RAISE(ABORT,'injected failure'); END").run();
+ assert.equal((await commit(life,'/withdraw')).status,409);assert.equal(await count('Participant','solo'),20);
+ await db.prepare('DROP TRIGGER fail_withdraw').run();
+ assert.equal((await commit(life,'/withdraw')).status,200);assert.equal(await count('Participant','solo'),19);
+ assert.equal((await db.prepare("SELECT count(*) n FROM Participant WHERE tournamentId='solo' AND status='REGISTERED'").first()).n,3);
+ assert.equal((await db.prepare("SELECT count(*) n FROM Notification WHERE kind='waitlist.promoted'").first()).n,1);
+ assert.equal((await commit(life,'/withdraw')).status,200);
+ assert.equal((await db.prepare("SELECT count(*) n FROM Notification WHERE kind='waitlist.promoted'").first()).n,1);
+ console.log('PASS: capacity 3/20 concurrent; idempotency; cross-team roster conflict; rollback including audit; stale and banned authorization; check-in; atomic withdrawal/waitlist promotion and rollback.');
 }finally{await mf.dispose();}

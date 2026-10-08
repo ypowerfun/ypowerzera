@@ -1,3 +1,5 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { createD1Team } from "./d1/create-groups";
 import { Prisma, type ChallengeStatus, type ParticipantStatus, type TournamentStatus, type WithdrawalStatus } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -35,6 +37,11 @@ export async function createTeam(actorIn: Actor | null, input: unknown) {
   const clash = await db.team.findFirst({ where: { name: { equals: name }, deletedAt: null }, select: { id: true } });
   if (clash) throw new AppError("Já existe um time com esse nome.", "CONFLICT");
   const slug = await uniqueSlug(name, async (s) => !!(await db.team.findUnique({ where: { slug: s } })));
+  const d1 = sitesDatabase();
+  if (d1) {
+    const id = await createD1Team(d1, { actorId: actor.id, name, tag, gameId: game?.id ?? null, description: description ?? null, slug });
+    return db.team.findUniqueOrThrow({ where: { id } });
+  }
   return db.team.create({
     data: { name, tag, gameId: game?.id ?? null, description, slug, ownerId: actor.id, members: { create: { userId: actor.id, role: "CAPTAIN" } } },
   });

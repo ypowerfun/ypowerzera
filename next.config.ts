@@ -20,6 +20,9 @@ const csp = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["@primearena/prisma-worker"],
+  env: { NEXT_PUBLIC_SITES_RUNTIME: process.env.SITES_BUILD === "1" ? "1" : "0" },
+  ...(process.env.SITES_BUILD === "1" ? { turbopack: { resolveAlias: { "@/lib/db": "./src/lib/db.worker.ts" } } } : {}),
   poweredByHeader: false,
   async headers() {
     return [

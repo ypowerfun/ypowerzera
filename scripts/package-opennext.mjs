@@ -1,5 +1,5 @@
 // Local packaging only. Publication is owned by the Sites workflow.
-import { readFileSync, writeFileSync, mkdirSync, cpSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, cpSync, readdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
@@ -19,6 +19,9 @@ for (const line of readFileSync(filename, "utf8").trim().split("\n")) {
 // OpenNext 1.20.9 can append identical exports more than once. Keep one per mode.
 writeFileSync(filename, [...declarations.values()].join("\n") + "\n");
 const output = path.resolve(".sites-runtime/worker");
+// Remove only reproducible build outputs so old WASM chunks cannot enter a new archive.
+rmSync(output, { recursive: true, force: true });
+rmSync("dist", { recursive: true, force: true });
 execFileSync(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "deploy", "--dry-run", "--outdir", output], { stdio: "inherit" });
 mkdirSync("dist/server", { recursive: true });
 for (const entry of readdirSync(output, { withFileTypes: true })) {

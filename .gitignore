@@ -31,3 +31,5 @@ dist/
 .wrangler/
 .dev.vars
 .sites-runtime/
+
+/src/generated/prisma-worker/

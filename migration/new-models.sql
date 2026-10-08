@@ -790,3 +790,5 @@ CREATE UNIQUE INDEX "MockPixTransfer_externalReference_key" ON "MockPixTransfer"
 -- CreateIndex
 CREATE UNIQUE INDEX "ChatGPTIdentity_userId_key" ON "ChatGPTIdentity"("userId");
 
+
+CREATE UNIQUE INDEX "GameAccount_gameId_handle_key" ON "GameAccount"("gameId", "handle");

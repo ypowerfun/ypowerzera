@@ -1,3 +1,5 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { createD1ChatGPTProfile } from "./d1/chatgpt-profile";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { AppError } from "@/lib/errors";
@@ -29,6 +31,12 @@ export async function createChatGPTProfile(identity: ChatGPTUser, input: { usern
     throw new AppError("Já existe um perfil com este e-mail. Peça à organização para vincular as contas com segurança.", "CONFLICT");
   }
   try {
+    const d1 = sitesDatabase();
+    if (d1) {
+      await createD1ChatGPTProfile(d1, { subject: identity.userId, email: identity.email.toLowerCase(), username, displayName,
+        passwordHash: `chatgpt-only:${randomToken()}`, now: Date.now() });
+      return (await findChatGPTProfile(identity))!;
+    }
     const user = await db.user.create({ data: {
       email: identity.email.toLowerCase(), username, displayName,
       // Deliberately not a scrypt hash: local password verification always refuses it.
