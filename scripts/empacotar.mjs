@@ -4,7 +4,7 @@
 // Por que git archive e não "zipar a pasta": a pasta de trabalho pode ter .env, .dev.vars, prisma/dev.db (contas de demonstração),
 // .wrangler/, .open-next/, .next/ e node_modules/. O git archive leva só o que está no repositório e o script ainda confere o resultado.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,6 +23,10 @@ try {
 }
 process.chdir(root);
 
+const untracked = run("git", ["ls-files", "--others", "--exclude-standard"]).trim();
+if (untracked) {
+  console.warn(`⚠ Arquivos NOVOS que ainda não foram adicionados ao git (ficam de fora do zip; se o site depende deles, o build do ChatGPT quebra):\n${untracked}\n`);
+}
 const dirty = run("git", ["status", "--porcelain", "--untracked-files=no"]).trim();
 if (dirty && !allowDirty) {
   fail(`Há mudanças ainda não commitadas (elas NÃO iriam no zip):\n${dirty}\n\nFaça o commit, ou rode com --allow-dirty para empacotar só o que já foi commitado.`);
@@ -36,6 +40,12 @@ const name = `prime-arena-${day}-${hash}`;
 const outDir = join(root, "entrega");
 const out = join(outDir, `${name}.zip`);
 mkdirSync(outDir, { recursive: true });
+// pacotes de antes vão para entrega/antigos/: só um prime-arena-*.zip fica à vista, para ninguém anexar ou enviar o errado
+const old = readdirSync(outDir).filter((f) => /^prime-arena-.*\.zip$/.test(f) && f !== `${name}.zip`);
+if (old.length) {
+  mkdirSync(join(outDir, "antigos"), { recursive: true });
+  for (const f of old) renameSync(join(outDir, f), join(outDir, "antigos", f));
+}
 
 const tmp = mkdtempSync(join(tmpdir(), "pa-empacotar-"));
 try {
@@ -50,17 +60,29 @@ try {
 }
 
 // ── Conferência do conteúdo ──
+function failAndDelete(msg) {
+  rmSync(out, { force: true });
+  fail(msg);
+}
 let listing;
+let how = "abrindo o zip";
 try {
   listing = run("unzip", ["-Z1", out]).split("\n").filter(Boolean);
 } catch {
-  fail("Não consegui listar o zip (falta o programa `unzip`). Instale-o e rode de novo; o zip NÃO foi conferido.");
+  // sem `unzip` (ex.: Windows): o zip é exatamente o que o git guardou no HEAD + VERSAO.txt, então a lista vem do git
+  try {
+    listing = [...run("git", ["ls-tree", "-r", "--name-only", "HEAD"]).split("\n").filter(Boolean), "VERSAO.txt"];
+    how = "pela lista do git (o programa `unzip` não existe aqui)";
+  } catch {
+    failAndDelete("Não consegui conferir o conteúdo do zip. Ele foi APAGADO para ninguém usá-lo sem conferência.");
+  }
 }
 const files = listing.filter((p) => !p.endsWith("/"));
 
 const FORBIDDEN = [
-  [(p) => p === ".env" || /^\.env\.(local|production|development|test)$/.test(p) || /\.env\.[^/]*\.local$/.test(p), ".env com segredos"],
-  [(p) => p === ".dev.vars" || p.endsWith("/.dev.vars"), ".dev.vars (segredos locais do Cloudflare)"],
+  // qualquer .env* (em qualquer pasta) menos os modelos sem segredo
+  [(p) => /(^|\/)\.env(\..+)?$/.test(p) && !/(^|\/)\.env\.(example|production\.example)$/.test(p), ".env com segredos"],
+  [(p) => /(^|\/)\.dev\.vars(\..+)?$/.test(p) && !/(^|\/)\.dev\.vars\.example$/.test(p), ".dev.vars (segredos locais do Cloudflare)"],
   [(p) => /\.(db|db-journal|sqlite|sqlite3)$/.test(p), "arquivo de banco de dados"],
   [(p) => /(^|\/)\.wrangler\//.test(p), ".wrangler/ (banco local de teste)"],
   [(p) => /(^|\/)\.open-next\//.test(p), ".open-next/ (pacote montado)"],
@@ -96,6 +118,13 @@ const REQUIRED = [
 ];
 
 const problems = [];
+// marcadores de preenchimento (@@N_...@@) esquecidos nos guias
+try {
+  const left = run("git", ["grep", "-nE", "@@[A-Z0-9_]+@@", "HEAD", "--", ".", ":!scripts/empacotar.mjs"]).trim();
+  if (left) for (const l of left.split("\n")) problems.push(`marcador de preenchimento esquecido: ${l.replace(/^HEAD:/, "")}`);
+} catch {
+  /* git grep sai com 1 quando não acha nada: é o esperado */
+}
 for (const f of files) for (const [test, why] of FORBIDDEN) if (test(f)) problems.push(`proibido no zip: ${f} (${why})`);
 const have = new Set(files);
 for (const f of REQUIRED) if (!have.has(f)) problems.push(`faltando no zip: ${f}`);
@@ -105,5 +134,5 @@ if (problems.length) {
 }
 
 const mb = (statSync(out).size / 1024 / 1024).toFixed(1);
-console.log(`✔ ${out}\n  ${files.length} arquivos, ${mb} MB. Conferido: sem .env/.dev.vars/banco/.wrangler/.open-next/node_modules/.claude; com os ${REQUIRED.length} arquivos essenciais.\n  Anexe SOMENTE este arquivo na conversa do ChatGPT.`);
+console.log(`✔ ${out}\n  ${files.length} arquivos, ${mb} MB. Conferido ${how}: sem .env/.dev.vars/banco/.wrangler/.open-next/node_modules/.claude; com os ${REQUIRED.length} arquivos essenciais.\n  Anexe SOMENTE este arquivo na conversa do ChatGPT.`);
 if (!existsSync(out)) process.exit(1);

@@ -39,7 +39,7 @@ Se o seu servidor é **Ubuntu ou Debian novo** (22.04, 24.04 ou Debian 12), este
 No **seu computador**, envie o zip (ajuste o nome e o IP):
 
 ```bash
-scp prime-arena-*.zip root@IP_DO_SERVIDOR:/root/
+scp NOME-DO-PACOTE.zip root@IP_DO_SERVIDOR:/root/
 ```
 
 No **servidor** (`ssh root@IP_DO_SERVIDOR`):
@@ -47,7 +47,7 @@ No **servidor** (`ssh root@IP_DO_SERVIDOR`):
 ```bash
 apt-get update && apt-get install -y unzip
 mkdir -p /opt/primearena && cd /opt/primearena
-unzip /root/prime-arena-*.zip
+unzip /root/NOME-DO-PACOTE.zip
 bash scripts/instalar-servidor.sh
 ```
 
@@ -121,7 +121,7 @@ Boas práticas que valem ouro: use **chave SSH** em vez de senha, desative o log
 No **seu computador**, na pasta onde está o `.zip` (ajuste o nome do arquivo):
 
 ```bash
-scp prime-arena-*.zip root@IP_DO_SEU_VPS:/root/
+scp NOME-DO-PACOTE.zip root@IP_DO_SEU_VPS:/root/
 ```
 
 (No Windows você também pode usar o WinSCP ou o FileZilla, protocolo SFTP.)
@@ -130,7 +130,7 @@ No **servidor**:
 
 ```bash
 mkdir -p /opt/primearena && cd /opt/primearena
-unzip /root/prime-arena-*.zip
+unzip /root/NOME-DO-PACOTE.zip
 ls          # deve listar: Dockerfile  docker-compose.yml  Caddyfile  package.json  src  prisma  ...
 ```
 
@@ -257,9 +257,11 @@ Quando receber uma versão nova (.zip):
 ```bash
 cd /opt/primearena
 cp .env /root/env-backup             # por precaução
-unzip -o /root/prime-arena-NOVO.zip  # sobrescreve o código; o .env e o banco não estão no zip
+unzip -o /root/NOME-DO-PACOTE-NOVO.zip  # sobrescreve o código; o .env e o banco não estão no zip
 docker compose up -d --build
 ```
+
+Se a carteira (Fase 2) já estava ligada no seu site e você nunca tinha clicado em **Admin → Configurações**, depois de atualizar confira ali: em produção a chave da carteira **começa desligada**, então clique em **Ativar a carteira** se ela aparecer como *Desativada*.
 
 O banco fica no volume e **não é apagado**: ao subir, o site só cria/atualiza tabelas (`prisma db push` sem `--force-reset`; se uma mudança exigisse apagar dados, ele **recusa** e o erro aparece nos logs). Faça um backup antes (`docker compose exec backup node scripts/backup-db.mjs`).
 
@@ -285,7 +287,7 @@ O **agendador** (serviço `cron`) chama o site a cada 2 minutos (envia saques ap
 
 ## 11. Ligar o dinheiro (Fase 2)
 
-Só depois do site estável, do e-mail funcionando e do **sandbox do Asaas testado**: siga [`CONFIGURAR_PIX.md`](CONFIGURAR_PIX.md) (contas, tokens, webhooks na URL real `https://meusite.com.br/api/webhooks/...`, testes com valor de centavos). Resumo: preencher as variáveis do Asaas no `.env`, trocar `WALLET_ENABLED="true"` e rodar `docker compose up -d`. Comece em `ASAAS_ENV="sandbox"` e só depois passe para `production`.
+Só depois do site estável, do e-mail funcionando e do **sandbox do Asaas testado**: siga [`CONFIGURAR_PIX.md`](CONFIGURAR_PIX.md) (contas, tokens, webhooks na URL real `https://meusite.com.br/api/webhooks/...`, testes com valor de centavos). Resumo: preencher as variáveis do Asaas no `.env`, trocar `WALLET_ENABLED="true"`, rodar `docker compose up -d` e, por fim, clicar em **Admin → Configurações → Ativar a carteira** (em produção a chave começa desligada; só esse clique mostra a carteira aos usuários). Comece em `ASAAS_ENV="sandbox"` e só depois passe para `production`.
 
 ---
 

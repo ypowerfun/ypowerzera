@@ -4,7 +4,7 @@ import path from "node:path";
 const src = path.resolve(__dirname, "src");
 /**
  * TEST_DB=d1 roda a MESMA suíte contra um D1 de verdade (Miniflare) com o motor de transações do ChatGPT Sites
- * (src/lib/d1-engine.ts), em vez do SQLite/Prisma tradicional. Veja docs/SITES.md ("Como foi testado").
+ * (src/lib/d1-engine.ts), em vez do SQLite/Prisma tradicional. Veja docs/SITES.md (seção 8 e Apêndice A).
  */
 const d1 = process.env.TEST_DB === "d1";
 

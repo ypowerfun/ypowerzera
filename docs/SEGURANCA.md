@@ -6,7 +6,7 @@ Nenhum site é "à prova de hacker". Este documento diz com honestidade **o que 
 
 ## 1. Como foi verificado
 
-1. **Testes automáticos** (@@N_NORMAL@@ de unidade, @@N_D1@@ deles também contra o D1 simulado do ChatGPT Sites, e 29 de navegador) cobrem o motor de campeonatos, contas, carteira, saques, desafios, webhooks e a configuração de produção. Cada correção de segurança abaixo tem pelo menos um teste que **falha se a correção for removida** (conferido tirando a correção de propósito).
+1. **Testes automáticos** (763 de unidade, 658 deles também contra o D1 simulado do ChatGPT Sites, e 29 de navegador) cobrem o motor de campeonatos, contas, carteira, saques, desafios, webhooks e a configuração de produção. Cada correção de segurança abaixo tem pelo menos um teste que **falha se a correção for removida** (conferido tirando a correção de propósito).
 2. **Auditoria adversária por superfície de ataque**, em duas rodadas: autenticação/sessões/e-mail, autorização (quem pode o quê), injeção/XSS/redirecionamentos, dinheiro/webhooks/agendador e regras dos campeonatos. Cada achado foi conferido no código antes de ser corrigido.
 3. **Ensaio em modo produção** (o site rodando como vai rodar no ar, com um servidor de e-mail de teste): cadastro, e-mail de confirmação com o endereço público, cookie de sessão, criação do administrador, bloqueio de tentativas de login, redirecionamento malicioso, pastas e arquivos que não podem ser servidos, rotas protegidas e cabeçalhos de segurança.
 4. **`npm run verificar-site -- https://seusite.com.br`**: o mesmo tipo de checagem, que você roda no site já no ar (veja `HOSPEDAGEM.md`).

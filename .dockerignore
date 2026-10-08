@@ -15,3 +15,11 @@ e2e
 tests
 docs
 *.zip
+entrega
+.claude
+.dev.vars
+.dev.vars.*
+.open-next
+.wrangler
+.test-db
+**/*.zip

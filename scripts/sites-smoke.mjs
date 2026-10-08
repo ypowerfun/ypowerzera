@@ -12,17 +12,19 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.SMOKE_PORT || 8799);
 const BASE = `http://localhost:${PORT}`;
-const persist = mkdtempSync(path.join(os.tmpdir(), "sites-smoke-"));
 const devVars = path.join(root, ".dev.vars");
+// Conferências baratas ANTES de qualquer trabalho. `--verificar` só confere (o npm run smoke:sites chama assim antes de montar o site, para
+// não gastar minutos de montagem e só então recusar).
+if (existsSync(devVars)) {
+  console.error("Já existe um .dev.vars (o `npm run preview:sites` o cria); apague ou renomeie-o antes de rodar o teste de fumaça (ele cria o seu próprio).");
+  process.exit(1);
+}
+if (process.argv.includes("--verificar")) process.exit(0);
 if (!existsSync(path.join(root, ".open-next", "worker.js"))) {
   console.error("O site ainda não foi montado: rode `npm run build:sites` antes (o teste de fumaça usa o pacote de .open-next/).");
   process.exit(1);
 }
-const hadDevVars = existsSync(devVars);
-if (hadDevVars) {
-  console.error("Já existe um .dev.vars; renomeie-o antes de rodar o teste de fumaça (ele cria o seu próprio).");
-  process.exit(1);
-}
+const persist = mkdtempSync(path.join(os.tmpdir(), "sites-smoke-"));
 
 const results = [];
 const check = (name, ok, extra = "") => {

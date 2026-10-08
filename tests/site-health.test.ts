@@ -6,7 +6,7 @@ import { lastMailTo } from "@/server/mailer";
 import { runWalletCron } from "@/server/cron";
 import { markCronRun, sendTestMailToAdmin, siteHealth } from "@/server/settings";
 
-const ENV_KEYS = ["APP_URL", "SMTP_URL", "NODE_ENV", "PAYMENTS_PROVIDER", "TRUST_PROXY", "STRIPE_SECRET_KEY", "STRIPE_ALLOW_TEST_KEY"];
+const ENV_KEYS = ["APP_URL", "SMTP_URL", "NODE_ENV", "PAYMENTS_PROVIDER", "TRUST_PROXY", "STRIPE_SECRET_KEY", "STRIPE_ALLOW_TEST_KEY", "PIX_PROVIDER", "WALLET_ENABLED"];
 const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const get = async (key: string) => (await siteHealth()).find((i) => i.key === key)!;
 
@@ -65,11 +65,24 @@ describe("verificação do site (Admin → Configurações)", () => {
 
   it("chave de TESTE do Stripe liberada em produção vira item vermelho; sem ela o item nem aparece", async () => {
     const list = async () => (await siteHealth()).find((i) => i.key === "stripe-test");
+    (process.env as Record<string, string>).NODE_ENV = "production";
+    process.env.PIX_PROVIDER = "stripe";
+    process.env.WALLET_ENABLED = "true";
     process.env.STRIPE_SECRET_KEY = "sk_test_abcdefghijklmnop";
     delete process.env.STRIPE_ALLOW_TEST_KEY;
     expect(await list()).toBeUndefined();
     process.env.STRIPE_ALLOW_TEST_KEY = "true";
-    expect((await list())?.ok).toBe(false);
+    const item = await list();
+    expect(item?.ok).toBe(false);
+    expect(item?.hint).toMatch(/na carteira/);
+    // Stripe só nas inscrições (carteira desligada): o aviso muda de texto, em vez de falar de créditos da carteira
+    process.env.WALLET_ENABLED = "false";
+    process.env.PAYMENTS_PROVIDER = "stripe";
+    expect((await list())?.hint).toMatch(/inscrição/);
+    // sem Stripe em uso nenhum, o item não faz sentido
+    process.env.PAYMENTS_PROVIDER = "none";
+    expect(await list()).toBeUndefined();
+    process.env.WALLET_ENABLED = "true";
     process.env.STRIPE_SECRET_KEY = "sk_live_abcdefghijklmnop";
     expect(await list()).toBeUndefined();
   });

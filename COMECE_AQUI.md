@@ -6,14 +6,14 @@ Este pacote é o site completo do Prime Arena. **Você não precisa programar**:
 
 **A) ChatGPT Sites (sem alugar servidor).** Importante: isto **nunca foi publicado no Sites de verdade** (veja `docs/SITES.md`, seção 9); o ChatGPT vai conferir a compatibilidade antes. Leia nesta ordem:
 
-1. [`docs/SITES.md`](docs/SITES.md): seções 1, 3 e 4 (o passo a passo).
+1. [`docs/SITES.md`](docs/SITES.md): seções 1, 3 e 4 (o passo a passo). Já nesta leitura, decida o **endereço** do site novo e gere os **segredos** (passos 1 e 2 da seção 4): você vai precisar deles ao preencher o texto do ChatGPT.
 2. [`docs/CONFIGURAR_EMAIL.md`](docs/CONFIGURAR_EMAIL.md): **só** as seções 2 (use o **Resend**), 3 (verificar o domínio) e **4B**. As outras são do servidor.
 3. Cole o texto de [`PROMPT_PARA_O_CHATGPT.md`](PROMPT_PARA_O_CHATGPT.md) numa conversa com **só o `.zip`** anexado (nunca a pasta de trabalho), depois de preencher o bloco "MEUS DADOS".
 4. Volte a `docs/SITES.md`, seção 4, passos 4 a 10.
 
 Tempo: **meio dia ou mais**, porque verificar o domínio do e-mail e apontar o DNS pode levar horas. Dinheiro (Pix/Stripe): **só depois**, em [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md), **seção 10**.
 
-**B) Servidor próprio (Docker).** Siga a tabela abaixo. Se escolheu o caminho A, **pule** "O caminho mais curto", "Os 3 comandos" e "Se algo der errado" (são do servidor).
+**B) Servidor próprio (Docker).** Siga a tabela abaixo. Se escolheu o caminho A, **pule** só "O caminho mais curto" e os comandos `docker` de "Os 3 comandos" (são do servidor); o `npm run verificar-site` e a seção "Se algo der errado" valem para os dois caminhos.
 
 ## O que fazer, em ordem (caminho B: servidor próprio)
 
@@ -28,11 +28,11 @@ Tempo: **meio dia ou mais**, porque verificar o domínio do e-mail e apontar o D
 
 Com um servidor **Ubuntu/Debian novo**, o domínio já apontando para ele e o endereço SMTP em mãos:
 
-No seu computador: `scp prime-arena-*.zip root@IP_DO_SERVIDOR:/root/`. Depois, no servidor (`ssh root@IP_DO_SERVIDOR`):
+No seu computador (troque `NOME-DO-PACOTE.zip` pelo nome exato do arquivo que você recebeu, o mais novo): `scp NOME-DO-PACOTE.zip root@IP_DO_SERVIDOR:/root/`. Depois, no servidor (`ssh root@IP_DO_SERVIDOR`):
 
 ```bash
 apt-get update && apt-get install -y unzip
-mkdir -p /opt/primearena && unzip /root/prime-arena-*.zip -d /opt/primearena && cd /opt/primearena
+mkdir -p /opt/primearena && unzip /root/NOME-DO-PACOTE.zip -d /opt/primearena && cd /opt/primearena
 bash scripts/instalar-servidor.sh
 ```
 

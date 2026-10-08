@@ -10,7 +10,8 @@ import type { Actor } from "./types";
 /**
  * Configurações que o admin altera pela interface (tabela SiteSetting).
  *  - wallet.enabled: liga/desliga a Carteira de equipe, os depósitos, os saques e os desafios valendo créditos.
- *    Só pode ser LIGADA com a configuração necessária pronta; ausente = ligada (comportamento de sempre).
+ *    Só pode ser LIGADA com a configuração necessária pronta. Nunca tocada: em PRODUÇÃO fica DESLIGADA (o admin liga com o botão "Ativar a carteira");
+ *    fora de produção (desenvolvimento e testes) fica ligada.
  *  - withdraw.requireAdminApproval: TODO saque espera a liberação de um administrador. Ausente = exigida (padrão seguro).
  */
 const K_WALLET = "wallet.enabled";
@@ -190,8 +191,14 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
   items.push({ key: "secret", label: "Chave secreta do site (APP_SECRET)", ok: secretOk || !env.isProd, hint: secretOk ? "Definida." : "Defina uma APP_SECRET forte (rode: npm run secrets)." });
 
   // Chave de TESTE do Stripe liberada em produção (STRIPE_ALLOW_TEST_KEY): só serve para ensaiar num site separado. Nunca em site com usuários de verdade.
-  if (env.stripeAllowTestKey && /^[sr]k_test_/.test(env.stripeSecretKey)) {
-    items.push({ key: "stripe-test", label: "Chave de TESTE do Stripe em uso", ok: false, hint: "O site está usando sk_test_ com STRIPE_ALLOW_TEST_KEY=true: os créditos deste ensaio valem como dinheiro real na carteira. Use só num site de ensaio sem usuários de verdade; no site definitivo troque por sk_live_ e APAGUE STRIPE_ALLOW_TEST_KEY (docs/CONFIGURAR_PIX.md, seção 10)." });
+  const stripeForWallet = env.walletEnabled && env.pixProvider === "stripe";
+  if (env.isProd && env.stripeAllowTestKey && /^[sr]k_test_/.test(env.stripeSecretKey) && (stripeForWallet || env.paymentsProvider === "stripe")) {
+    items.push({
+      key: "stripe-test",
+      label: "Chave de TESTE do Stripe em uso",
+      ok: false,
+      hint: `O site está usando sk_test_ com STRIPE_ALLOW_TEST_KEY=true${stripeForWallet ? ": os créditos deste ensaio valem como dinheiro real na carteira" : ": os pagamentos de inscrição não são de verdade"}. Use só num site de ensaio sem usuários de verdade; no site definitivo troque por sk_live_ e APAGUE STRIPE_ALLOW_TEST_KEY (docs/CONFIGURAR_PIX.md, seção 10).`,
+    });
   }
 
   const proxyOk = env.trustProxy !== null || env.runtime === "sites";

@@ -280,7 +280,8 @@ Com `PIX_PROVIDER="stripe"` o depósito é cobrado por uma **página de pagament
 
 - **Ensaie num site separado**, com banco D1 próprio e vazio e um endereço que ninguém conheça. Ao terminar, **apague esse site e o banco dele**.
 - **Nunca ligue `STRIPE_PIX_AUTO_CREDIT` no ensaio** (o site recusa subir com essa combinação).
-- **Nunca copie `STRIPE_ALLOW_TEST_KEY` para o site definitivo.** Se um dia ela ficar ligada no site real, o painel mostra um item vermelho "Chave de TESTE do Stripe em uso" em *Admin → Configurações*; e, se sobrar crédito de teste, confira em *Admin → Carteiras* e remova com *Ajuste manual*.
+- **Nunca copie `STRIPE_ALLOW_TEST_KEY` para o site definitivo.** O painel (*Admin → Configurações*) mostra um item vermelho "Chave de TESTE do Stripe em uso" quando ela está ligada **junto com uma chave `sk_test_`**; com `sk_live_` não há aviso, então apague a variável por conta própria. Se sobrar crédito de teste, confira em *Admin → Carteiras* e remova com *Ajuste manual*.
+- **Como montar o site de ensaio:** é um site novo, não uma cópia: use **outro nome de Worker e outro nome de banco** no `wrangler.jsonc` (`name`, `database_name`, `database_id`) e **repita a Fase 1 inteira** (segredos novos, `APP_URL` do endereço de ensaio, migrações no banco novo, conta de administrador). Nos comandos dos guias troque `primearena` pelo nome do banco de ensaio, para nunca mexer no banco definitivo.
 
 1. **Chave secreta.** No painel do Stripe: **Desenvolvedores → Chaves de API**. Copie a **Chave secreta** (`sk_test_…` no modo de teste, `sk_live_…` em produção). Ela vira o `STRIPE_SECRET_KEY`. Nunca mostre essa chave a ninguém (nem a uma IA). Se preferir uma *chave restrita* (`rk_…`), ela precisa de permissão de escrita em *Checkout Sessions* e de leitura em *PaymentIntents* e *Charges*; isso não foi validado, então teste no modo de teste.
 2. **Webhook.** **Desenvolvedores → Webhooks → Adicionar endpoint** (no painel novo pode aparecer como *Workbench* → *Adicionar destino*):
@@ -292,9 +293,9 @@ Com `PIX_PROVIDER="stripe"` o depósito é cobrado por uma **página de pagament
    - Se você já usa o Stripe para as inscrições em campeonatos, o endereço é o **mesmo**: só acrescente os eventos que faltam (`charge.refunded` e `charge.dispute.created`) ao endpoint existente. Não cadastre também `/api/webhooks/pix`.
    - O modo de teste e o modo real têm endpoints e segredos **diferentes**: crie um endpoint em cada um.
    - Mesmo que algum aviso se perca, o agendador reconsulta os Pix pendentes e, aos poucos, os depósitos já creditados (estornos perdidos).
-3. **Cadastre nesta ordem.** Salvar em etapas pode deixar o site inteiro fora do ar (resposta 503, inclusive os campeonatos da Fase 1) até a **última** etapa, porque o site recusa subir com a carteira ligada e algo faltando. Por isso a variável que liga tudo vai **por último**. (No ChatGPT Sites: *segredo* = valor que fica escondido depois de salvo; *variável normal* = valor visível. O `CRON_SECRET` e o `APP_URL` já existem desde a Fase 1.)
+3. **Cadastre nesta ordem.** Salvar em etapas pode deixar o site inteiro fora do ar (resposta 503, inclusive os campeonatos da Fase 1) até a **última** etapa, porque o site recusa subir com a carteira ligada e algo faltando. Por isso a variável que liga tudo vai **por último**. (No ChatGPT Sites: *segredo* = valor que fica escondido depois de salvo; *variável normal* = valor visível. No site definitivo o `CRON_SECRET` e o `APP_URL` já existem desde a Fase 1; no site de ensaio, cadastre-os também.)
    1. **Segredos:** `DATA_ENCRYPTION_KEY` (gere com `npm run secrets -- --sites` e guarde fora do ChatGPT), `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
-   2. **Variáveis normais:**
+   2. **Variáveis normais** (no site de **ensaio**, inclua aqui também `STRIPE_ALLOW_TEST_KEY="true"`, **antes** de `WALLET_ENABLED`; sem ela o site recusa a chave `sk_test_` e fica em 503):
 
 ```ini
 PIX_PROVIDER="stripe"
@@ -305,7 +306,7 @@ WITHDRAW_AUTO_APPROVE_MAX_CENTS="0"      # TODO saque espera um admin (seção 5
 ```
 
    3. **Por último:** `WALLET_ENABLED="true"`. O `wrangler.jsonc` já traz `WALLET_ENABLED="false"` como variável normal: altere o valor **em um só lugar** (no arquivo **ou** nas configurações do site, e anote qual) e **nunca** cadastre como segredo um nome que já está em `vars`. Um novo envio do site não pode devolver o valor a `false` sem você perceber: confira depois de cada publicação.
-   4. **Só no site de ENSAIO** (nunca no definitivo): `STRIPE_ALLOW_TEST_KEY="true"`. Sem ela, o site recusa a chave `sk_test_…`.
+   4. `STRIPE_ALLOW_TEST_KEY="true"` é **só do site de ensaio** (nunca do definitivo) e entra no item 2, antes de `WALLET_ENABLED`.
 
    Não precisa de nenhuma variável do Asaas. Em produção o site **recusa subir** com `PIX_PROVIDER="stripe"` sem as duas chaves, recusa uma chave de teste (`sk_test_…`) **a menos que** `STRIPE_ALLOW_TEST_KEY="true"`, e recusa `STRIPE_PIX_AUTO_CREDIT="true"` com chave de teste.
 4. **Ative a carteira** em **Admin → Configurações → Ativar a carteira** (seção 4.1). Só nesse clique ela aparece para os usuários. A lista de pendências mostra "Provedor de Pix (Stripe)" e o que mais faltar.

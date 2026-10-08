@@ -2,7 +2,7 @@
 
 Este guia coloca o site no **ChatGPT Sites**, a hospedagem da OpenAI. O projeto continua podendo rodar em servidor próprio (`HOSPEDAGEM.md`): o **mesmo código** tem dois modos, e o do Sites é montado por um comando próprio (`npm run build:sites`).
 
-> **Leia primeiro (honestidade).** O site foi montado e testado **no seu equivalente local**: o motor do Cloudflare Workers (`workerd`) com um banco D1 **simulado** (Miniflare). Nele rodaram o cadastro, o login, as páginas públicas e o agendador **no Worker montado** (`npm run smoke:sites`, @@N_SMOKE@@ verificações) e a suíte inteira de testes (@@N_D1@@ testes) contra esse D1 simulado. Campeonatos, times, inscrições e dinheiro foram provados **nessa suíte** (em Node + D1 simulado), **não** executados dentro do Worker montado.
+> **Leia primeiro (honestidade).** O site foi montado e testado **no seu equivalente local**: o motor do Cloudflare Workers (`workerd`) com um banco D1 **simulado** (Miniflare). Nele rodaram o cadastro, o login, as páginas públicas e o agendador **no Worker montado** (`npm run smoke:sites`, 21 verificações) e a suíte de testes de dados e de negócio (658 testes; fica de fora só o instalador de servidor, o reset do banco local e os testes do próprio motor, que rodam no `npm test`) contra esse D1 simulado. Campeonatos, times, inscrições e dinheiro foram provados **nessa suíte** (em Node + D1 simulado), **não** executados dentro do Worker montado.
 >
 > **Ele nunca foi publicado no ChatGPT Sites de verdade.** A documentação técnica do Sites não pôde ser consultada neste desenvolvimento, e por isso o arquivo de ligação com o Sites (`.openai/hosting.json`) **não** vem incluído. O primeiro passo é pedir ao próprio ChatGPT/Codex que confira a compatibilidade (texto pronto em [`PROMPT_PARA_O_CHATGPT.md`](../PROMPT_PARA_O_CHATGPT.md)). Veja a seção 9 (limites e riscos) antes de apostar nisto.
 
@@ -64,7 +64,7 @@ Estas três perguntas o ChatGPT responde logo no início (o texto pronto já as 
 
 1. **Verifique o domínio do e-mail** no Resend e **espere aparecer "Verified"** (`CONFIGURAR_EMAIL.md`, seções 3 e 4B). Antes disso o Resend só entrega para o seu próprio e-mail.
 2. **Gere os segredos.** No seu computador com Node: `npm run secrets -- --sites` (imprime só `APP_SECRET`, `CRON_SECRET` e `DATA_ENCRYPTION_KEY`; **não** crie um arquivo `.env`). **Sem Node:** use o gerador do seu gerenciador de senhas, com 40 caracteres só de letras e números para `APP_SECRET` e `CRON_SECRET`, e 64 caracteres só de letras e números para `DATA_ENCRYPTION_KEY`. Guarde cada um com o nome da variável. **Não peça ao ChatGPT para gerar segredos**: o que ele escreve fica na conversa.
-3. **Abra uma conversa com o ChatGPT (Codex)** e anexe **somente o `.zip`** (nunca a pasta de trabalho). **Preencha o bloco "MEUS DADOS"** do texto de [`PROMPT_PARA_O_CHATGPT.md`](../PROMPT_PARA_O_CHATGPT.md) e cole o texto inteiro. Ele deve responder às perguntas acima, montar com `npm run build:sites`, rodar os testes, criar o banco D1 `primearena` (binding `DB`), aplicar **em ordem** as migrações `0001_prime_arena.sql` e `0002_d1_engine.sql` **no banco remoto** e **parar** para você.
+3. **Abra uma conversa com o ChatGPT (Codex)** e anexe **somente o `.zip`** (nunca a pasta de trabalho). **Preencha o bloco "MEUS DADOS"** do texto de [`PROMPT_PARA_O_CHATGPT.md`](../PROMPT_PARA_O_CHATGPT.md) (o endereço do site novo é `https://` + o seu domínio; se for usar o endereço provisório do Sites, pergunte-o ao ChatGPT antes de preencher) e cole o texto inteiro. Ele deve responder às perguntas acima, montar com `npm run build:sites`, rodar os testes, criar o banco D1 `primearena` (binding `DB`), aplicar **em ordem** as migrações `0001_prime_arena.sql` e `0002_d1_engine.sql` **no banco remoto** e **parar** para você.
 4. **Conecte o domínio** (ou descubra o endereço provisório que o Sites der) **antes** de fechar o `APP_URL`: ele tem de ser o endereço que o público vai usar, porque vai nos links dos e-mails de confirmação. Crie os registros DNS que o Sites mostrar.
 5. **Cadastre as variáveis e os segredos** (tabela abaixo) nas configurações do site. O ChatGPT lista o nome de cada um e diz onde digitar; **você** digita os segredos. (O build para o Sites **recusa** montar se houver um arquivo `.env` na pasta, justamente para que nenhum segredo seja embutido no pacote.)
 6. **Publique primeiro a versão de revisão** e confira que as páginas abrem e que **não** aparece "Serviço indisponível" (seção 11). Só então escreva **"PODE PUBLICAR"**.
@@ -95,7 +95,7 @@ Estas três perguntas o ChatGPT responde logo no início (o texto pronto já as 
 | `MAIL_FROM` | normal | **sim** | `Prime Arena <nao-responda@seudominio.com.br>` (domínio **Verified** no Resend) |
 | `RESEND_API_KEY` | **segredo** | **sim** | chave da API do Resend (o Brevo também é aceito pelo código, mas no Sites só o Resend foi considerado: o Brevo pode exigir IP fixo, que os Workers não têm) |
 | `CRON_SECRET` | **segredo** | **sim, sempre** | 24+ caracteres aleatórios. **Sem ele o site responde 503 em todas as páginas, mesmo na Fase 1** |
-| `PA_RUNTIME` | normal | **sim** | `sites` (já vem no `wrangler.jsonc`) |
+| `PA_RUNTIME` | normal | recomendada | `sites` (já vem no `wrangler.jsonc`; o site também reconhece sozinho que está no Cloudflare Workers) |
 | `PAYMENTS_PROVIDER` | normal | **sim** | `none` (campeonatos grátis). Já vem no `wrangler.jsonc` |
 | `WALLET_ENABLED` | normal | **sim** | `false` na Fase 1. Se faltar, o site assume `true` e **não sobe**. Já vem no `wrangler.jsonc` |
 | `DATA_ENCRYPTION_KEY` | **segredo** | Fase 2 | gere junto com os outros e guarde. **Nunca troque com o site no ar**: ele protege os CPFs |
@@ -103,7 +103,7 @@ Estas três perguntas o ChatGPT responde logo no início (o texto pronto já as 
 
 **`wrangler.jsonc` ou configurações do site, nunca os dois:** `PA_RUNTIME`, `PAYMENTS_PROVIDER` e `WALLET_ENABLED` já vêm no arquivo `wrangler.jsonc` (bloco `vars`). Se o ChatGPT disser que o Sites **lê** esse arquivo, deixe-as lá. Se disser que o Sites **ignora** esse arquivo, cadastre-as nas configurações do site, como variáveis normais. **Nunca cadastre como segredo um nome que já está no arquivo**, e confira depois de cada publicação que o valor não voltou ao anterior.
 
-Binding do banco: **`DB`** (D1). Sem ele o site responde um erro dizendo exatamente isso.
+Binding do banco: **`DB`** (D1). Sem ele o site responde o mesmo 503 "Serviço indisponível" da seção 11; a mensagem exata ("O banco D1 (binding DB) não está configurado") só aparece **no log**.
 
 ## 5. Agendador
 
@@ -129,7 +129,7 @@ Com o Sites a carteira usa o **Stripe** (Pix) para receber depósitos. O passo a
 Resumo:
 
 1. No Stripe: ative o **Pix**, crie a chave secreta e um **webhook** em `https://seudominio.com.br/api/webhooks/stripe` com os 6 eventos da seção 10.3 do guia do Pix.
-2. **Segredos:** `DATA_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. **Variáveis normais:** `PIX_PROVIDER=stripe` e, por último, `WALLET_ENABLED=true`. Para mudar `WALLET_ENABLED` use **um só lugar**: o `wrangler.jsonc` (peça ao ChatGPT para editar o bloco `vars` e publicar de novo) **ou** as configurações do site, conforme a seção 4.
+2. **Segredos:** `DATA_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. **Variáveis normais:** `PIX_PROVIDER=stripe` (e, só no site de ensaio, `STRIPE_ALLOW_TEST_KEY=true`) e, por último, `WALLET_ENABLED=true`. Para mudar `WALLET_ENABLED` use **um só lugar**: o `wrangler.jsonc` (peça ao ChatGPT para editar o bloco `vars` e publicar de novo) **ou** as configurações do site, conforme a seção 4.
 3. **Todo depósito fica retido** até um administrador conferir o nome do pagador no painel do Stripe (o CPF digitado pelo pagador não é confirmado pelo banco). O crédito automático existe, mas é opcional e mais arriscado (`STRIPE_PIX_AUTO_CREDIT`).
 4. **Saques são manuais**: o Stripe recebe Pix, mas não paga Pix a terceiros. O administrador paga no app do banco e registra no painel (um administrador por saque, com comprovante).
 5. **Ensaie com chave de teste, mas NUNCA no site com usuários de verdade.** O site trata os créditos de um ensaio como dinheiro real. Faça o ensaio num **site separado**, com banco D1 próprio e vazio, que ninguém conheça, e apague-o ao terminar. `STRIPE_ALLOW_TEST_KEY` é só para esse site de ensaio; nunca a copie para o definitivo. Detalhes e proteções no guia do Pix, seção 10.3.
@@ -161,9 +161,9 @@ O exportador só lê o banco de origem, põe os pais antes dos filhos, **convert
 *Estes comandos são para Linux/macOS (no Windows use o WSL) e para quem sabe usar o terminal. O ChatGPT pode rodá-los por você.*
 
 - `npm run preview:sites`: monta o site, cria um banco D1 local e abre em `http://localhost:8787`. O e-mail **não sai de verdade**: o texto da mensagem (com o link de confirmação) aparece **no terminal onde o comando está rodando**; copie o link para o navegador.
-- `npm run smoke:sites`: monta o site, sobe o pacote montado, cadastra uma conta num navegador real, entra, abre a área da conta e dispara o agendador (@@N_SMOKE@@ verificações; o e-mail é marcado como confirmado direto no banco). Precisa do Chromium do Playwright (`npx playwright install chromium`) e **se recusa a rodar se existir um `.dev.vars`**.
-- `npm run test:d1`: roda **toda** a suíte de testes (@@N_D1@@) contra um D1 simulado, com o motor de transações do Sites.
-- `npm test`: os testes normais (@@N_NORMAL@@), incluindo os do próprio motor (`tests/d1/`). `npm run test:d1:fuzz`: varreduras pesadas do motor (alguns minutos).
+- `npm run smoke:sites`: monta o site, sobe o pacote montado, cadastra uma conta num navegador real, entra, abre a área da conta e dispara o agendador (21 verificações; o e-mail é marcado como confirmado direto no banco). Precisa do Chromium do Playwright (`npx playwright install chromium`) e **se recusa a rodar se existir um `.dev.vars`**: o `preview:sites` cria esse arquivo, então apague-o (ou renomeie-o) antes do `smoke:sites`.
+- `npm run test:d1`: roda a suíte de testes de dados e de negócio (658; todos menos o instalador de servidor, o reset do banco local e os testes do motor) contra um D1 simulado, com o motor de transações do Sites.
+- `npm test`: os testes normais (763), incluindo os do próprio motor (`tests/d1/`). `npm run test:d1:fuzz`: varreduras pesadas do motor (alguns minutos).
 - `npm run empacotar`: monta o `.zip` para entregar, só com os arquivos versionados e conferido (sem `.env`, `.dev.vars`, bancos nem `node_modules`).
 
 ## 9. Limites e riscos (leia)
@@ -179,6 +179,10 @@ O exportador só lê o banco de origem, põe os pais antes dos filhos, **convert
 | **Saques manuais no Stripe** | O Stripe recebe Pix, mas não paga Pix a terceiros. | Os saques viram "pagar manualmente e marcar como pago" no painel (seção 6). |
 | **Sem 2º fator para admin e sem CAPTCHA** | Igual ao servidor próprio (`SEGURANCA.md`). | Proteja o e-mail do administrador com 2º fator. |
 | **Backup (confirme ANTES da Fase 2)** | O banco D1 pode estar na sua conta Cloudflare **ou** na da OpenAI; você pode não ter acesso ao `wrangler`. | Pergunte ao ChatGPT: *"O banco D1 fica na minha conta Cloudflare ou na da OpenAI? Como eu exporto uma cópia completa e como restauro?"* Se não houver uma forma que **você** consiga usar sozinho, **NÃO ligue a Fase 2**. Se houver: `npx wrangler d1 export primearena --remote --output backup.sql`. Faça uma cópia antes de qualquer atualização do banco e guarde-a **fora** do ChatGPT, junto com a `DATA_ENCRYPTION_KEY`. |
+
+### Como restaurar um backup (e por que testar antes de precisar)
+
+Um arquivo `backup.sql` do `d1 export` traz `CREATE TABLE` e os dados: **ele não se reaplica sobre um banco que já tem as tabelas**. Restaurar é criar um banco novo: (1) crie um banco D1 **novo e vazio**; (2) `npx wrangler d1 execute NOME-DO-BANCO-NOVO --remote --file backup.sql`; (3) troque o `database_id` (e o nome) no `wrangler.jsonc` pelo do banco novo e publique de novo; (4) confira o resultado (por exemplo, o número de contas e a **conciliação** em *Admin → Carteiras*). O Cloudflare também tem recuperação do D1 a um momento anterior ("Time Travel"); confirme se existe no seu plano. **Este procedimento nunca foi testado aqui**: ensaie-o num banco de teste **antes** da Fase 2, e só marque o item do checklist depois de conseguir.
 
 ## 10. Atualizações do banco no futuro
 
@@ -200,7 +204,7 @@ O arquivo `src/lib/model-meta.generated.ts` e o cliente `src/generated/prisma-d1
 | Sintoma | Causa provável e o que fazer |
 |---|---|
 | Todas as páginas mostram **"Serviço indisponível: a configuração do site está incompleta ou insegura"** (erro 503) | Falta ou está errada alguma variável da tabela da seção 4. O motivo fica **só no log** do site (`[boot-guard] BLOQUEADO: Configuração de produção inválida…`). Peça ao ChatGPT: *"leia o log de erros do site e me diga QUAL variável falta (só o nome, nunca o valor)"*. **Nunca** ligue `ALLOW_MOCK_PAYMENTS`, `ALLOW_MOCK_PIX`, `PA_LOCAL_PREVIEW` nem `PA_ALLOW_ENV_FILE` para "fazer funcionar". |
-| "O banco D1 (binding DB) não está configurado" | O binding do D1 não se chama `DB` ou não foi ligado ao site |
+| No **log** aparece "O banco D1 (binding DB) não está configurado" (para o visitante é o mesmo 503) | O binding do D1 não se chama `DB` ou não foi ligado ao site |
 | "O sistema está ocupado no momento" | Muitas escritas ao mesmo tempo, ou uma queda recente; tente de novo em segundos |
 | E-mails não chegam | `CONFIGURAR_EMAIL.md`, seções 4B e 7. Confira se o Resend mostra o domínio como **Verified** |
 | O e-mail de confirmação do administrador não chega | Corrija a chave ou o remetente e use **Minha conta → Reenviar e-mail de confirmação** ou **Esqueci minha senha** |
