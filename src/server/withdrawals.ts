@@ -423,6 +423,43 @@ async function assertNoConflict(actor: Actor, w: Pick<Withdrawal, "requestedById
 }
 
 /**
+ * "Dono" do pagamento manual: o PRIMEIRO administrador que pede a chave Pix do saque fica responsável por ele. Sem isso, dois
+ * administradores veriam a mesma chave: um pagaria no banco e o outro, sem saber, clicaria em "não paguei" e o valor voltaria ao
+ * saldo (pagamento em dobro). A reserva é uma linha única em SiteSetting (a chave única impede duas reservas ao mesmo tempo).
+ */
+const payoutClaimKey = (id: string) => `payout-claim:${id}`;
+const CLAIM_STALE_MS = 24 * 3600_000;
+
+async function claimManualPayout(adminId: string, id: string): Promise<void> {
+  const key = payoutClaimKey(id);
+  const existing = await db.siteSetting.findUnique({ where: { key } });
+  if (existing) {
+    if (existing.value === adminId) return;
+    if (Date.now() - existing.updatedAt.getTime() < CLAIM_STALE_MS) throw new AppError("Outro administrador já pegou este saque para pagar. Combine com ele antes de mexer (a reserva expira em 24 horas).", "CONFLICT");
+    await db.siteSetting.update({ where: { key }, data: { value: adminId, updatedById: adminId } }); // reserva abandonada: assume
+    return;
+  }
+  try {
+    await db.siteSetting.create({ data: { key, value: adminId, updatedById: adminId } });
+  } catch (e) {
+    const again = await db.siteSetting.findUnique({ where: { key } });
+    if (again?.value !== adminId) throw new AppError("Outro administrador acabou de pegar este saque para pagar.", "CONFLICT");
+  }
+}
+
+/** Num saque manual, quem resolve (pago ou devolver) é quem pegou a chave, enquanto a reserva está viva. */
+async function assertManualPayoutOwner(adminId: string, id: string, outcome: "paid" | "failed"): Promise<void> {
+  const claim = await db.siteSetting.findUnique({ where: { key: payoutClaimKey(id) } });
+  if (!claim) {
+    if (outcome === "paid") throw new AppError("Para registrar um pagamento manual, primeiro use \"Mostrar chave Pix\" (isso reserva o saque para você).");
+    return;
+  }
+  if (claim.value !== adminId && Date.now() - claim.updatedAt.getTime() < CLAIM_STALE_MS) {
+    throw new AppError("Este saque foi reservado por outro administrador, que é quem deve registrar o resultado.", "CONFLICT");
+  }
+}
+
+/**
  * Resolução manual de um saque em PROCESSING: sem resposta do provedor (o admin confere no painel do banco) ou saque manual
  * (o admin pagou o Pix no banco ou desistiu). "failed" devolve o valor ao saldo da equipe.
  */
@@ -433,6 +470,10 @@ export async function adminResolveProcessing(actorIn: Actor | null, id: string, 
   const w = await db.withdrawal.findUnique({ where: { id } });
   if (!w || w.status !== "PROCESSING") throw new AppError("Saque não está em processamento.");
   await assertNoConflict(actor, w);
+  if (w.provider === MANUAL_PAYOUT) {
+    if (outcome === "paid" && note.trim().length < 10) throw new AppError("Descreva o comprovante do Pix pago (banco, horário, código da transação).");
+    await assertManualPayoutOwner(actor.id, id, outcome);
+  }
   const ok = outcome === "paid" ? await markPaid(id, endToEndId ?? null) : await markFailed(id, `Conciliado manualmente: ${note.trim()}`);
   await audit(actor.id, `withdrawal.admin_${outcome}`, "Withdrawal", id, { note, manual: w.provider === MANUAL_PAYOUT });
   return ok;
@@ -453,6 +494,7 @@ export async function adminRevealPayoutKey(actorIn: Actor | null, id: string): P
   const [user, wallet] = await Promise.all([db.user.findUniqueOrThrow({ where: { id: w.requestedById } }), db.wallet.findUniqueOrThrow({ where: { id: w.walletId } })]);
   if (wallet.frozenAt || user.bannedAt) throw new AppError("Carteira congelada ou titular suspenso: não pague este saque. Devolva o valor ao saldo ou conclua a análise antes.", "FORBIDDEN");
   await rateLimit(`wd:reveal:${actor.id}`, 30, 3600, "Muitas consultas de chave Pix. Aguarde um pouco.");
+  await claimManualPayout(actor.id, id); // só UM administrador por saque vê a chave e o resolve
   let pixKey: string;
   try {
     pixKey = await getVerifiedCpf(w.requestedById);

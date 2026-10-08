@@ -92,28 +92,32 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
             <div className="mb-4 space-y-3 rounded-lg border border-brand/40 bg-brand/5 p-4">
               <meta httpEquiv="refresh" content="6" />
               <p className="text-sm font-semibold">Pague {formatMoney(pixDeposit.amountCents)} no Pix até {formatDateTime(pixDeposit.expiresAt)}</p>
-              {pixDeposit.provider === "stripe" ? (
-                // No Stripe o QR Code fica na página hospedada por ele: o endereço dela está guardado onde ficaria o copia-e-cola.
-                stripeUrl ? (
-                  <div className="space-y-2">
-                    <ButtonLink href={stripeUrl} target="_blank" rel="noopener noreferrer" variant="accent">Pagar com Pix</ButtonLink>
-                    <p className="text-xs text-muted">Abre a página segura do Stripe, com o QR Code e o copia-e-cola. Se pedirem o CPF, informe o <b>seu</b> (titular da conta): Pix pago por outra pessoa fica retido para análise.</p>
-                  </div>
-                ) : <p className="text-sm text-danger">Não foi possível abrir a página de pagamento. Gere um novo Pix.</p>
-              ) : (
+              {stripeUrl ? (
+                // No Stripe o QR Code nasce na página hospedada por ele (o endereço dela fica onde ficaria o copia-e-cola). Depois que o
+                // pagador envia o formulário de lá, o site recebe o QR Code e o copia-e-cola reais e a tela passa a mostrá-los.
+                <div className="space-y-2">
+                  <ButtonLink href={stripeUrl} target="_blank" rel="noopener noreferrer" variant="accent">Pagar com Pix</ButtonLink>
+                  <p className="text-xs text-muted">Abre a página segura do Stripe, com o QR Code e o copia-e-cola. Se pedirem o CPF, informe o <b>seu</b> (titular da conta): Pix pago por outra pessoa fica retido para análise. <b>Depois de pagar, volte a esta aba</b>: ela atualiza sozinha.</p>
+                </div>
+              ) : pixDeposit.pixCopyPaste ? (
                 <>
                   {pixDeposit.pixQrImage && /^[A-Za-z0-9+/=]+$/.test(pixDeposit.pixQrImage) && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={`data:image/png;base64,${pixDeposit.pixQrImage}`} alt="QR Code Pix" className="mx-auto h-44 w-44 rounded-lg bg-white p-2" />
                   )}
+                  {pixDeposit.pixQrImage && /^https:\/\//.test(pixDeposit.pixQrImage) && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={pixDeposit.pixQrImage} alt="QR Code Pix" className="mx-auto h-44 w-44 rounded-lg bg-white p-2" />
+                  )}
                   <div className="flex gap-2"><Input readOnly value={pixDeposit.pixCopyPaste ?? ""} aria-label="Pix copia e cola" className="font-mono text-xs" /><CopyButton text={pixDeposit.pixCopyPaste ?? ""} label="Copiar Pix" /></div>
                 </>
-              )}
+              ) : <p className="text-sm text-danger">Não foi possível abrir a página de pagamento. Gere um novo Pix.</p>}
               <p className="text-xs text-muted">Esta página atualiza sozinha quando o pagamento for confirmado.</p>
               {dev && <Link href="/dev/pix" className="text-xs text-warn underline">[dev] simular o pagamento deste Pix</Link>}
             </div>
           )}
           {pixDeposit && pixDeposit.status === "CONFIRMED" && <Alert tone="ok" className="mb-4">Pix confirmado! {formatMoney(pixDeposit.amountCents)} creditados.</Alert>}
+          {pixDeposit && pixDeposit.status === "EXPIRED" && <Alert tone="warn" className="mb-4">Este Pix venceu. Se você ainda não pagou, gere um novo abaixo. Se pagou, aguarde: pagamentos tardios também são conferidos.</Alert>}
           {pixDeposit && pixDeposit.status === "HELD" && <Alert tone="warn" className="mb-4">Recebemos o Pix, mas ele está em análise: {pixDeposit.holdReason}</Alert>}
           <ActionForm action={createDepositAction} className="space-y-3" submit="Gerar Pix" submitClassName="" >
             <input type="hidden" name="teamId" value={team.id} />

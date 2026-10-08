@@ -45,6 +45,7 @@ export function buildCheckoutParams(args: {
     "metadata[orderId]": args.orderId,
     "metadata[orderNumber]": args.orderNumber,
     "payment_intent_data[metadata][orderId]": args.orderId,
+    "payment_intent_data[metadata][kind]": "registration", // distingue, nos avisos de estorno, a inscrição de um depósito da carteira
     "line_items[0][quantity]": "1",
     "line_items[0][price_data][currency]": currency,
     "line_items[0][price_data][unit_amount]": String(args.totalCents),

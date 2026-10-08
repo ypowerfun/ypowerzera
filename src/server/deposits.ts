@@ -83,11 +83,17 @@ export async function confirmDeposit(chargeId: string): Promise<ConfirmResult> {
     hold = `Moeda do pagamento (${info.currency}) diferente de BRL: retido para revisão do administrador.`;
   } else if (info.amountCents !== dep.amountCents) {
     hold = `Valor pago (${formatMoney(info.amountCents)}) diverge do valor da cobrança (${formatMoney(dep.amountCents)}).`;
+  } else if (info.payerDocVerified === false && !getEnv().stripePixAutoCredit) {
+    // Stripe: o CPF é digitado pelo próprio pagador (quem paga por outra pessoa digita o CPF do titular). Não prova quem pagou:
+    // o administrador confere o nome do pagador no painel do Stripe antes de liberar. (STRIPE_PIX_AUTO_CREDIT=true troca isto por
+    // credito automático quando o CPF declarado confere com um KYC VERIFICADO.)
+    hold = "Pix recebido pelo Stripe: aguardando a conferência do administrador (o nome de quem pagou precisa bater com o titular da conta).";
   } else if (!payerHash && getEnv().pixRequirePayerDoc) {
-    hold = "O provedor não informou o CPF de quem pagou. Confira no painel do banco se foi o titular e libere manualmente.";
+    hold = "O provedor não informou o CPF de quem pagou. Confira no painel do provedor se foi o titular e libere manualmente.";
   } else if (payerHash) {
     const kyc = await db.kycProfile.findUnique({ where: { userId: dep.userId } });
     if (!kyc || kyc.cpfHash !== payerHash) hold = "O CPF de quem pagou não confere com o titular da conta (terceiros não podem depositar).";
+    else if (info.payerDocVerified === false && kyc.status !== "VERIFIED") hold = "O CPF declarado confere, mas a identidade do titular ainda não foi verificada: retido para o administrador.";
   }
 
   const credited = await db.$transaction(async (tx) => {
@@ -137,6 +143,17 @@ export async function reverseDeposit(chargeId: string): Promise<"reversed" | "al
     await audit(null, "deposit.reversed_while_held", "Deposit", dep.id, { amountCents: dep.amountCents });
     return "reversed";
   }
+  if (dep.status === "PENDING" || dep.status === "EXPIRED") {
+    // Estornado/contestado ANTES de creditar (ex.: o aviso chegou durante a confirmação): fecha o depósito para que nenhum
+    // pagamento posterior o credite. Nada foi lançado no razão, então a conciliação continua fechando.
+    const early = await getPixProvider().getCharge(chargeId);
+    if (early.status !== "REVERSED") return "ignored";
+    const r = await db.deposit.updateMany({ where: { id: dep.id, status: { in: ["PENDING", "EXPIRED"] } }, data: { status: "REFUNDED", holdReason: "Estornado ou contestado no provedor antes de ser creditado." } });
+    if (r.count === 0) return "already";
+    await audit(null, "deposit.reversed_before_credit", "Deposit", dep.id, { amountCents: dep.amountCents });
+    await notify(await adminUserIds(), "deposit.reversed", "Depósito estornado antes de creditar", `${formatMoney(dep.amountCents)} estornados/contestados no provedor; nada foi creditado.`, "/admin/carteiras");
+    return "reversed";
+  }
   if (dep.status !== "CONFIRMED") return "already";
   const info = await getPixProvider().getCharge(chargeId);
   if (info.status !== "REVERSED") return "ignored";
@@ -154,6 +171,47 @@ export async function reverseDeposit(chargeId: string): Promise<"reversed" | "al
     await audit(null, "deposit.reversed", "Deposit", dep.id, { amountCents: dep.amountCents, debited: take, shortfall }, tx);
     return "reversed" as const;
   });
+}
+
+/**
+ * Stripe: depois que o pagador envia o formulário da página hospedada, o endereço dela deixa de servir e passam a existir o QR Code e
+ * o copia-e-cola reais. Guarda-os no depósito (só enquanto pendente) para a tela da carteira mostrá-los. Não mexe em dinheiro.
+ */
+export async function refreshDepositInstructions(chargeId: string): Promise<"updated" | "ignored"> {
+  const provider = getPixProvider();
+  if (!provider.getPaymentInstructions) return "ignored";
+  const dep = await db.deposit.findUnique({ where: { providerChargeId: chargeId }, select: { id: true, status: true } });
+  if (!dep || dep.status !== "PENDING") return "ignored";
+  const info = await provider.getPaymentInstructions(chargeId);
+  if (!info) return "ignored";
+  const r = await db.deposit.updateMany({ where: { id: dep.id, status: "PENDING" }, data: { pixCopyPaste: info.copyPaste, pixQrImage: info.qrImage ?? null } });
+  return r.count ? "updated" : "ignored";
+}
+
+const K_RECHECK_CURSOR = "deposit_recheck_cursor";
+
+/**
+ * Rede de segurança contra estorno/contestação PERDIDOS (o aviso não chegou, ou chegou num momento em que o provedor ainda não mostrava
+ * o estorno): a cada ciclo do agendador, reconsulta alguns depósitos já creditados nos últimos 100 dias (a janela do estorno do Pix) e,
+ * se o provedor já os considera estornados, aplica `reverseDeposit`. Um cursor guardado no banco faz a varredura rodar todos, aos poucos.
+ */
+export async function recheckConfirmedDeposits(now = new Date(), limit = 10): Promise<{ checked: number; reversed: number }> {
+  const since = new Date(now.getTime() - 100 * 86400_000);
+  const cursor = (await db.siteSetting.findUnique({ where: { key: K_RECHECK_CURSOR } }))?.value ?? "";
+  const base = { status: "CONFIRMED" as const, providerChargeId: { not: null }, confirmedAt: { gte: since } };
+  let batch = await db.deposit.findMany({ where: { ...base, id: { gt: cursor } }, orderBy: { id: "asc" }, take: limit, select: { id: true, providerChargeId: true } });
+  if (batch.length === 0 && cursor) batch = await db.deposit.findMany({ where: base, orderBy: { id: "asc" }, take: limit, select: { id: true, providerChargeId: true } });
+  let reversed = 0;
+  for (const d of batch) {
+    try {
+      if ((await reverseDeposit(d.providerChargeId!)) === "reversed") reversed++;
+    } catch (e) {
+      console.error(`[depósitos] Não consegui reconsultar o depósito ${d.id}: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  const last = batch.at(-1)?.id ?? "";
+  await db.siteSetting.upsert({ where: { key: K_RECHECK_CURSOR }, create: { key: K_RECHECK_CURSOR, value: last }, update: { value: last } });
+  return { checked: batch.length, reversed };
 }
 
 /**

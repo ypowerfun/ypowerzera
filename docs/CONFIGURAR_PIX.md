@@ -249,64 +249,68 @@ A rede da sessão em que este guia foi escrito bloqueia `docs.asaas.com`, então
 
 ---
 
-## 10. Depósitos pelo Stripe (alternativa ao Asaas)
+## 10. Depósitos pelo Stripe (alternativa ao Asaas; o caminho do ChatGPT Sites)
 
-Com `PIX_PROVIDER="stripe"` o depósito é cobrado por uma **página de pagamento do Stripe** (Stripe Checkout, só com Pix). O líder clica em **Pagar com Pix**, o Stripe mostra o QR Code e o copia-e-cola, e o saldo entra sozinho depois que o Stripe confirma. Todas as proteções do Asaas continuam valendo: aviso assinado (webhook) → o sistema **reconsulta o Stripe** → confere valor e moeda → confere o CPF de quem pagou → credita uma vez só; estorno e contestação retiram o crédito.
+Com `PIX_PROVIDER="stripe"` o depósito é cobrado por uma **página de pagamento do Stripe** (Stripe Checkout, só com Pix). O líder clica em **Pagar com Pix**, o Stripe mostra o QR Code e o copia-e-cola (e, depois que o líder envia o formulário, o próprio site também os mostra), e o saldo entra depois que o Stripe confirma **e o administrador libera** (veja 10.1). Aviso assinado (webhook) → o sistema **reconsulta o Stripe** → confere valor e moeda → confere o CPF de quem pagou → credita **uma vez só**; estorno e contestação retiram o crédito.
 
 ### 10.1 O que muda em relação ao Asaas
 
 | | Asaas | Stripe |
 |---|---|---|
-| Depósito | QR Code e copia-e-cola dentro do site | Botão **Pagar com Pix** que abre a página segura do Stripe |
-| CPF de quem pagou | O Asaas não informa (depósito fica retido para você conferir) | O pagador digita o CPF na página do Stripe; se for diferente do titular, ou não vier, o depósito fica **retido** |
+| Depósito | QR Code e copia-e-cola dentro do site | Botão **Pagar com Pix** que abre a página segura do Stripe (depois o site mostra o QR Code também) |
+| CPF de quem pagou | O Asaas não informa (depósito fica retido para você conferir) | O pagador **digita** o CPF num campo da página do Stripe. Como é um dado **declarado** (quem paga por outra pessoa digita o CPF do titular), **todo depósito fica retido** para o administrador conferir o **nome do pagador** no painel do Stripe e liberar (Admin → Depósitos retidos) |
 | Saque | Automático, depois que o admin libera | **Manual**: o admin libera e depois **paga o Pix no app do próprio banco** (seção 10.5) |
 | Webhooks | `/api/webhooks/pix` e `/api/webhooks/pix/transfer-authorization` | Só `/api/webhooks/stripe` (o mesmo endereço das inscrições) |
+
+> **Crédito automático (opcional, mais arriscado).** Com `STRIPE_PIX_AUTO_CREDIT="true"` o depósito credita sozinho quando o CPF digitado confere com o de um titular de **identidade verificada**. É cômodo, mas contornável: um fraudador que digite o CPF do titular passa. Comece sem isso (padrão) e só ligue depois de ver, nos primeiros depósitos, que o fluxo funciona e o volume pede automação.
 
 ### 10.2 Antes de começar
 
 1. Uma conta **Stripe do Brasil** aprovada, com o **Pix ativado** (Painel do Stripe → Configurações → Métodos de pagamento → Pix; o nome exato dos menus muda de tempos em tempos). A Stripe pode pedir dados e uma análise antes de liberar o Pix.
-2. **Conformidade:** a Stripe mantém uma lista de negócios restritos que costuma incluir jogos de azar e apostas. Descreva o produto exatamente como ele é (desafios entre equipes valendo créditos, taxa sobre o pote) e peça uma resposta **por escrito** antes de operar. Vale tudo o que está na seção 1.
-3. O site no ar com HTTPS (`APP_URL`), `DATA_ENCRYPTION_KEY` e `CRON_SECRET` definidos (seções 3.2 e 5.3), como no Asaas.
+2. **Conformidade:** a Stripe mantém uma lista de negócios restritos que costuma incluir jogos de azar e apostas. Descreva o produto exatamente como ele é (desafios entre equipes valendo créditos, taxa sobre o pote) e peça uma resposta **por escrito** antes de operar. O mesmo vale para as regras do ChatGPT Sites. Vale tudo o que está na seção 1.
+3. O site no ar com HTTPS (`APP_URL`), `DATA_ENCRYPTION_KEY` e `CRON_SECRET` definidos (seções 3.2 e 5.3, ou `SITES.md`), como no Asaas.
 
 ### 10.3 Passo a passo
 
 **Faça tudo primeiro no modo de teste do Stripe** (chave de teste), sem dinheiro de verdade.
 
 1. **Chave secreta.** No painel do Stripe: **Desenvolvedores → Chaves de API**. Copie a **Chave secreta** (`sk_test_…` no modo de teste, `sk_live_…` em produção). Ela vira o `STRIPE_SECRET_KEY`. Nunca mostre essa chave a ninguém (nem a uma IA). Se preferir uma *chave restrita* (`rk_…`), ela precisa de permissão de escrita em *Checkout Sessions* e de leitura em *PaymentIntents* e *Charges*; isso não foi validado, então teste no modo de teste.
-2. **Webhook.** **Desenvolvedores → Webhooks → Adicionar endpoint**:
+2. **Webhook.** **Desenvolvedores → Webhooks → Adicionar endpoint** (no painel novo pode aparecer como *Workbench* → *Adicionar destino*):
    - **URL:** `https://SEU-ENDERECO/api/webhooks/stripe`
+   - **Versão da API do endpoint:** escolha `2025-09-30.clover` (a mesma que o site usa nas consultas).
    - **Eventos** (marque exatamente estes seis):
      `checkout.session.completed` · `checkout.session.async_payment_succeeded` · `checkout.session.async_payment_failed` · `checkout.session.expired` · `charge.refunded` · `charge.dispute.created`
    - Depois de criar, copie o **Segredo de assinatura** (`whsec_…`). Ele vira o `STRIPE_WEBHOOK_SECRET`.
    - Se você já usa o Stripe para as inscrições em campeonatos, o endereço é o **mesmo**: só acrescente os eventos que faltam (`charge.refunded` e `charge.dispute.created`) ao endpoint existente. Não cadastre também `/api/webhooks/pix`.
    - O modo de teste e o modo real têm endpoints e segredos **diferentes**: crie um endpoint em cada um.
-3. **Variáveis do `.env`** (no ChatGPT Sites, as mesmas variáveis vão nos segredos do site):
+   - Mesmo que algum aviso se perca, o agendador reconsulta os Pix pendentes e, aos poucos, os depósitos já creditados (estornos perdidos).
+3. **Variáveis** (no ChatGPT Sites, vão nos segredos do site; em servidor próprio, no `.env`):
 
 ```ini
 WALLET_ENABLED="true"
 PIX_PROVIDER="stripe"
 STRIPE_SECRET_KEY="sk_test_..."          # troque por sk_live_... só no final
 STRIPE_WEBHOOK_SECRET="whsec_..."
+STRIPE_ALLOW_TEST_KEY="true"             # SÓ enquanto estiver ensaiando com sk_test_ no site no ar; apague ao ir para sk_live_
 PIX_REQUIRE_PAYER_DOC="true"             # depósito sem o CPF do pagador fica retido (já é o padrão em produção)
 WITHDRAW_AUTO_APPROVE_MAX_CENTS="0"      # TODO saque espera um admin (seção 5.1)
 APP_URL="https://SEU-ENDERECO"
 DATA_ENCRYPTION_KEY="(base64)"
 CRON_SECRET="(token)"
-# STRIPE_PIX_COLLECT_TAX_ID="false"      # só se o Stripe recusar o pedido de CPF (veja 10.6)
+# STRIPE_PIX_COLLECT_TAX_ID="false"      # só se o Stripe recusar o campo de CPF (veja 10.6)
+# STRIPE_PIX_AUTO_CREDIT="true"          # crédito automático (mais arriscado; veja o aviso em 10.1)
 ```
 
-   Não precisa de nenhuma variável do Asaas. Em produção o site **recusa subir** com `PIX_PROVIDER="stripe"` sem as duas chaves e recusa uma chave de teste (`sk_test_…`).
+   Não precisa de nenhuma variável do Asaas. Em produção o site **recusa subir** com `PIX_PROVIDER="stripe"` sem as duas chaves e recusa uma chave de teste (`sk_test_…`) **a menos que** `STRIPE_ALLOW_TEST_KEY="true"` (use só para ensaiar; o painel de verificação mostra o alerta).
 4. **Ligue a carteira** em **Admin → Configurações** (seção 4.1). A lista de pendências mostra "Provedor de Pix (Stripe)".
 
 ### 10.4 Como testar no modo de teste do Stripe
 
 1. Entre como líder (com identidade verificada), abra a carteira da equipe, informe um valor e clique em **Gerar Pix**. Aparece o botão **Pagar com Pix**.
-2. Clique nele: abre a página do Stripe. Escolha o Pix e informe o CPF e os dados pedidos:
-   - para ver o depósito ser **creditado**, informe o **mesmo CPF** do cadastro do líder;
-   - para ver o depósito ficar **retido**, informe outro CPF (o Stripe indica `000.000.000-00` como CPF de teste) ou deixe em branco: ele aparece em **Admin → Depósitos retidos**.
+2. Clique nele: abre a página do Stripe. Informe o **CPF do titular** no campo "CPF do titular da conta" e os demais dados; escolha o Pix. (O Stripe pode pedir também o CPF dele; no modo de teste vale `000.000.000-00`.)
 3. No modo de teste a página não mostra um QR de verdade: use o botão **Simular leitura** (*Simulate scan*). Abre uma página de teste do Stripe em que você escolhe **autorizar** o pagamento (ou **expirar**).
-4. Em alguns segundos o site recebe o aviso do Stripe, reconsulta e a carteira mostra o crédito (**uma vez só**, mesmo que o aviso chegue repetido). Confira no Stripe, em **Desenvolvedores → Webhooks → seu endpoint**, que as entregas aparecem com resposta **200**.
-5. Teste também: **expirar** (o depósito vira "Expirado" e não credita), e um **reembolso** feito pelo painel do Stripe (**Pagamentos → o pagamento → Reembolsar**): o crédito é retirado, a carteira é congelada e, se o saldo já foi gasto, vira dívida.
+4. Em alguns segundos o site recebe o aviso do Stripe e reconsulta. O depósito aparece em **Admin → Depósitos retidos** ("Pix recebido pelo Stripe: aguardando a conferência do administrador"). Confira o nome do pagador no painel do Stripe e clique em **Creditar**: a carteira recebe o crédito **uma vez só**, mesmo que o aviso chegue repetido. No painel do Stripe, **Desenvolvedores → Webhooks → seu endpoint**, as entregas devem aparecer com resposta **200**.
+5. Teste também: **expirar** (o depósito vira "Expirado" e não credita), e um **reembolso** feito pelo painel do Stripe (**Pagamentos → o pagamento → Reembolsar**): antes do crédito, o depósito é fechado; depois, o crédito é retirado, a carteira é congelada e, se o saldo já foi gasto, vira dívida.
 6. Para testar na sua máquina sem hospedagem, a CLI do Stripe encaminha os avisos: `stripe listen --forward-to localhost:3000/api/webhooks/stripe` (ela imprime o `whsec_…` a usar no `.env`).
 
 ### 10.5 Saques manuais (a limitação do Stripe)
@@ -314,29 +318,30 @@ CRON_SECRET="(token)"
 O Stripe cobra, mas **não paga Pix para terceiros**: os repasses dele só vão para a conta bancária do dono da conta Stripe. Por isso, com `PIX_PROVIDER="stripe"`:
 
 1. O líder pede o saque (senha + código por e-mail), o admin aprova (**Admin → Saques → Em análise**) e passa o atraso de cancelamento. Tudo igual ao Asaas, inclusive os "quatro olhos" e o freio `PAYOUTS_PAUSED`.
-2. O agendador **não envia nada**: o saque vira "Aguardando pagamento manual" e aparece em **Admin → Saques → Para pagar à mão no banco**, com o **valor líquido** e o nome do titular verificado. O líder vê "Aguardando pagamento pelo administrador".
-3. O admin clica em **Mostrar chave Pix**: o sistema mostra o **CPF verificado do titular** (a única chave para a qual o saque pode ir). Cada clique fica registrado na auditoria. Não funciona com saques pausados, carteira congelada ou titular suspenso, nem para o solicitante ou alguém da equipe dele.
+2. O agendador **não envia nada**: o saque vira "Aguardando pagamento manual" e aparece em **Admin → Saques → Para pagar à mão no banco**, com o **valor líquido**. O líder vê "Aguardando pagamento pelo administrador".
+3. O admin clica em **Mostrar chave Pix**: o sistema mostra o **CPF verificado do titular** (a única chave para a qual o saque pode ir) e **reserva o saque para esse administrador**: nenhum outro administrador vê a chave nem registra o resultado desse saque (a reserva expira em 24 horas se for abandonada). Cada clique fica registrado na auditoria. Não funciona com saques pausados, carteira congelada ou titular suspenso, nem para o solicitante ou alguém da equipe dele.
 4. O admin faz o Pix, **no app do seu banco**, para esse CPF, no valor líquido mostrado.
-5. De volta ao site: **Confirmar que PAGUEI** (escreva o que conferiu; o código E2E do comprovante é opcional). O saque vira *Pago* e o dinheiro sai da custódia. Se não for pagar, **NÃO paguei (devolver ao saldo)** devolve o valor à carteira.
+5. De volta ao site, o **mesmo** administrador: **Confirmar que PAGUEI** (descreva o comprovante: banco, horário, código da transação; o código E2E é opcional). O saque vira *Pago* e o dinheiro sai da custódia. Se não for pagar, **NÃO paguei (devolver ao saldo)** devolve o valor à carteira.
 
 Cuidados: o dinheiro dos depósitos fica no seu saldo do Stripe e chega ao seu banco no calendário de repasses do Stripe, então **planeje o caixa** para pagar os saques; a conciliação automática ignora saques manuais (não existe transferência para conferir); cada saque dá trabalho a uma pessoa, e quem paga pode errar o valor ou o CPF: confira sempre antes de enviar. Comece com limites baixos (`WITHDRAW_MAX_CENTS`, `WITHDRAW_DAILY_TEAM_CENTS`).
 
 ### 10.6 Limitações e o que ainda não foi confirmado
 
-- **O adaptador nunca foi testado contra o Stripe de verdade.** Foi escrito a partir de resumos da documentação, porque `docs.stripe.com` não abria na rede em que foi desenvolvido. O teste da seção 10.4 é o que prova que funciona. Se algo vier diferente do esperado, o depósito **não credita** (nada é creditado por resposta de API ou corpo de webhook).
-- **CPF do pagador.** Ele é **digitado pelo pagador** na página do Stripe e, em geral, o Stripe só confere o formato: **não é confirmado pelo banco**. Ele impede o engano e o depósito de terceiro comum, mas não um fraudador que digite o CPF de outra pessoa. Por isso o sistema mantém as outras travas (retenção de 72 h, giro obrigatório, pontuação de risco, liberação do admin em todo saque, saque só para o CPF do titular verificado) e você deve **conferir no painel do Stripe os primeiros depósitos** (nome do pagador) e manter limites baixos.
-- **Pedido de CPF.** Não consegui confirmar se o Stripe aceita pedir o CPF (`tax_id_collection`) numa sessão só com Pix, nem se o CPF digitado volta no campo que o sistema lê (`customer_details.tax_ids`, tipo `br_cpf`). Se o Stripe **recusar** a criação do Pix por causa disso, coloque `STRIPE_PIX_COLLECT_TAX_ID="false"` no `.env`; se o CPF **não voltar**, todos os depósitos ficam em **Admin → Depósitos retidos** para você conferir no painel do Stripe e liberar. Nos dois casos nada é creditado sem a sua conferência.
-- **Reembolso parcial.** Qualquer reembolso ou contestação retira o depósito **inteiro** e congela a carteira; se foi parcial, o admin corrige a diferença com um ajuste (Admin → Carteiras → Ajuste manual).
-- **Versão da API.** O sistema fixa a versão `2025-09-30.clover` da API do Stripe (cabeçalho `Stripe-Version`) para que mudanças na sua conta não alterem o comportamento em silêncio.
-- **Pix expirado.** O depósito aparece como *Expirado*; se o Stripe ainda confirmar um pagamento tardio, ele é creditado pelo caminho normal.
+- **O adaptador nunca foi testado contra o Stripe de verdade.** Foi escrito a partir de resumos da documentação (e da lista de campos do SDK oficial), porque `docs.stripe.com` não abria na rede em que foi desenvolvido. O teste da seção 10.4 é o que prova que funciona. Se algo vier diferente do esperado, o depósito **não credita** (nada é creditado por resposta de API ou corpo de webhook; resposta sem os dados da cobrança é tratada como "pendente").
+- **CPF do pagador.** O site pede o CPF num **campo próprio** ("CPF do titular da conta", 11 números) da página do Stripe e lê o que foi digitado. É **declarado pelo pagador** e o Stripe, em geral, não o confirma no banco. Por isso todo depósito é conferido por um administrador (10.1). Se o Stripe recusar o campo (a criação do Pix falha e o log mostra `param=custom_fields…`), coloque `STRIPE_PIX_COLLECT_TAX_ID="false"`: o depósito segue retido do mesmo jeito.
+- **Estorno do banco (MED).** O site escuta `charge.refunded` e `charge.dispute.created`. Não foi possível confirmar qual evento o Stripe emite quando o banco do pagador devolve um Pix; por segurança o agendador também **reconsulta os depósitos creditados** nos últimos 100 dias (alguns por rodada) e retira o crédito dos que o Stripe passar a mostrar como estornados. Confirme no modo de teste.
+- **Reembolso parcial.** Qualquer reembolso ou contestação retira o depósito **inteiro** e congela a carteira; se foi parcial, o admin corrige a diferença com um ajuste (Admin → Carteiras → Ajuste manual). Uma contestação **ganha** não devolve o crédito sozinha: o admin ajusta.
+- **Versão da API.** O sistema fixa a versão `2025-09-30.clover` nas consultas (cabeçalho `Stripe-Version`); o corpo dos webhooks usa a versão do **endpoint**, por isso o passo 2 manda criá-lo na mesma versão.
+- **Pix expirado.** O depósito aparece como *Expirado*; se o Stripe ainda confirmar um pagamento tardio, ele é conferido pelo caminho normal.
 
 ### 10.7 Se algo der errado (Stripe)
 
 | Sintoma | Verifique |
 |---|---|
-| "O provedor de pagamentos recusou…" ao gerar o Pix | O terminal mostra `[stripe-pix] POST /checkout/sessions → <código> <tipo> <erro>`. Pix ativado na conta? Chave certa para o modo (teste ou real)? Se o erro citar `tax_id_collection`, use `STRIPE_PIX_COLLECT_TAX_ID="false"`. |
-| Pagou e o saldo não subiu | Os eventos do webhook estão marcados (10.3, passo 2) e o endpoint mostra resposta 200? O `STRIPE_WEBHOOK_SECRET` é o do endpoint certo (teste ≠ real)? O depósito pode estar em **Depósitos retidos**. O agendador também reconsulta Pix pagos cujo aviso se perdeu. |
-| Todo depósito fica retido | O CPF do pagador não está voltando ou é diferente do titular (10.6). Confira no painel do Stripe e libere em **Depósitos retidos**. |
+| "O provedor de pagamentos recusou…" ao gerar o Pix | O log do site (no servidor próprio: `docker compose logs app`; no Sites: o log de execução do site) mostra `[stripe-pix] POST /checkout/sessions → <código> <tipo> <erro> param=<campo>`. Pix ativado na conta? Chave certa para o modo (teste ou real)? Se o `param` for `custom_fields…`, use `STRIPE_PIX_COLLECT_TAX_ID="false"`. |
+| O site não sobe e fala em "chave de TESTE" | Em produção `sk_test_…` só é aceita com `STRIPE_ALLOW_TEST_KEY="true"` (10.3). |
+| Pagou e o saldo não subiu | Os eventos do webhook estão marcados (10.3, passo 2) e o endpoint mostra resposta 200? O `STRIPE_WEBHOOK_SECRET` é o do endpoint certo (teste ≠ real)? O depósito pode estar em **Depósitos retidos** (é o normal no Stripe). O agendador também reconsulta Pix pagos cujo aviso se perdeu. |
 | Saque "Aguardando pagamento" parado | É o esperado no Stripe: um admin precisa pagar (10.5). Veja **Admin → Saques → Para pagar à mão**. |
+| "Outro administrador já pegou este saque" | Outro admin reservou o pagamento; combine com ele ou espere 24 horas. |
 
-**Fontes (resumos de busca, confirme no site):** [Stripe Pix: aceitar um pagamento](https://docs.stripe.com/payments/pix/accept-a-payment) · [Coletar documentos fiscais no Checkout](https://docs.stripe.com/tax/checkout/tax-ids) · [Versões da API](https://docs.stripe.com/api/versioning).
+**Fontes (resumos de busca, confirme no site):** [Stripe Pix: aceitar um pagamento](https://docs.stripe.com/payments/pix/accept-a-payment) · [Campos personalizados no Checkout](https://docs.stripe.com/payments/checkout/custom-fields) · [Versões da API](https://docs.stripe.com/api/versioning).

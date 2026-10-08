@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { assertProductionConfig } from "@/lib/env";
 
-const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "MAIL_FROM", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "WALLET_ENABLED"];
+const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "MAIL_FROM", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "WALLET_ENABLED", "STRIPE_ALLOW_TEST_KEY"];
 const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
 afterEach(() => {
   for (const k of KEYS) {
@@ -56,6 +56,13 @@ describe("configuração de produção", () => {
       prod({ PIX_PROVIDER: "stripe", PAYMENTS_PROVIDER: "none", STRIPE_SECRET_KEY: "sk_live_abcdefghijklmnop", STRIPE_WEBHOOK_SECRET: "whsec_abcdefghijklmnop", [missing]: "" });
       expect(() => assertProductionConfig(), missing).toThrow(/STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENTS_PROVIDER=stripe ou PIX_PROVIDER=stripe/);
     }
+  });
+
+  it("STRIPE_ALLOW_TEST_KEY=true deixa ensaiar o fluxo do Stripe no site de verdade com chave de teste (e só então)", () => {
+    prod({ PIX_PROVIDER: "stripe", STRIPE_SECRET_KEY: "sk_test_abcdefghijklmnop", STRIPE_WEBHOOK_SECRET: "whsec_x" });
+    expect(() => assertProductionConfig()).toThrow(/STRIPE_ALLOW_TEST_KEY/);
+    prod({ PIX_PROVIDER: "stripe", STRIPE_SECRET_KEY: "sk_test_abcdefghijklmnop", STRIPE_WEBHOOK_SECRET: "whsec_x", STRIPE_ALLOW_TEST_KEY: "true" });
+    expect(() => assertProductionConfig()).not.toThrow();
   });
 
   it("PIX_PROVIDER=stripe: recusa chave de TESTE (sk_test_ e rk_test_) e a menciona uma vez só quando as inscrições também usam o Stripe", () => {

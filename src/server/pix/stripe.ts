@@ -68,8 +68,10 @@ async function call<T>(
   }
   if (!res.ok) {
     // Nunca registra a mensagem do erro: ela pode ecoar pedaços da chave. Só status, tipo e código.
-    const err = (json as { error?: { type?: unknown; code?: unknown } } | null)?.error;
-    console.error(`[stripe-pix] ${method} ${path} → ${res.status} ${logTag(err?.type)} ${logTag(err?.code)}`);
+    const err = (json as { error?: { type?: unknown; code?: unknown; param?: unknown } } | null)?.error;
+    // `param` (nome do campo que o Stripe recusou, ex.: custom_fields[0][key]) ajuda a achar o problema e não carrega segredo
+    const param = typeof err?.param === "string" && /^[A-Za-z0-9_[\]]{1,80}$/.test(err.param) ? err.param : "-";
+    console.error(`[stripe-pix] ${method} ${path} → ${res.status} ${logTag(err?.type)} ${logTag(err?.code)} param=${param}`);
     throw new AppError(GENERIC_ERROR);
   }
   const parsed = schema.safeParse(json);
@@ -91,7 +93,12 @@ const createdSchema = z.object({
   }, "endereço da página de pagamento inválido"),
 });
 
-const chargeSchema = z.object({ refunded: z.boolean().nullish(), amount_refunded: z.number().nullish(), disputed: z.boolean().nullish() });
+const chargeSchema = z.object({
+  refunded: z.boolean(),
+  amount_refunded: z.number(),
+  disputed: z.boolean(),
+  billing_details: z.object({ tax_id: z.string().nullish() }).nullish(),
+});
 const sessionSchema = z.object({
   id: z.string(),
   status: z.string().nullish(),
@@ -99,7 +106,17 @@ const sessionSchema = z.object({
   amount_total: z.number().nullish(),
   currency: z.string().nullish(),
   customer_details: z.object({ tax_ids: z.array(z.object({ type: z.string(), value: z.string().nullish() })).nullish() }).nullish(),
+  custom_fields: z.array(z.object({ key: z.string(), numeric: z.object({ value: z.string().nullish() }).nullish() })).nullish(),
   payment_intent: z.union([z.string(), z.object({ latest_charge: z.union([z.string(), chargeSchema]).nullish() })]).nullish(),
+});
+const instructionsSchema = z.object({
+  payment_intent: z
+    .object({
+      next_action: z
+        .object({ pix_display_qr_code: z.object({ data: z.string().nullish(), image_url_png: z.string().nullish(), hosted_instructions_url: z.string().nullish() }).nullish() })
+        .nullish(),
+    })
+    .nullish(),
 });
 const sessionListSchema = z.object({ data: z.array(z.object({ id: z.string() })) });
 
@@ -119,19 +136,32 @@ const eventSchema = z.object({
   }),
 });
 
-/** Estornado, reembolsado (inclusive parcial: o crédito inteiro é retirado e o admin ajusta a diferença) ou contestado (chargeback). */
-function reversed(session: z.infer<typeof sessionSchema>): boolean {
+/**
+ * Estado da cobrança no pagamento: "reversed" (estornado, reembolsado — inclusive parcial: o crédito inteiro é retirado e o admin
+ * ajusta a diferença — ou contestado), "clean" ou "unknown" quando o Stripe não devolveu os dados do pagamento (formato mudou,
+ * chave restrita sem leitura de cobranças…). "unknown" NUNCA pode virar PAGO: falha fechada.
+ */
+function chargeState(session: z.infer<typeof sessionSchema>): "reversed" | "clean" | "unknown" {
   const pi = session.payment_intent;
   const charge = pi && typeof pi === "object" ? pi.latest_charge : null;
-  if (!charge || typeof charge === "string") return false;
-  return !!charge.refunded || (charge.amount_refunded ?? 0) > 0 || !!charge.disputed;
+  if (!charge || typeof charge === "string") return "unknown";
+  return charge.refunded || charge.amount_refunded > 0 || charge.disputed ? "reversed" : "clean";
 }
 
-/** O CPF digitado pelo pagador na página do Stripe, só dígitos. CNPJ e qualquer outro documento não servem à regra "o pagador é o titular". */
+const cpfDigits = (v: string | null | undefined): string | null => {
+  const d = v ? onlyDigits(v) : "";
+  return d.length === 11 ? d : null;
+};
+
+/**
+ * O CPF DIGITADO pelo pagador na página do Stripe, só dígitos (campo numérico "cpf" que nós mesmos pedimos; se o Stripe o expuser
+ * também na cobrança ou no cliente, serve de alternativa). É um dado DECLARADO, não confirmado pelo banco: veja ChargeInfo.payerDocVerified.
+ */
 function payerCpf(session: z.infer<typeof sessionSchema>): string | null {
-  const cpf = session.customer_details?.tax_ids?.find((t) => t.type === "br_cpf")?.value;
-  const digits = cpf ? onlyDigits(cpf) : "";
-  return digits.length === 11 ? digits : null;
+  const field = session.custom_fields?.find((f) => f.key === "cpf")?.numeric?.value;
+  const pi = session.payment_intent;
+  const charge = pi && typeof pi === "object" && pi.latest_charge && typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+  return cpfDigits(field) ?? cpfDigits(charge?.billing_details?.tax_id) ?? cpfDigits(session.customer_details?.tax_ids?.find((t) => t.type === "br_cpf")?.value);
 }
 
 /** Acha a sessão de depósito de um pagamento (estorno e contestação chegam com o PaymentIntent, não com a sessão). */
@@ -170,7 +200,17 @@ export const stripePix: PixProvider = {
         "payment_method_options[pix][expires_after_seconds]": String(pixSeconds),
         success_url: `${env.appUrl}/carteira`,
         cancel_url: `${env.appUrl}/carteira`,
-        ...(env.stripePixCollectTaxId ? { "tax_id_collection[enabled]": "true" } : {}),
+        // pede o CPF do titular num campo numérico nosso (11 dígitos); é declarado pelo pagador, veja payerCpf
+        ...(env.stripePixCollectTaxId
+          ? {
+              "custom_fields[0][key]": "cpf",
+              "custom_fields[0][label][type]": "custom",
+              "custom_fields[0][label][custom]": "CPF do titular da conta (só números)",
+              "custom_fields[0][type]": "numeric",
+              "custom_fields[0][numeric][minimum_length]": "11",
+              "custom_fields[0][numeric][maximum_length]": "11",
+            }
+          : {}),
       },
     });
     // A página hospedada do Stripe substitui o QR + copia-e-cola: o endereço dela é guardado onde ficaria o copia-e-cola.
@@ -179,8 +219,25 @@ export const stripePix: PixProvider = {
 
   async getCharge(chargeId): Promise<ChargeInfo> {
     const s = await call("GET", `/checkout/sessions/${encodeURIComponent(chargeId)}`, sessionSchema, { query: { "expand[]": "payment_intent.latest_charge" } });
-    const status: ChargeInfo["status"] = reversed(s) ? "REVERSED" : s.payment_status === "paid" ? "PAID" : s.status === "expired" ? "EXPIRED" : "PENDING";
-    return { status, amountCents: s.amount_total ?? 0, payerDocument: payerCpf(s), currency: s.currency?.toUpperCase() };
+    const state = chargeState(s);
+    let status: ChargeInfo["status"];
+    if (state === "reversed") status = "REVERSED";
+    else if (s.payment_status === "paid") {
+      if (state === "unknown") {
+        // Pago, mas sem os dados da cobrança: não dá para saber se foi estornado. Não credita; o agendador reconsulta mais tarde.
+        console.error("[stripe-pix] sessão paga sem os dados da cobrança (latest_charge): tratada como pendente");
+        status = "PENDING";
+      } else status = "PAID";
+    } else status = s.status === "expired" ? "EXPIRED" : "PENDING";
+    return { status, amountCents: s.amount_total ?? 0, payerDocument: payerCpf(s), payerDocVerified: false, currency: s.currency?.toUpperCase() };
+  },
+
+  async getPaymentInstructions(chargeId) {
+    const s = await call("GET", `/checkout/sessions/${encodeURIComponent(chargeId)}`, instructionsSchema, { query: { "expand[]": "payment_intent" } });
+    const q = s.payment_intent?.next_action?.pix_display_qr_code;
+    if (!q?.data) return null;
+    const png = q.image_url_png && /^https:\/\//.test(q.image_url_png) ? q.image_url_png : null;
+    return { copyPaste: q.data, qrImage: png };
   },
 
   verifyWebhook(headers, rawBody) {
@@ -189,14 +246,20 @@ export const stripePix: PixProvider = {
   },
 
   parseWebhook(rawBody): PixEvent[] {
-    const ev = eventSchema.parse(JSON.parse(rawBody));
+    const parsed = eventSchema.safeParse(JSON.parse(rawBody));
+    if (!parsed.success) return [{ id: "invalid", type: "IGNORED" }];
+    const ev = parsed.data;
     const obj = ev.data.object;
     const isDeposit = obj.metadata?.kind === DEPOSIT_KIND;
     switch (ev.type) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded":
-        // No Pix o "completed" chega com payment_status=unpaid (o pagador ainda não pagou): só o "paid" interessa.
-        if (isDeposit && obj.id && obj.payment_status === "paid") return [{ id: ev.id, type: "CHARGE_PAID", chargeId: obj.id, externalReference: obj.client_reference_id ?? undefined }];
+        if (isDeposit && obj.id) {
+          // No Pix o "completed" chega com payment_status=unpaid (o pagador acabou de enviar o formulário e ainda não pagou):
+          // então só atualizamos o QR Code/copia-e-cola da tela. Quem credita é o "paid".
+          if (obj.payment_status === "paid") return [{ id: ev.id, type: "CHARGE_PAID", chargeId: obj.id, externalReference: obj.client_reference_id ?? undefined }];
+          return [{ id: ev.id, type: "CHARGE_CREATED", chargeId: obj.id }];
+        }
         break;
       case "checkout.session.expired":
       case "checkout.session.async_payment_failed":
@@ -205,7 +268,10 @@ export const stripePix: PixProvider = {
       case "charge.refunded":
       case "charge.dispute.created": {
         // O evento descreve a cobrança/contestação, não a sessão: o PaymentIntent leva à sessão (findCheckoutSessionId).
+        // Pagamentos que sabidamente não são depósitos (ex.: inscrições, que levam outra marca) nem chegam a consultar o Stripe.
+        const kind = obj.metadata?.kind;
         const pi = typeof obj.payment_intent === "string" ? obj.payment_intent : obj.payment_intent?.id;
+        if ((kind && kind !== DEPOSIT_KIND) || obj.metadata?.orderId) break;
         if (pi) return [{ id: ev.id, type: "CHARGE_REVERSED", paymentIntentId: pi }];
         break;
       }

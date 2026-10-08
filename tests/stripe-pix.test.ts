@@ -5,7 +5,7 @@ import { getEnv } from "@/lib/env";
 import { onlyDigits } from "@/lib/cpf";
 import { PASSWORD, linkGame, makeOrg, makeUser, uid } from "./factories";
 import { admin, balances, emailOf, lastOtp, leaderWithWinnings, makeLeader, newAdmin, nextCpf, type Leader } from "./wallet-helpers";
-import { confirmDeposit, createDeposit, reconcilePendingDeposits } from "@/server/deposits";
+import { confirmDeposit, createDeposit, reconcilePendingDeposits, recheckConfirmedDeposits, resolveHeldDeposit } from "@/server/deposits";
 import { adminAdjustWallet, adminOverview } from "@/server/admin-wallet";
 import { createTournament, publishTournament } from "@/server/tournaments";
 import { registerForTournament } from "@/server/registration";
@@ -34,7 +34,7 @@ import {
 const SECRET = "whsec_stripe_pix_test_secret";
 const KEY = "sk_test_chave_secreta_do_teste_123456";
 
-const ENV_KEYS = ["PIX_PROVIDER", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "PIX_REQUIRE_PAYER_DOC", "STRIPE_PIX_COLLECT_TAX_ID", "PAYOUTS_PAUSED", "ASAAS_API_KEY", "NODE_ENV"];
+const ENV_KEYS = ["PIX_PROVIDER", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "PIX_REQUIRE_PAYER_DOC", "STRIPE_PIX_COLLECT_TAX_ID", "STRIPE_PIX_AUTO_CREDIT", "STRIPE_ALLOW_TEST_KEY", "PAYOUTS_PAUSED", "ASAAS_API_KEY", "NODE_ENV"];
 const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const env = process.env as Record<string, string | undefined>;
 
@@ -44,6 +44,9 @@ function usePix(name: "mock" | "stripe") {
   env.STRIPE_SECRET_KEY = KEY;
   env.STRIPE_WEBHOOK_SECRET = SECRET;
   env.PIX_REQUIRE_PAYER_DOC = "true";
+  // Nos testes do caminho normal o crédito é automático (CPF declarado confere com KYC verificado); o padrão real (tudo retido para o
+  // administrador) tem os seus próprios testes mais abaixo, que removem esta variável.
+  env.STRIPE_PIX_AUTO_CREDIT = "true";
 }
 
 // ───────────── Stripe simulado (fetch) ─────────────
@@ -58,6 +61,8 @@ interface FakeSession {
   currency: string;
   taxIds: Array<{ type: string; value: string }>;
   charge: { refunded?: boolean; amount_refunded?: number; disputed?: boolean } | null;
+  /** Depois que o pagador envia o formulário, o PaymentIntent passa a ter o QR Code do Pix. */
+  pix?: { data: string; png: string };
 }
 interface Call {
   method: string;
@@ -73,7 +78,7 @@ let seq = 0;
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-function sessionBody(s: FakeSession, expandCharge: boolean) {
+function sessionBody(s: FakeSession, expandCharge: boolean, expandIntent = false) {
   return {
     id: s.id,
     object: "checkout.session",
@@ -81,8 +86,15 @@ function sessionBody(s: FakeSession, expandCharge: boolean) {
     payment_status: s.payment_status,
     amount_total: s.amount_total,
     currency: s.currency,
-    customer_details: s.payment_status === "paid" ? { email: "pagador@example.com", tax_ids: s.taxIds } : null,
-    payment_intent: expandCharge ? { id: s.pi, object: "payment_intent", latest_charge: s.charge ? { id: `ch_${s.pi}`, object: "charge", ...s.charge } : null } : s.pi,
+    // o CPF vem do campo numérico "cpf" que o próprio site pede na página do Stripe; outros documentos (CNPJ) ficam em tax_ids
+    customer_details: s.payment_status === "paid" ? { email: "pagador@example.com", tax_ids: s.taxIds.filter((t) => t.type !== "br_cpf") } : null,
+    custom_fields: s.payment_status === "paid" && s.taxIds.some((t) => t.type === "br_cpf") ? [{ key: "cpf", type: "numeric", numeric: { value: s.taxIds.find((t) => t.type === "br_cpf")!.value } }] : [],
+    // a API real SEMPRE devolve os três campos da cobrança
+    payment_intent: expandCharge
+      ? { id: s.pi, object: "payment_intent", latest_charge: s.charge ? { id: `ch_${s.pi}`, object: "charge", refunded: false, amount_refunded: 0, disputed: false, ...s.charge } : null }
+      : expandIntent
+        ? { id: s.pi, object: "payment_intent", next_action: s.pix ? { type: "pix_display_qr_code", pix_display_qr_code: { data: s.pix.data, image_url_png: s.pix.png, hosted_instructions_url: "https://pix.stripe.com/x" } } : null }
+        : s.pi,
   };
 }
 
@@ -115,7 +127,8 @@ function installFakeStripe() {
       if (method === "GET" && one) {
         const s = sessions.get(one[1]);
         if (!s) return json(404, { error: { type: "invalid_request_error", code: "resource_missing", message: "No such checkout.session" } });
-        return json(200, sessionBody(s, url.searchParams.getAll("expand[]").includes("payment_intent.latest_charge")));
+        const expands = url.searchParams.getAll("expand[]");
+        return json(200, sessionBody(s, expands.includes("payment_intent.latest_charge"), expands.includes("payment_intent")));
       }
       if (method === "GET" && url.pathname === "/v1/checkout/sessions") {
         const pi = url.searchParams.get("payment_intent");
@@ -231,7 +244,11 @@ describe("Stripe Pix: criar a cobrança", () => {
     expect(f.get("payment_intent_data[metadata][depositId]")).toBe(dep.id);
     expect(f.get("success_url")).toBe("http://localhost:3000/carteira");
     expect(f.get("cancel_url")).toBe("http://localhost:3000/carteira");
-    expect(f.get("tax_id_collection[enabled]")).toBe("true");
+    expect(f.get("custom_fields[0][key]")).toBe("cpf");
+    expect(f.get("custom_fields[0][type]")).toBe("numeric");
+    expect(f.get("custom_fields[0][numeric][minimum_length]")).toBe("11");
+    expect(f.get("custom_fields[0][numeric][maximum_length]")).toBe("11");
+    expect(f.get("tax_id_collection[enabled]")).toBeNull();
 
     // o Checkout só aceita expirar entre 30 min e 24 h; o prazo do Pix (10 s a 14 dias) acompanha o prazo do depósito
     const now = Date.now() / 1000;
@@ -249,7 +266,7 @@ describe("Stripe Pix: criar a cobrança", () => {
   it("STRIPE_PIX_COLLECT_TAX_ID=false não pede o CPF na página (o depósito vai para o admin conferir)", async () => {
     env.STRIPE_PIX_COLLECT_TAX_ID = "false";
     await newDeposit(await makeLeader());
-    expect(calls[0].form!.get("tax_id_collection[enabled]")).toBeNull();
+    expect(calls[0].form!.get("custom_fields[0][key]")).toBeNull();
   });
 
   it("erro do Stripe vira mensagem genérica, sem vazar a chave nem o corpo, e o depósito falha", async () => {
@@ -397,13 +414,19 @@ describe("Stripe Pix: webhook de depósito", () => {
     expect(await db.ledgerEntry.count({ where: { refType: "deposit", refId: dep.id } })).toBe(0);
   });
 
-  it("'completed' com pagamento ainda pendente (Pix não pago) é ignorado sem consultar a API", async () => {
+  it("'completed' com pagamento ainda pendente (Pix não pago) NÃO credita: só atualiza o QR Code da tela", async () => {
     const l = await makeLeader();
     const { dep, s } = await newDeposit(l);
-    const before = apiCalls();
+    const url = (await depositOf(dep.id)).pixCopyPaste;
+    expect(url).toMatch(/^https:\/\/checkout\.stripe\.com\//);
+    // sem QR ainda no Stripe: nada muda
     expect((await deliver(sessionEvent("checkout.session.completed", s))).status).toBe(200);
-    expect(apiCalls()).toBe(before);
-    expect((await depositOf(dep.id)).status).toBe("PENDING");
+    expect(await depositOf(dep.id)).toMatchObject({ status: "PENDING", pixCopyPaste: url });
+    // o pagador enviou o formulário: o Stripe gerou o Pix e a tela passa a mostrar o QR Code e o copia-e-cola
+    s.pix = { data: "00020126580014br.gov.bcb.pix0136teste", png: "https://qr.stripe.com/pix.png" };
+    expect((await deliver(sessionEvent("checkout.session.completed", s))).status).toBe(200);
+    expect(await depositOf(dep.id)).toMatchObject({ status: "PENDING", pixCopyPaste: "00020126580014br.gov.bcb.pix0136teste", pixQrImage: "https://qr.stripe.com/pix.png" });
+    expect(await balances(l.walletId)).toEqual({ available: 0, locked: 0 });
   });
 
   it("valor divergente na API retém o depósito para o admin", async () => {
@@ -677,8 +700,13 @@ describe("Stripe Pix: saque manual (o Stripe não paga Pix a terceiros)", () => 
     await processWithdrawal(id);
     const before = await balances(winner.walletId);
 
-    await expect(adminResolveProcessing(await admin(), id, "paid", "ok")).rejects.toThrow(/Descreva/);
-    expect(await adminResolveProcessing(await admin(), id, "paid", "Pix feito no banco, comprovante conferido", "E12345678202601011200abcdefghijk")).toBe(true);
+    const a = await admin();
+    await expect(adminResolveProcessing(a, id, "paid", "ok")).rejects.toThrow(/Descreva/);
+    // sem reservar o saque (ver a chave) não dá para registrar o pagamento, e é preciso descrever o comprovante
+    await expect(adminResolveProcessing(a, id, "paid", "Pix feito no banco, comprovante conferido")).rejects.toThrow(/primeiro use/);
+    await adminRevealPayoutKey(a, id);
+    await expect(adminResolveProcessing(a, id, "paid", "feito")).rejects.toThrow(/comprovante/);
+    expect(await adminResolveProcessing(a, id, "paid", "Pix feito no banco, comprovante conferido", "E12345678202601011200abcdefghijk")).toBe(true);
     const w = await db.withdrawal.findUniqueOrThrow({ where: { id } });
     expect(w).toMatchObject({ status: "PAID", endToEndId: "E12345678202601011200abcdefghijk", provider: MANUAL_PAYOUT });
     expect(await balances(winner.walletId)).toEqual({ available: before.available, locked: before.locked - 5_000 });
@@ -760,5 +788,133 @@ describe("Stripe Pix: escolha do provedor e ambiente", () => {
     const ok = walletReadiness().items.find((i) => i.key === "pix")!;
     expect(ok.ok).toBe(true);
     expect(ok.hint).toMatch(/à mão/);
+  });
+});
+
+// ───────────── Correções apontadas pela revisão adversária ─────────────
+
+describe("Stripe Pix: o CPF do pagador é só declarado", () => {
+  it("padrão: TODO depósito do Stripe fica retido para o administrador, até com CPF igual ao do titular; ele libera depois de conferir o nome", async () => {
+    delete env.STRIPE_PIX_AUTO_CREDIT;
+    const l = await makeLeader();
+    const { dep, s } = await newDeposit(l, 10_000);
+    stripePays(s, l.cpf);
+    expect((await deliver(sessionEvent("checkout.session.async_payment_succeeded", s))).status).toBe(200);
+    const d = await depositOf(dep.id);
+    expect(d.status).toBe("HELD");
+    expect(d.holdReason).toMatch(/conferência do administrador/);
+    expect(d.holdReason).not.toMatch(/banco/); // é texto que o líder também vê
+    expect(await balances(l.walletId)).toEqual({ available: 0, locked: 0 });
+
+    await resolveHeldDeposit(await admin(), dep.id, "credit", "Nome do pagador confere com o titular no painel do Stripe");
+    expect((await depositOf(dep.id)).status).toBe("CONFIRMED");
+    expect(await balances(l.walletId)).toEqual({ available: 10_000, locked: 0 });
+    expect((await reconcileAll()).ok).toBe(true);
+  });
+
+  it("crédito automático (opcional) só com a identidade do titular VERIFICADA", async () => {
+    env.STRIPE_PIX_AUTO_CREDIT = "true";
+    const l = await makeLeader();
+    await db.kycProfile.update({ where: { userId: l.user.id }, data: { status: "PENDING" } });
+    const a = await newDeposit(l, 10_000);
+    stripePays(a.s, l.cpf);
+    await deliver(sessionEvent("checkout.session.async_payment_succeeded", a.s));
+    expect(await depositOf(a.dep.id)).toMatchObject({ status: "HELD" });
+    expect((await depositOf(a.dep.id)).holdReason).toMatch(/identidade/);
+
+    await db.kycProfile.update({ where: { userId: l.user.id }, data: { status: "VERIFIED" } });
+    const b = await newDeposit(l, 5_000);
+    stripePays(b.s, l.cpf);
+    await deliver(sessionEvent("checkout.session.async_payment_succeeded", b.s));
+    expect((await depositOf(b.dep.id)).status).toBe("CONFIRMED");
+  });
+});
+
+describe("Stripe Pix: estornos e leitura que falha fechada", () => {
+  it("pago, mas sem os dados da cobrança (não expandidos): NÃO credita; fica pendente", async () => {
+    const l = await makeLeader();
+    const { dep, s } = await newDeposit(l, 10_000);
+    stripePays(s, l.cpf, { charge: null }); // a API não devolveu latest_charge: não dá para saber se foi estornado
+    expect((await deliver(sessionEvent("checkout.session.async_payment_succeeded", s))).status).toBe(200);
+    expect((await depositOf(dep.id)).status).toBe("PENDING");
+    expect(await balances(l.walletId)).toEqual({ available: 0, locked: 0 });
+    expect(JSON.stringify(consoleError.mock.calls)).toMatch(/sem os dados da cobrança/);
+  });
+
+  it("estorno que chega ANTES do crédito fecha o depósito: o pagamento que vier depois não credita", async () => {
+    const l = await makeLeader();
+    const { dep, s } = await newDeposit(l, 10_000);
+    stripePays(s, l.cpf, { charge: { refunded: true, amount_refunded: 10_000 } });
+    expect((await deliver(chargeEvent("charge.refunded", s.pi))).status).toBe(200);
+    expect((await depositOf(dep.id)).status).toBe("REFUNDED");
+    expect(await db.auditLog.count({ where: { action: "deposit.reversed_before_credit", entityId: dep.id } })).toBe(1);
+
+    expect((await deliver(sessionEvent("checkout.session.async_payment_succeeded", s))).status).toBe(200);
+    expect((await depositOf(dep.id)).status).toBe("REFUNDED");
+    expect(await balances(l.walletId)).toEqual({ available: 0, locked: 0 });
+    expect((await reconcileAll()).ok).toBe(true);
+  });
+
+  it("estorno de uma INSCRIÇÃO em campeonato não consulta o Stripe (e não derruba o webhook)", async () => {
+    const before = apiCalls();
+    const ev = sign(JSON.stringify({ id: eventId(), type: "charge.refunded", data: { object: { id: "ch_insc", object: "charge", payment_intent: "pi_insc", refunded: true, metadata: { orderId: "ord_1", kind: "registration" } } } }));
+    expect((await deliver(ev)).status).toBe(200);
+    expect(apiCalls()).toBe(before);
+  });
+
+  it("estorno/contestação PERDIDO: a rede de segurança do agendador reconsulta os depósitos creditados e reverte", async () => {
+    const l = await makeLeader();
+    const { dep, s } = await creditedDeposit(l, 10_000);
+    await db.siteSetting.deleteMany({ where: { key: "deposit_recheck_cursor" } });
+    expect((await recheckConfirmedDeposits(new Date(), 500)).reversed).toBe(0); // nada estornado ainda
+
+    s.charge = { disputed: true }; // o aviso (webhook) nunca chegou
+    await db.siteSetting.deleteMany({ where: { key: "deposit_recheck_cursor" } });
+    const out = await recheckConfirmedDeposits(new Date(), 500);
+    expect(out.reversed).toBeGreaterThanOrEqual(1);
+    expect((await depositOf(dep.id)).status).toBe("REVERSED");
+    expect((await db.wallet.findUniqueOrThrow({ where: { id: l.walletId } })).frozenAt).not.toBeNull();
+    expect((await reconcileAll()).ok).toBe(true);
+  });
+});
+
+describe("Stripe Pix: o saque manual tem um dono", () => {
+  async function manualWithdrawal() {
+    usePix("mock");
+    const { winner } = await leaderWithWinnings(20_000, 10_000);
+    usePix("stripe");
+    const { withdrawalId } = await requestWithdrawal(winner.user, { teamId: winner.team.id, amountCents: 5_000, password: PASSWORD, nonce: `nonce-${uid()}-${Math.random()}` });
+    expect(await confirmWithdrawal(winner.user, withdrawalId, lastOtp(await emailOf(winner.user)))).toBe("under_review");
+    await reviewWithdrawal(await admin(), withdrawalId, "approve", "Conferido pelo analista de risco");
+    await db.withdrawal.update({ where: { id: withdrawalId }, data: { processAfter: new Date(Date.now() - 1000) } });
+    await processWithdrawal(withdrawalId);
+    return { winner, id: withdrawalId };
+  }
+
+  it("só o administrador que pegou a chave registra o resultado: o outro não vê a chave nem devolve o saldo", async () => {
+    const { winner, id } = await manualWithdrawal();
+    const a = await admin();
+    const b = await newAdmin();
+    await adminRevealPayoutKey(a, id);
+
+    await expect(adminRevealPayoutKey(b, id)).rejects.toThrow(/outro administrador já pegou/i);
+    await expect(adminResolveProcessing(b, id, "failed", "Não vi o pagamento, devolvendo")).rejects.toThrow(/reservado por outro/);
+    await expect(adminResolveProcessing(b, id, "paid", "Pix feito no banco, comprovante conferido")).rejects.toThrow(/reservado por outro/);
+    expect((await db.withdrawal.findUniqueOrThrow({ where: { id } })).status).toBe("PROCESSING");
+    const before = await balances(winner.walletId);
+
+    expect(await adminResolveProcessing(a, id, "paid", "Pix feito no banco, comprovante conferido")).toBe(true);
+    expect(await balances(winner.walletId)).toEqual({ available: before.available, locked: before.locked - 5_000 });
+    expect((await reconcileAll()).ok).toBe(true);
+  });
+
+  it("reservas abandonadas (mais de 24 horas) podem ser assumidas por outro administrador", async () => {
+    const { id } = await manualWithdrawal();
+    const a = await admin();
+    const b = await newAdmin();
+    await adminRevealPayoutKey(a, id);
+    await db.siteSetting.update({ where: { key: `payout-claim:${id}` }, data: { updatedAt: new Date(Date.now() - 25 * 3600_000) } });
+    expect(await adminRevealPayoutKey(b, id)).toMatchObject({ netCents: 5_000 });
+    await expect(adminResolveProcessing(a, id, "failed", "Tentando devolver depois de perder a reserva")).rejects.toThrow(/reservado por outro/);
   });
 });

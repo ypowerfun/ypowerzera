@@ -1,4 +1,4 @@
-export type PixEventType = "CHARGE_PAID" | "CHARGE_REVERSED" | "CHARGE_EXPIRED" | "TRANSFER_DONE" | "TRANSFER_FAILED" | "IGNORED";
+export type PixEventType = "CHARGE_PAID" | "CHARGE_CREATED" | "CHARGE_REVERSED" | "CHARGE_EXPIRED" | "TRANSFER_DONE" | "TRANSFER_FAILED" | "IGNORED";
 
 export interface PixEvent {
   /** Identificador único do evento no provedor (usado para idempotência). */
@@ -16,6 +16,11 @@ export interface ChargeInfo {
   amountCents: number;
   /** CPF/CNPJ de quem pagou (só dígitos), quando o provedor informa. */
   payerDocument: string | null;
+  /**
+   * `false` quando o CPF do pagador foi apenas DECLARADO por ele (Stripe), e não informado pelo banco. Esse CPF não prova quem pagou:
+   * o depósito fica retido para o administrador (ou só credita com STRIPE_PIX_AUTO_CREDIT e KYC verificado).
+   */
+  payerDocVerified?: boolean;
   /** Moeda da cobrança (ISO 4217, maiúsculas), quando o provedor informa. Diferente de BRL, o depósito fica retido. */
   currency?: string;
 }
@@ -48,6 +53,8 @@ export interface PixProvider {
   createCharge(args: CreateChargeArgs): Promise<{ chargeId: string; copyPaste: string; qrImage?: string | null }>;
   /** Consulta o estado REAL da cobrança no provedor — a fonte da verdade (nunca o corpo do webhook). */
   getCharge(chargeId: string): Promise<ChargeInfo>;
+  /** Opcional (Stripe): o QR Code/copia-e-cola reais, que só existem depois que o pagador envia o formulário da página hospedada. */
+  getPaymentInstructions?(chargeId: string): Promise<{ copyPaste: string; qrImage?: string | null } | null>;
   verifyWebhook(headers: Headers, rawBody: string): boolean;
   parseWebhook(rawBody: string): PixEvent[];
   sendPix(args: { externalReference: string; amountCents: number; pixKey: string; description: string }): Promise<{ transferId: string; status: TransferInfo["status"]; endToEndId?: string | null }>;

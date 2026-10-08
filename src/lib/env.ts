@@ -73,6 +73,15 @@ export function getEnv() {
     asaasTransferAuthToken: process.env.ASAAS_TRANSFER_AUTH_TOKEN ?? "",
     /** Pede o CPF do pagador na página de pagamento da Stripe. Desligue (false) se a Stripe recusar o pedido para Pix: todo depósito vai para o admin conferir. */
     stripePixCollectTaxId: bool(process.env.STRIPE_PIX_COLLECT_TAX_ID, true),
+    /**
+     * O CPF do pagador no Stripe é DIGITADO pelo próprio pagador (o Stripe não o confirma no banco): quem paga por outra pessoa pode
+     * digitar o CPF do titular. Por isso, por padrão, TODO depósito pelo Stripe fica retido para o administrador conferir o nome do
+     * pagador no painel do Stripe. Com `true` o depósito credita sozinho quando o CPF declarado confere com o titular de um KYC
+     * VERIFICADO: mais cômodo, porém contornável. Ligue só se aceitar esse risco.
+     */
+    stripePixAutoCredit: bool(process.env.STRIPE_PIX_AUTO_CREDIT, false),
+    /** Permite chave de TESTE (sk_test_) em produção, para ensaiar o fluxo do Stripe no site de verdade. Aparece como alerta no painel. */
+    stripeAllowTestKey: bool(process.env.STRIPE_ALLOW_TEST_KEY, false),
     walletEnabled: bool(process.env.WALLET_ENABLED, true),
     payoutsPaused: bool(process.env.PAYOUTS_PAUSED, false),
     /** Com `true`, depósito cujo pagador o provedor não informou (ex.: Asaas) fica retido para o admin em vez de creditar. */
@@ -127,8 +136,8 @@ export function assertProductionConfig() {
   if (usesStripe && (!env.stripeSecretKey || !env.stripeWebhookSecret)) {
     problems.push("STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENTS_PROVIDER=stripe ou PIX_PROVIDER=stripe.");
   }
-  if (usesStripe && /^[sr]k_test_/.test(env.stripeSecretKey)) {
-    problems.push("STRIPE_SECRET_KEY é uma chave de TESTE (sk_test_…): um site público não receberia dinheiro de verdade. Use a chave sk_live_… da Stripe.");
+  if (usesStripe && /^[sr]k_test_/.test(env.stripeSecretKey) && !env.stripeAllowTestKey) {
+    problems.push("STRIPE_SECRET_KEY é uma chave de TESTE (sk_test_…): um site público não receberia dinheiro de verdade. Use a chave sk_live_… da Stripe (ou, só para ensaiar o fluxo, defina STRIPE_ALLOW_TEST_KEY=true e lembre de trocar depois).");
   }
   if (!["mock", "asaas", "stripe"].includes(env.pixProvider)) {
     problems.push(`PIX_PROVIDER="${env.pixProvider}" não existe: use asaas ou stripe (ou, só para testes, mock).`);

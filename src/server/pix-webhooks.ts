@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "./audit";
 import { rateLimit } from "./rate-limit";
-import { confirmDeposit, expireDepositByCharge, reverseDeposit } from "./deposits";
+import { confirmDeposit, expireDepositByCharge, refreshDepositInstructions, reverseDeposit } from "./deposits";
 import { getPixProvider, type PixEvent } from "./pix";
 import { findCheckoutSessionId } from "./pix/stripe";
 import { authorizeTransfer, handleTransferEvent } from "./withdrawals";
@@ -20,6 +20,8 @@ export async function applyPixEvent(ev: PixEvent): Promise<string> {
   switch (ev.type) {
     case "CHARGE_PAID":
       return ev.chargeId ? confirmDeposit(ev.chargeId) : "ignored";
+    case "CHARGE_CREATED":
+      return ev.chargeId ? refreshDepositInstructions(ev.chargeId) : "ignored";
     case "CHARGE_EXPIRED":
       return ev.chargeId ? expireDepositByCharge(ev.chargeId) : "ignored";
     case "CHARGE_REVERSED": {
