@@ -65,18 +65,21 @@ export function getEnv() {
       .filter(Boolean),
     cronSecret: process.env.CRON_SECRET ?? "",
     dataEncryptionKey: process.env.DATA_ENCRYPTION_KEY ?? "",
-    pixProvider: (process.env.PIX_PROVIDER ?? "mock") as "mock" | "asaas",
+    pixProvider: (process.env.PIX_PROVIDER ?? "mock") as "mock" | "asaas" | "stripe",
     allowMockPix: bool(process.env.ALLOW_MOCK_PIX, false),
     asaasApiKey: process.env.ASAAS_API_KEY ?? "",
     asaasEnv: (process.env.ASAAS_ENV ?? "sandbox") as "sandbox" | "production",
     asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN ?? "",
     asaasTransferAuthToken: process.env.ASAAS_TRANSFER_AUTH_TOKEN ?? "",
+    /** Pede o CPF do pagador na página de pagamento da Stripe. Desligue (false) se a Stripe recusar o pedido para Pix: todo depósito vai para o admin conferir. */
+    stripePixCollectTaxId: bool(process.env.STRIPE_PIX_COLLECT_TAX_ID, true),
     walletEnabled: bool(process.env.WALLET_ENABLED, true),
     payoutsPaused: bool(process.env.PAYOUTS_PAUSED, false),
     /** Com `true`, depósito cujo pagador o provedor não informou (ex.: Asaas) fica retido para o admin em vez de creditar. */
-    // O Asaas não informa quem pagou o Pix: em produção, por padrão, TODO depósito sem o CPF do pagador fica retido para o admin
-    // conferir (a regra "o pagador é o titular" não pode ficar desligada por esquecimento). Defina PIX_REQUIRE_PAYER_DOC=false para desligar.
-    pixRequirePayerDoc: bool(process.env.PIX_REQUIRE_PAYER_DOC, process.env.NODE_ENV === "production" && (process.env.PIX_PROVIDER ?? "mock") === "asaas"),
+    // O Asaas não informa quem pagou o Pix (e o CPF da Stripe é opcional na página de pagamento): em produção, por padrão, TODO
+    // depósito sem o CPF do pagador fica retido para o admin conferir (a regra "o pagador é o titular" não pode ficar desligada
+    // por esquecimento). Defina PIX_REQUIRE_PAYER_DOC=false para desligar.
+    pixRequirePayerDoc: bool(process.env.PIX_REQUIRE_PAYER_DOC, process.env.NODE_ENV === "production" && ["asaas", "stripe"].includes(process.env.PIX_PROVIDER ?? "mock")),
     /** Só confie em x-forwarded-for se houver um proxy/CDN seu na frente que SOBRESCREVE o cabeçalho. */
     trustProxy: process.env.TRUST_PROXY === undefined || process.env.TRUST_PROXY === "" ? null : bool(process.env.TRUST_PROXY),
   };
@@ -119,18 +122,20 @@ export function assertProductionConfig() {
   if (env.adminEmails.length === 0) {
     problems.push("ADMIN_EMAILS é obrigatório em produção: é assim que o seu e-mail vira administrador depois de confirmado (o seed de demonstração não roda em produção).");
   }
-  if (env.paymentsProvider === "stripe" && (!env.stripeSecretKey || !env.stripeWebhookSecret)) {
-    problems.push("STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENTS_PROVIDER=stripe.");
+  // A Stripe pode servir às inscrições (PAYMENTS_PROVIDER) e/ou aos depósitos da carteira (PIX_PROVIDER): as mesmas chaves valem para os dois.
+  const usesStripe = env.paymentsProvider === "stripe" || (env.walletEnabled && env.pixProvider === "stripe");
+  if (usesStripe && (!env.stripeSecretKey || !env.stripeWebhookSecret)) {
+    problems.push("STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENTS_PROVIDER=stripe ou PIX_PROVIDER=stripe.");
   }
-  if (env.paymentsProvider === "stripe" && /^sk_test_/.test(env.stripeSecretKey)) {
+  if (usesStripe && /^[sr]k_test_/.test(env.stripeSecretKey)) {
     problems.push("STRIPE_SECRET_KEY é uma chave de TESTE (sk_test_…): um site público não receberia dinheiro de verdade. Use a chave sk_live_… da Stripe.");
   }
-  if (!["mock", "asaas"].includes(env.pixProvider)) {
-    problems.push(`PIX_PROVIDER="${env.pixProvider}" não existe: use asaas (ou, só para testes, mock).`);
+  if (!["mock", "asaas", "stripe"].includes(env.pixProvider)) {
+    problems.push(`PIX_PROVIDER="${env.pixProvider}" não existe: use asaas ou stripe (ou, só para testes, mock).`);
   }
   if (env.walletEnabled) {
     if (!isValidDataEncryptionKey(env.dataEncryptionKey)) problems.push("DATA_ENCRYPTION_KEY (32 bytes em base64/hex) é obrigatório para proteger o CPF dos usuários.");
-    if (env.pixProvider === "mock" && !env.allowMockPix) problems.push("PIX_PROVIDER=mock é recusado em produção (use asaas).");
+    if (env.pixProvider === "mock" && !env.allowMockPix) problems.push("PIX_PROVIDER=mock é recusado em produção (use asaas ou stripe).");
     if (env.pixProvider === "asaas" && (!env.asaasApiKey || !env.asaasWebhookToken || !env.asaasTransferAuthToken)) {
       problems.push("ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e ASAAS_TRANSFER_AUTH_TOKEN são obrigatórios com PIX_PROVIDER=asaas.");
     }

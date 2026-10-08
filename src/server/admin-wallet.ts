@@ -5,6 +5,7 @@ import { moneyConfig } from "./money-config";
 import { notify } from "./notifications";
 import { requireActor } from "./permissions";
 import { freezeWallet, postLedger, reconcileAll, unfreezeWallet } from "./wallet";
+import { MANUAL_PAYOUT, notManualPayout } from "./withdrawals";
 import type { Actor } from "./types";
 
 async function adminOutsideTeam(actorIn: Actor | null, walletId: string) {
@@ -79,15 +80,16 @@ export async function runReconciliation() {
 }
 
 export async function adminOverview() {
-  const [kyc, review, held, disputed, processing, frozen, releasePending] = await Promise.all([
+  const [kyc, review, held, disputed, processing, manualPayouts, frozen, releasePending] = await Promise.all([
     db.kycProfile.count({ where: { status: "PENDING" } }),
     db.withdrawal.count({ where: { status: "UNDER_REVIEW" } }),
     db.deposit.count({ where: { status: "HELD" } }),
     db.challenge.count({ where: { status: "DISPUTED" } }),
-    db.withdrawal.count({ where: { status: "PROCESSING", updatedAt: { lt: new Date(Date.now() - 10 * 60_000) } } }),
+    db.withdrawal.count({ where: { status: "PROCESSING", ...notManualPayout, updatedAt: { lt: new Date(Date.now() - 10 * 60_000) } } }),
+    db.withdrawal.count({ where: { status: "PROCESSING", provider: MANUAL_PAYOUT } }),
     db.wallet.count({ where: { frozenAt: { not: null } } }),
     db.walletReleaseRequest.count({ where: { status: "PENDING" } }),
   ]);
   const platform = await db.wallet.findUnique({ where: { id: "platform" } });
-  return { kyc, review, held, disputed, processing, frozen, releasePending, platformCents: platform?.balanceCents ?? 0, limits: moneyConfig() };
+  return { kyc, review, held, disputed, processing, manualPayouts, frozen, releasePending, platformCents: platform?.balanceCents ?? 0, limits: moneyConfig() };
 }

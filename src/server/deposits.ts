@@ -79,6 +79,8 @@ export async function confirmDeposit(chargeId: string): Promise<ConfirmResult> {
   const depTeam = await db.team.findUnique({ where: { id: dep.teamId }, select: { deletedAt: true } });
   if (depTeam?.deletedAt) {
     hold = "Pagamento recebido depois que a equipe foi excluída: retido para revisão do administrador.";
+  } else if (info.currency && info.currency !== "BRL") {
+    hold = `Moeda do pagamento (${info.currency}) diferente de BRL: retido para revisão do administrador.`;
   } else if (info.amountCents !== dep.amountCents) {
     hold = `Valor pago (${formatMoney(info.amountCents)}) diverge do valor da cobrança (${formatMoney(dep.amountCents)}).`;
   } else if (!payerHash && getEnv().pixRequirePayerDoc) {
@@ -152,6 +154,19 @@ export async function reverseDeposit(chargeId: string): Promise<"reversed" | "al
     await audit(null, "deposit.reversed", "Deposit", dep.id, { amountCents: dep.amountCents, debited: take, shortfall }, tx);
     return "reversed" as const;
   });
+}
+
+/**
+ * O provedor avisou que a cobrança venceu (sessão ou Pix expirado): sai da fila de pendentes. Não mexe em dinheiro e, como
+ * `expireDeposits`, deixa o depósito EXPIRED confirmável: um pagamento tardio ainda é conferido e creditado pelo caminho normal.
+ */
+export async function expireDepositByCharge(chargeId: string): Promise<"expired" | "already" | "ignored"> {
+  const dep = await db.deposit.findUnique({ where: { providerChargeId: chargeId } });
+  if (!dep) return "ignored";
+  const res = await db.deposit.updateMany({ where: { id: dep.id, status: "PENDING" }, data: { status: "EXPIRED" } });
+  if (res.count === 0) return "already";
+  await audit(null, "deposit.expired_by_provider", "Deposit", dep.id);
+  return "expired";
 }
 
 /**

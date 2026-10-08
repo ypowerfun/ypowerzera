@@ -3,6 +3,7 @@ import Link from "next/link";
 import { reconcileAction } from "@/app/actions/admin";
 import { ActionForm } from "@/components/action-form";
 import { Card, PageTitle, Stat } from "@/components/ui";
+import { getEnv } from "@/lib/env";
 import { formatMoney } from "@/lib/money";
 import { adminOverview } from "@/server/admin-wallet";
 import { walletState } from "@/server/settings";
@@ -18,6 +19,7 @@ export default async function AdminHome() {
     ["KYC aguardando análise", o.kyc, "/admin/kyc"],
     ["Saques em análise de risco", o.review, "/admin/saques"],
     ["Saques presos (conciliar)", o.processing, "/admin/saques"],
+    ...(o.manualPayouts > 0 || getEnv().pixProvider === "stripe" ? ([["Saques para pagar à mão", o.manualPayouts, "/admin/saques"]] as const) : []),
     ["Depósitos retidos", o.held, "/admin/depositos"],
     ["Desafios em disputa", o.disputed, "/admin/desafios"],
     ["Carteiras congeladas", o.frozen, "/admin/carteiras"],

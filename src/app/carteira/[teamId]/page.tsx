@@ -1,4 +1,4 @@
-import { flatParams } from "@/lib/url";
+import { flatParams, safeHttpUrl } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -16,6 +16,7 @@ import { requireUser } from "@/server/session";
 import { isWalletOn } from "@/server/settings";
 import { WalletUnavailable } from "@/components/wallet-off";
 import { getOrCreateTeamWallet, withdrawableBreakdown } from "@/server/wallet";
+import { MANUAL_PAYOUT } from "@/server/withdrawals";
 
 export const metadata: Metadata = { title: "Carteira da equipe", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -55,12 +56,14 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
     db.ledgerEntry.findMany({ where: { walletId: wallet.id }, orderBy: { createdAt: "desc" }, take: 15 }),
   ]);
   const pixDeposit = sp.pix ? deposits.find((d) => d.id === sp.pix) : undefined;
+  const stripeUrl = pixDeposit?.provider === "stripe" ? safeHttpUrl(pixDeposit.pixCopyPaste) : null;
   const confirming = sp.confirmar ? withdrawals.find((w) => w.id === sp.confirmar && w.status === "PENDING_CONFIRMATION") : undefined;
   const canDeposit = !!kyc && kyc.status !== "REJECTED";
   const canWithdraw = kyc?.status === "VERIFIED";
   const hasWithdrawable = b.withdrawableCents >= cfg.withdrawMinCents;
   const nonce = await newNonce();
   const dev = getEnv().pixProvider === "mock" && !getEnv().isProd;
+  const manualPayouts = getEnv().pixProvider === "stripe"; // o Stripe não paga Pix a terceiros: o administrador faz o Pix do saque
 
   return (
     <div className="space-y-6">
@@ -71,7 +74,7 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
       {wallet.frozenAt && <Alert tone="danger"><b>Carteira congelada</b> para análise de segurança ({wallet.frozenReason}). Depósitos recebidos continuam sendo registrados, mas saques e novos desafios estão bloqueados. Fale com o suporte.</Alert>}
       {wallet.debtCents > 0 && <Alert tone="danger">Há uma dívida de {formatMoney(wallet.debtCents)} por estorno de depósito. Regularize com o suporte.</Alert>}
       {!canDeposit && <Alert tone="warn" className="flex flex-wrap items-center justify-between gap-3"><span>Envie seus dados de identidade para depositar.</span><ButtonLink href="/carteira/verificacao" variant="secondary">Verificar identidade</ButtonLink></Alert>}
-      {sp.saque === "approved" && <Alert tone="ok">Saque confirmado! Será enviado por Pix em alguns minutos (você pode cancelar até lá).</Alert>}
+      {sp.saque === "approved" && <Alert tone="ok">{manualPayouts ? "Saque confirmado! Nossa equipe fará o Pix para o seu CPF depois de alguns minutos (você pode cancelar até lá)." : "Saque confirmado! Será enviado por Pix em alguns minutos (você pode cancelar até lá)."}</Alert>}
       {sp.saque === "under_review" && <Alert tone="warn">Saque confirmado e enviado para <b>análise de segurança</b>. Avisaremos quando for decidido.</Alert>}
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -89,11 +92,23 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
             <div className="mb-4 space-y-3 rounded-lg border border-brand/40 bg-brand/5 p-4">
               <meta httpEquiv="refresh" content="6" />
               <p className="text-sm font-semibold">Pague {formatMoney(pixDeposit.amountCents)} no Pix até {formatDateTime(pixDeposit.expiresAt)}</p>
-              {pixDeposit.pixQrImage && /^[A-Za-z0-9+/=]+$/.test(pixDeposit.pixQrImage) && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={`data:image/png;base64,${pixDeposit.pixQrImage}`} alt="QR Code Pix" className="mx-auto h-44 w-44 rounded-lg bg-white p-2" />
+              {pixDeposit.provider === "stripe" ? (
+                // No Stripe o QR Code fica na página hospedada por ele: o endereço dela está guardado onde ficaria o copia-e-cola.
+                stripeUrl ? (
+                  <div className="space-y-2">
+                    <ButtonLink href={stripeUrl} target="_blank" rel="noopener noreferrer" variant="accent">Pagar com Pix</ButtonLink>
+                    <p className="text-xs text-muted">Abre a página segura do Stripe, com o QR Code e o copia-e-cola. Se pedirem o CPF, informe o <b>seu</b> (titular da conta): Pix pago por outra pessoa fica retido para análise.</p>
+                  </div>
+                ) : <p className="text-sm text-danger">Não foi possível abrir a página de pagamento. Gere um novo Pix.</p>
+              ) : (
+                <>
+                  {pixDeposit.pixQrImage && /^[A-Za-z0-9+/=]+$/.test(pixDeposit.pixQrImage) && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={`data:image/png;base64,${pixDeposit.pixQrImage}`} alt="QR Code Pix" className="mx-auto h-44 w-44 rounded-lg bg-white p-2" />
+                  )}
+                  <div className="flex gap-2"><Input readOnly value={pixDeposit.pixCopyPaste ?? ""} aria-label="Pix copia e cola" className="font-mono text-xs" /><CopyButton text={pixDeposit.pixCopyPaste ?? ""} label="Copiar Pix" /></div>
+                </>
               )}
-              <div className="flex gap-2"><Input readOnly value={pixDeposit.pixCopyPaste ?? ""} aria-label="Pix copia e cola" className="font-mono text-xs" /><CopyButton text={pixDeposit.pixCopyPaste ?? ""} label="Copiar Pix" /></div>
               <p className="text-xs text-muted">Esta página atualiza sozinha quando o pagamento for confirmado.</p>
               {dev && <Link href="/dev/pix" className="text-xs text-warn underline">[dev] simular o pagamento deste Pix</Link>}
             </div>
@@ -128,6 +143,7 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
             <Field label="Confirme sua senha" htmlFor="wd-pass"><Input id="wd-pass" name="password" type="password" autoComplete="current-password" required disabled={!canWithdraw || !hasWithdrawable} /></Field>
           </ActionForm>
           {canWithdraw && !hasWithdrawable && <p className="mt-3 text-sm text-warn">Nada sacável agora. O depósito precisa ser jogado em desafios antes de sair, e depósitos e prêmios recentes ficam retidos por segurança.</p>}
+          {manualPayouts && <p className="mt-3 text-sm text-muted">Os saques são pagos <b>manualmente</b> pela nossa equipe: o Pix pode levar algumas horas depois da aprovação.</p>}
           <p className="mt-3 text-xs text-muted">Segurança: senha + código por e-mail, retenção de depósitos recentes ({cfg.depositHoldHours}h) e prêmios ({cfg.winHoldHours}h), giro obrigatório do depósito, revisão humana de saques de risco e envio com atraso de {cfg.withdrawDelayMinutes} min para você poder cancelar.</p>
         </Card>
       </div>
@@ -143,7 +159,7 @@ export default async function TeamWalletPage({ params, searchParams }: { params:
                   <Td className="text-muted">{formatDateTime(w.createdAt)}</Td>
                   <Td className="font-semibold">{formatMoney(w.amountCents)}{w.feeCents > 0 && <span className="block text-xs text-muted">líquido {formatMoney(w.netCents)}</span>}</Td>
                   <Td className="text-muted">Pix CPF •••{w.destinationCpfLast4}</Td>
-                  <Td><Badge tone={wdTone[w.status]}>{wdLabel[w.status]}</Badge>{w.reviewNote && <span className="block text-xs text-muted">{w.reviewNote}</span>}</Td>
+                  <Td><Badge tone={wdTone[w.status]}>{w.status === "PROCESSING" && w.provider === MANUAL_PAYOUT ? "Aguardando pagamento pelo administrador" : wdLabel[w.status]}</Badge>{w.reviewNote && <span className="block text-xs text-muted">{w.reviewNote}</span>}</Td>
                   <Td>
                     {w.status === "PENDING_CONFIRMATION" && <Link href={`/carteira/${team.id}?confirmar=${w.id}`} className="mr-3 text-xs text-brand-soft hover:underline">informar código</Link>}
                     {["PENDING_CONFIRMATION", "UNDER_REVIEW", "APPROVED"].includes(w.status) && (

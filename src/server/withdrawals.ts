@@ -23,6 +23,11 @@ import type { Actor } from "./types";
 
 const OPEN: Withdrawal["status"][] = ["PENDING_CONFIRMATION", "UNDER_REVIEW", "APPROVED", "PROCESSING"];
 
+/** `Withdrawal.provider` dos saques pagos à mão pelo administrador (provedor sem envio de Pix, como o Stripe). */
+export const MANUAL_PAYOUT = "manual";
+/** Filtro dos saques que o provedor processa sozinho: os manuais não têm transferência para conciliar. */
+export const notManualPayout = { OR: [{ provider: null }, { provider: { not: MANUAL_PAYOUT } }] } satisfies Prisma.WithdrawalWhereInput;
+
 const otpHash = (code: string, withdrawalId: string) => hmacHex(`${withdrawalId}:${code}`, "withdrawal-otp");
 
 /**
@@ -182,7 +187,9 @@ export async function confirmWithdrawal(actorIn: Actor | null, withdrawalId: str
       subject: "Saque solicitado — Prime Arena",
       text: review
         ? `Seu saque de ${formatMoney(w.amountCents)} foi enviado para análise de segurança. Você será avisado quando for decidido.\nNão reconhece? Cancele em Carteira e troque sua senha.`
-        : `Seu saque de ${formatMoney(w.amountCents)} será enviado por Pix para o CPF final ${w.destinationCpfLast4} em ~${cfg.withdrawDelayMinutes} minutos.\nNão foi você? Cancele agora em Carteira e troque sua senha.`,
+        : getEnv().pixProvider === "stripe"
+          ? `Seu saque de ${formatMoney(w.amountCents)} foi aprovado. Depois de ~${cfg.withdrawDelayMinutes} minutos, nossa equipe fará o Pix manualmente para o CPF final ${w.destinationCpfLast4}.\nNão foi você? Cancele agora em Carteira e troque sua senha.`
+          : `Seu saque de ${formatMoney(w.amountCents)} será enviado por Pix para o CPF final ${w.destinationCpfLast4} em ~${cfg.withdrawDelayMinutes} minutos.\nNão foi você? Cancele agora em Carteira e troque sua senha.`,
     });
   } catch (e) {
     console.error(`[mail] Não consegui avisar por e-mail do saque ${w.id}: ${safeMailError(e)}`);
@@ -293,13 +300,13 @@ export async function processDueWithdrawals(now = new Date(), limit = 20): Promi
   let skipped = 0;
   for (const w of due) {
     const r = await processWithdrawal(w.id, now);
-    if (r === "sent") processed++;
+    if (r === "sent" || r === "manual") processed++;
     else skipped++;
   }
   return { processed, skipped };
 }
 
-export async function processWithdrawal(id: string, now = new Date()): Promise<"sent" | "skipped" | "needs_reconciliation"> {
+export async function processWithdrawal(id: string, now = new Date()): Promise<"sent" | "manual" | "skipped" | "needs_reconciliation"> {
   // transição atômica: só UM processo consegue mover APPROVED → PROCESSING (impede pagamento duplicado)
   const claimed = await db.withdrawal.updateMany({ where: { id, status: "APPROVED", processAfter: { lte: now } }, data: { status: "PROCESSING" } });
   if (claimed.count === 0) return "skipped";
@@ -324,6 +331,14 @@ export async function processWithdrawal(id: string, now = new Date()): Promise<"
   }
 
   const provider = getPixProvider();
+  if (!provider.canSendPix) {
+    // O provedor (Stripe) não paga Pix a terceiros: NADA é enviado. O saque fica em PROCESSING, marcado como manual, até o
+    // administrador pagar no banco e registrar o resultado (adminResolveProcessing). A conciliação automática o ignora.
+    await db.withdrawal.update({ where: { id }, data: { provider: MANUAL_PAYOUT } });
+    await audit(null, "withdrawal.manual_payout_pending", "Withdrawal", id, { netCents: w.netCents });
+    await notify(await adminUserIds(), "withdrawal.manual", "Saque aguardando pagamento manual", `${formatMoney(w.netCents)} para pagar por Pix no banco.`, "/admin/saques");
+    return "manual";
+  }
   try {
     const out = await provider.sendPix({ externalReference: w.id, amountCents: w.netCents, pixKey: cpf, description: "Saque Prime Arena" });
     await db.withdrawal.update({ where: { id }, data: { provider: provider.name, providerTransferId: out.transferId } });
@@ -388,7 +403,7 @@ export async function handleTransferEvent(type: "TRANSFER_DONE" | "TRANSFER_FAIL
 
 /** Concilia saques presos em PROCESSING consultando o provedor (job). */
 export async function reconcileProcessing(olderThanMinutes = 10, now = new Date()): Promise<{ checked: number; resolved: number }> {
-  const stuck = await db.withdrawal.findMany({ where: { status: "PROCESSING", updatedAt: { lt: new Date(now.getTime() - olderThanMinutes * 60_000) } } });
+  const stuck = await db.withdrawal.findMany({ where: { status: "PROCESSING", ...notManualPayout, updatedAt: { lt: new Date(now.getTime() - olderThanMinutes * 60_000) } } });
   let resolved = 0;
   for (const w of stuck) {
     if (!w.providerTransferId) continue; // sem id no provedor: só um administrador resolve
@@ -400,17 +415,52 @@ export async function reconcileProcessing(olderThanMinutes = 10, now = new Date(
   return { checked: stuck.length, resolved };
 }
 
-/** Resolução manual de um saque em PROCESSING sem resposta do provedor (admin confere no painel do banco). */
+/** Quatro olhos: quem mexe no pagamento de um saque não pode ser o solicitante nem membro da equipe dele. */
+async function assertNoConflict(actor: Actor, w: Pick<Withdrawal, "requestedById" | "teamId">) {
+  if (w.requestedById === actor.id) throw new AppError("Conflito de interesse.", "FORBIDDEN");
+  const member = await db.teamMember.findFirst({ where: { teamId: w.teamId, userId: actor.id } });
+  if (member) throw new AppError("Conflito de interesse: você pertence a esta equipe.", "FORBIDDEN");
+}
+
+/**
+ * Resolução manual de um saque em PROCESSING: sem resposta do provedor (o admin confere no painel do banco) ou saque manual
+ * (o admin pagou o Pix no banco ou desistiu). "failed" devolve o valor ao saldo da equipe.
+ */
 export async function adminResolveProcessing(actorIn: Actor | null, id: string, outcome: "paid" | "failed", note: string, endToEndId?: string) {
   const actor = requireActor(actorIn);
   if (actor.role !== "ADMIN") throw new AppError("Apenas administradores.", "FORBIDDEN");
   if (note.trim().length < 5) throw new AppError("Descreva o que foi conferido no provedor.");
   const w = await db.withdrawal.findUnique({ where: { id } });
   if (!w || w.status !== "PROCESSING") throw new AppError("Saque não está em processamento.");
-  if (w.requestedById === actor.id) throw new AppError("Conflito de interesse.", "FORBIDDEN");
+  await assertNoConflict(actor, w);
   const ok = outcome === "paid" ? await markPaid(id, endToEndId ?? null) : await markFailed(id, `Conciliado manualmente: ${note.trim()}`);
-  await audit(actor.id, `withdrawal.admin_${outcome}`, "Withdrawal", id, { note });
+  await audit(actor.id, `withdrawal.admin_${outcome}`, "Withdrawal", id, { note, manual: w.provider === MANUAL_PAYOUT });
   return ok;
+}
+
+/**
+ * Saque manual: entrega ao ADMIN a chave Pix (o CPF verificado do titular) para ele pagar no banco. É o único lugar que
+ * descriptografa o CPF para uma tela, por clique, e cada leitura fica na auditoria. Nada sai com saques pausados, carteira
+ * congelada, titular suspenso ou sem identidade verificada, nem para quem é o solicitante ou da equipe.
+ */
+export async function adminRevealPayoutKey(actorIn: Actor | null, id: string): Promise<{ pixKey: string; netCents: number }> {
+  const actor = requireActor(actorIn);
+  if (actor.role !== "ADMIN") throw new AppError("Apenas administradores.", "FORBIDDEN");
+  if (getEnv().payoutsPaused) throw new AppError("Saques temporariamente pausados: a chave Pix não é exibida.", "FORBIDDEN");
+  const w = await db.withdrawal.findUnique({ where: { id } });
+  if (!w || w.status !== "PROCESSING" || w.provider !== MANUAL_PAYOUT) throw new AppError("Este saque não aguarda pagamento manual.", "NOT_FOUND");
+  await assertNoConflict(actor, w);
+  const [user, wallet] = await Promise.all([db.user.findUniqueOrThrow({ where: { id: w.requestedById } }), db.wallet.findUniqueOrThrow({ where: { id: w.walletId } })]);
+  if (wallet.frozenAt || user.bannedAt) throw new AppError("Carteira congelada ou titular suspenso: não pague este saque. Devolva o valor ao saldo ou conclua a análise antes.", "FORBIDDEN");
+  await rateLimit(`wd:reveal:${actor.id}`, 30, 3600, "Muitas consultas de chave Pix. Aguarde um pouco.");
+  let pixKey: string;
+  try {
+    pixKey = await getVerifiedCpf(w.requestedById);
+  } catch {
+    throw new AppError("O titular não tem mais identidade verificada: não pague este saque.", "FORBIDDEN");
+  }
+  await audit(actor.id, "withdrawal.payout_key_revealed", "Withdrawal", id, { cpfLast4: w.destinationCpfLast4 });
+  return { pixKey, netCents: w.netCents };
 }
 
 // ───────────────────────── Autorização de transferência ─────────────────────────

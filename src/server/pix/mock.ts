@@ -9,6 +9,7 @@ import type { ChargeInfo, PixEvent, PixProvider, TransferAuthRequest, TransferIn
  */
 export const mockPix: PixProvider = {
   name: "mock",
+  canSendPix: true,
 
   async createCharge({ externalReference, amountCents }) {
     const row = await db.mockPixCharge.create({ data: { amountCents, externalReference } });

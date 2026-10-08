@@ -46,9 +46,12 @@ export function walletReadiness(): WalletReadiness {
   const asaasOk = !!env.asaasApiKey && !!env.asaasWebhookToken && !!env.asaasTransferAuthToken;
   if (env.pixProvider === "asaas") {
     items.push({ key: "pix", label: "Provedor de Pix (Asaas)", ok: asaasOk, hint: asaasOk ? `Asaas em ${env.asaasEnv === "production" ? "produção" : "sandbox"}.` : "Defina ASAAS_API_KEY, ASAAS_WEBHOOK_TOKEN e ASAAS_TRANSFER_AUTH_TOKEN." });
+  } else if (env.pixProvider === "stripe") {
+    const ok = !!env.stripeSecretKey && !!env.stripeWebhookSecret;
+    items.push({ key: "pix", label: "Provedor de Pix (Stripe)", ok, hint: ok ? "Depósitos pela Stripe; os saques são pagos à mão pelo administrador." : "Defina STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET." });
   } else {
     const ok = !env.isProd || env.allowMockPix;
-    items.push({ key: "pix", label: "Provedor de Pix", ok, hint: ok ? "Simulador de Pix (somente testes, não movimenta dinheiro real)." : "Em produção use PIX_PROVIDER=asaas: o simulador não movimenta dinheiro real." });
+    items.push({ key: "pix", label: "Provedor de Pix", ok, hint: ok ? "Simulador de Pix (somente testes, não movimenta dinheiro real)." : "Em produção use PIX_PROVIDER=asaas ou stripe: o simulador não movimenta dinheiro real." });
   }
 
   const keyOk = !env.isProd || isValidDataEncryptionKey(env.dataEncryptionKey);

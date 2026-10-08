@@ -1,25 +1,30 @@
 import type { Metadata } from "next";
-import { resolveProcessingAction, reviewWithdrawalAction } from "@/app/actions/admin";
+import { resolveProcessingAction, revealPayoutKeyAction, reviewWithdrawalAction } from "@/app/actions/admin";
 import { ActionForm } from "@/components/action-form";
 import { Alert, Badge, Card, Empty, Input, PageTitle } from "@/components/ui";
 import { db } from "@/lib/db";
+import { getEnv } from "@/lib/env";
 import { formatDateTime } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { RISK_LABELS, type RiskFlag } from "@/server/risk";
 import { requireAdmin } from "@/server/session";
+import { MANUAL_PAYOUT, notManualPayout } from "@/server/withdrawals";
 
 export const metadata: Metadata = { title: "Admin · Saques", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function AdminWithdrawals() {
   await requireAdmin(); // o layout sozinho não basta: uma navegação parcial (RSC) pula o layout e a página consultaria o banco sem guarda
-  const [review, stuck] = await Promise.all([
+  const [review, manual, stuck] = await Promise.all([
     db.withdrawal.findMany({ where: { status: "UNDER_REVIEW" }, orderBy: { createdAt: "asc" } }),
-    db.withdrawal.findMany({ where: { status: "PROCESSING", updatedAt: { lt: new Date(Date.now() - 10 * 60_000) } }, orderBy: { createdAt: "asc" } }),
+    db.withdrawal.findMany({ where: { status: "PROCESSING", provider: MANUAL_PAYOUT }, orderBy: { createdAt: "asc" } }),
+    db.withdrawal.findMany({ where: { status: "PROCESSING", ...notManualPayout, updatedAt: { lt: new Date(Date.now() - 10 * 60_000) } }, orderBy: { createdAt: "asc" } }),
   ]);
-  const ids = [...review, ...stuck];
+  const ids = [...review, ...manual, ...stuck];
   const teams = await db.team.findMany({ where: { id: { in: ids.map((w) => w.teamId) } } });
   const users = await db.user.findMany({ where: { id: { in: ids.map((w) => w.requestedById) } }, select: { id: true, username: true, email: true, createdAt: true } });
+  // o nome do titular (KYC verificado) é o que o banco mostra ao confirmar a chave Pix; o CPF em si só aparece depois do clique em "Mostrar chave Pix"
+  const holders = await db.kycProfile.findMany({ where: { userId: { in: manual.map((w) => w.requestedById) } }, select: { userId: true, fullName: true } });
   const t = (id: string) => teams.find((x) => x.id === id);
   const u = (id: string) => users.find((x) => x.id === id);
   return (
@@ -42,6 +47,25 @@ export default async function AdminWithdrawals() {
           </Card>
         ))}
       </section>
+      {(manual.length > 0 || getEnv().pixProvider === "stripe") && (
+        <section className="space-y-4">
+          <h2 className="font-bold">Para pagar à mão no banco ({manual.length})</h2>
+          <p className="text-sm text-muted">O Stripe não paga Pix a terceiros. Clique em “Mostrar chave Pix” (fica registrado na auditoria), faça o Pix do valor líquido no app do seu banco para o CPF do titular e só então confirme aqui. Se não for pagar, devolva o valor ao saldo da equipe.</p>
+          {manual.length === 0 ? <Empty title="Nenhum saque para pagar" /> : manual.map((w) => (
+            <Card key={w.id} className="space-y-3">
+              <div>
+                <p className="text-xl font-black">{formatMoney(w.netCents)} <span className="text-sm font-normal text-muted">a pagar por Pix → CPF •••{w.destinationCpfLast4}</span></p>
+                <p className="text-xs text-muted">Titular verificado: {holders.find((h) => h.userId === w.requestedById)?.fullName ?? "—"} · equipe [{t(w.teamId)?.tag}] {t(w.teamId)?.name} · solicitante @{u(w.requestedById)?.username} · pedido {formatDateTime(w.createdAt)}{w.feeCents > 0 && <> · tarifa de {formatMoney(w.feeCents)} já descontada</>}</p>
+              </div>
+              <ActionForm action={revealPayoutKeyAction} className="space-y-2" submit="Mostrar chave Pix" submitVariant="secondary" submitClassName=""><input type="hidden" name="withdrawalId" value={w.id} /></ActionForm>
+              <div className="flex flex-wrap gap-3">
+                <ActionForm action={resolveProcessingAction} className="flex flex-wrap items-end gap-2" submit="Confirmar que PAGUEI" submitClassName=""><input type="hidden" name="withdrawalId" value={w.id} /><input type="hidden" name="outcome" value="paid" /><Input name="note" required minLength={5} placeholder="Ex.: pago no banco, comprovante conferido" className="w-72" /><Input name="e2e" placeholder="E2E ID do comprovante (opcional)" className="w-56" /></ActionForm>
+                <ActionForm action={resolveProcessingAction} className="flex flex-wrap items-end gap-2" submit="NÃO paguei (devolver ao saldo)" submitVariant="danger" submitClassName="" confirm="Devolver este valor ao saldo da equipe? Faça isso só se o Pix NÃO foi enviado."><input type="hidden" name="withdrawalId" value={w.id} /><input type="hidden" name="outcome" value="failed" /><Input name="note" required minLength={5} placeholder="Motivo" className="w-60" /></ActionForm>
+              </div>
+            </Card>
+          ))}
+        </section>
+      )}
       <section className="space-y-4">
         <h2 className="font-bold">Presos em “enviando” há mais de 10 min ({stuck.length})</h2>
         <p className="text-sm text-muted">Resposta ambígua do provedor: o dinheiro pode ou não ter saído. Confira no painel do banco/provedor antes de decidir — nunca reenviamos nem devolvemos automaticamente.</p>

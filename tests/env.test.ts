@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { assertProductionConfig } from "@/lib/env";
 
-const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "MAIL_FROM", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"];
+const KEYS = ["NODE_ENV", "VITEST", "APP_URL", "SMTP_URL", "MAIL_FROM", "ADMIN_EMAILS", "APP_SECRET", "TRUST_PROXY", "PAYMENTS_PROVIDER", "PIX_PROVIDER", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "ASAAS_API_KEY", "ASAAS_WEBHOOK_TOKEN", "ASAAS_TRANSFER_AUTH_TOKEN", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "WALLET_ENABLED"];
 const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
 afterEach(() => {
   for (const k of KEYS) {
@@ -44,6 +44,43 @@ describe("configuração de produção", () => {
     expect(() => assertProductionConfig()).toThrow(/chave de TESTE/);
     prod({ STRIPE_SECRET_KEY: "sk_live_abcdefghijklmnop" });
     expect(() => assertProductionConfig()).not.toThrow();
+  });
+
+  it("PIX_PROVIDER=stripe: aceita com as duas chaves, sem nada do Asaas", () => {
+    prod({ PIX_PROVIDER: "stripe", PAYMENTS_PROVIDER: "none", ASAAS_API_KEY: "", ASAAS_WEBHOOK_TOKEN: "", ASAAS_TRANSFER_AUTH_TOKEN: "", STRIPE_SECRET_KEY: "sk_live_abcdefghijklmnop", STRIPE_WEBHOOK_SECRET: "whsec_abcdefghijklmnop" });
+    expect(() => assertProductionConfig()).not.toThrow();
+  });
+
+  it("PIX_PROVIDER=stripe: exige STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET, mesmo sem usar o Stripe nas inscrições", () => {
+    for (const missing of ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]) {
+      prod({ PIX_PROVIDER: "stripe", PAYMENTS_PROVIDER: "none", STRIPE_SECRET_KEY: "sk_live_abcdefghijklmnop", STRIPE_WEBHOOK_SECRET: "whsec_abcdefghijklmnop", [missing]: "" });
+      expect(() => assertProductionConfig(), missing).toThrow(/STRIPE_SECRET_KEY e STRIPE_WEBHOOK_SECRET são obrigatórios com PAYMENTS_PROVIDER=stripe ou PIX_PROVIDER=stripe/);
+    }
+  });
+
+  it("PIX_PROVIDER=stripe: recusa chave de TESTE (sk_test_ e rk_test_) e a menciona uma vez só quando as inscrições também usam o Stripe", () => {
+    for (const key of ["sk_test_abcdefghijklmnop", "rk_test_abcdefghijklmnop"]) {
+      prod({ PIX_PROVIDER: "stripe", PAYMENTS_PROVIDER: "none", STRIPE_SECRET_KEY: key });
+      expect(() => assertProductionConfig(), key).toThrow(/chave de TESTE/);
+    }
+    prod({ PIX_PROVIDER: "stripe", PAYMENTS_PROVIDER: "stripe", STRIPE_SECRET_KEY: "sk_test_abcdefghijklmnop" });
+    let msg = "";
+    try { assertProductionConfig(); } catch (e) { msg = (e as Error).message; }
+    expect(msg.match(/chave de TESTE/g)).toHaveLength(1);
+  });
+
+  it("PIX_PROVIDER=stripe sem carteira (WALLET_ENABLED=false) não exige as chaves; asaas continua exigindo as suas", () => {
+    prod({ PIX_PROVIDER: "stripe", PAYMENTS_PROVIDER: "none", STRIPE_SECRET_KEY: "", STRIPE_WEBHOOK_SECRET: "", WALLET_ENABLED: "false" });
+    expect(() => assertProductionConfig()).not.toThrow();
+    prod({ PIX_PROVIDER: "asaas", ASAAS_API_KEY: "", WALLET_ENABLED: "true" });
+    expect(() => assertProductionConfig()).toThrow(/ASAAS_API_KEY/);
+  });
+
+  it("PIX_PROVIDER=mock é recusado e a mensagem aponta asaas ou stripe", () => {
+    prod({ PIX_PROVIDER: "mock" });
+    expect(() => assertProductionConfig()).toThrow(/use asaas ou stripe/);
+    prod({ PIX_PROVIDER: "strip" });
+    expect(() => assertProductionConfig()).toThrow(/PIX_PROVIDER="strip" não existe: use asaas ou stripe/);
   });
 
   it("exige MAIL_FROM de verdade (o padrão @primearena.local é recusado pelos provedores de e-mail)", () => {

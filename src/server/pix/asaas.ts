@@ -67,6 +67,7 @@ function transferStatus(s: string): TransferInfo["status"] {
 
 export const asaasPix: PixProvider = {
   name: "asaas",
+  canSendPix: true,
 
   async createCharge({ externalReference, amountCents, expiresAt, payer }) {
     const customer = customerSchema.parse(await call("POST", "/customers", { name: payer.name, cpfCnpj: payer.cpf, externalReference: `payer:${payer.cpf.slice(-4)}` }));

@@ -2,13 +2,37 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "./audit";
 import { rateLimit } from "./rate-limit";
-import { confirmDeposit, reverseDeposit } from "./deposits";
-import { getPixProvider } from "./pix";
+import { confirmDeposit, expireDepositByCharge, reverseDeposit } from "./deposits";
+import { getPixProvider, type PixEvent } from "./pix";
+import { findCheckoutSessionId } from "./pix/stripe";
 import { authorizeTransfer, handleTransferEvent } from "./withdrawals";
 
 export interface HttpResult {
   status: number;
   body: unknown;
+}
+
+/**
+ * Aplica UM evento já autenticado. O corpo só aponta a cobrança; quem decide é a máquina de estados, que reconsulta o provedor.
+ * Compartilhado com o webhook do Stripe (stripe-webhook.ts), que recebe depósitos e inscrições no mesmo endereço.
+ */
+export async function applyPixEvent(ev: PixEvent): Promise<string> {
+  switch (ev.type) {
+    case "CHARGE_PAID":
+      return ev.chargeId ? confirmDeposit(ev.chargeId) : "ignored";
+    case "CHARGE_EXPIRED":
+      return ev.chargeId ? expireDepositByCharge(ev.chargeId) : "ignored";
+    case "CHARGE_REVERSED": {
+      // O Stripe avisa do estorno/contestação pelo pagamento (PaymentIntent): a sessão do depósito é achada consultando o Stripe.
+      const chargeId = ev.chargeId ?? (ev.paymentIntentId ? await findCheckoutSessionId(ev.paymentIntentId) : null);
+      return chargeId ? reverseDeposit(chargeId) : "ignored";
+    }
+    case "TRANSFER_DONE":
+    case "TRANSFER_FAILED":
+      return handleTransferEvent(ev.type, { transferId: ev.transferId, externalReference: ev.externalReference });
+    default:
+      return "ignored";
+  }
 }
 
 /**
@@ -43,19 +67,7 @@ export async function handlePixWebhook(headers: Headers, rawBody: string): Promi
   const results: Array<{ id: string; result: string }> = [];
   try {
     for (const ev of events) {
-      let result = "ignored";
-      switch (ev.type) {
-        case "CHARGE_PAID":
-          if (ev.chargeId) result = await confirmDeposit(ev.chargeId);
-          break;
-        case "CHARGE_REVERSED":
-          if (ev.chargeId) result = await reverseDeposit(ev.chargeId);
-          break;
-        case "TRANSFER_DONE":
-        case "TRANSFER_FAILED":
-          result = await handleTransferEvent(ev.type, { transferId: ev.transferId, externalReference: ev.externalReference });
-          break;
-      }
+      const result = await applyPixEvent(ev);
       if (ev.id) {
         // registro de eventos já tratados (o processamento em si já é idempotente pelas máquinas de estado)
         const seen = await db.paymentEvent.findUnique({ where: { provider_eventId: { provider: provider.name, eventId: ev.id } } });
@@ -82,6 +94,8 @@ export async function handleTransferAuthorization(headers: Headers, rawBody: str
   } catch {
     return { status: 503, body: { error: "unavailable" } };
   }
+  // Provedor que não paga Pix (Stripe) não tem o que autorizar: o saque é pago à mão pelo administrador.
+  if (!provider.canSendPix) return { status: 404, body: { error: "not_applicable" } };
   if (!provider.verifyTransferAuthorization(headers, rawBody)) {
     await rateLimit("transfer-auth-rejected-audit", 5, 600)
       .then(() => audit(null, "security.transfer_auth_rejected", "Webhook", provider.name, { reason: "invalid_signature" }))

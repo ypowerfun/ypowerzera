@@ -143,13 +143,14 @@ Em resumo, o que a produção exige (o site **recusa subir** se faltar; o motivo
 2. **Segredos** (veja `.env.production.example`): `APP_SECRET` (≥ 32), `DATA_ENCRYPTION_KEY` (**faça backup**: sem ela os CPFs cifrados não se recuperam), `CRON_SECRET`, `ADMIN_EMAILS`, `SMTP_URL`, `APP_URL` com `https://`.
 3. **Proxy**: `TRUST_PROXY=true` apenas atrás de um proxy que **sobrescreve** `x-forwarded-for` (o Caddy do compose faz isso; o site usa o último endereço da lista). Sem proxy, `false`.
 4. **Agendador**: `POST /api/cron/wallet` a cada 1–5 min com `Authorization: Bearer $CRON_SECRET` (envia saques liberados, expira cobranças/desafios, concilia). O `docker-compose.yml` já faz isso a cada 2 min.
-5. **Webhooks** (Fase 2): aponte o provedor para `/api/webhooks/pix` e `/api/webhooks/pix/transfer-authorization`; o Stripe para `/api/webhooks/stripe`.
+5. **Webhooks** (Fase 2): aponte o provedor para `/api/webhooks/pix` e `/api/webhooks/pix/transfer-authorization`; o Stripe para `/api/webhooks/stripe` (com `PIX_PROVIDER="stripe"`, esse é o único endereço e ele também recebe os depósitos).
 6. **Freio de emergência**: `PAYOUTS_PAUSED=true` suspende todos os saques sem derrubar o resto.
 7. Sem Docker: `npm ci && npm run build && npx prisma db push && npm start` (veja a seção 12 de `docs/HOSPEDAGEM.md`).
 
 ## Antes de operar com dinheiro real
 
 - **Asaas (Pix)**: o adaptador foi escrito pela documentação pública e **não foi validado contra o sandbox** (a documentação estava inacessível durante o desenvolvimento). Valide cada fluxo (cobrança, webhook, transferência, autorização, estorno) no sandbox antes de qualquer valor real. O provedor é uma interface (`src/server/pix`) — dá para trocar.
+- **Stripe (Pix, `PIX_PROVIDER="stripe"`)**: cobra os depósitos pelo Stripe Checkout, mas o Stripe **não paga Pix a terceiros**: os saques são pagos **manualmente** por um administrador (Admin → Saques → Para pagar à mão). Também **não foi validado contra a API real**, e o CPF do pagador é declarado por ele na página do Stripe. Detalhes e dúvidas abertas em [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md), seção 10.
 - **Stripe**: implementado por REST com verificação de assinatura e testado só com eventos simulados, não contra a conta real.
 - **Jurídico/conformidade** (fora do escopo de código): apostas entre jogadores com dinheiro podem se enquadrar em regras de **jogos de azar/apostas de quota fixa/SPA-MF** no Brasil, e processadores de pagamento costumam **proibir** esse uso. Também envolvem **KYC/PLD**, **LGPD** (CPF), proteção de menores e termos de uso. Consulte um advogado especializado e o seu provedor de pagamento antes de abrir ao público.
 - **Segurança**: faça um **pentest** independente, revise logs de auditoria e mantenha o limite de saque automático baixo no início.

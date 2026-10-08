@@ -1,10 +1,12 @@
-export type PixEventType = "CHARGE_PAID" | "CHARGE_REVERSED" | "TRANSFER_DONE" | "TRANSFER_FAILED" | "IGNORED";
+export type PixEventType = "CHARGE_PAID" | "CHARGE_REVERSED" | "CHARGE_EXPIRED" | "TRANSFER_DONE" | "TRANSFER_FAILED" | "IGNORED";
 
 export interface PixEvent {
   /** Identificador único do evento no provedor (usado para idempotência). */
   id: string;
   type: PixEventType;
   chargeId?: string;
+  /** Estorno que o provedor só identifica pelo pagamento (Stripe): a cobrança é achada consultando o provedor. */
+  paymentIntentId?: string;
   transferId?: string;
   externalReference?: string;
 }
@@ -14,6 +16,8 @@ export interface ChargeInfo {
   amountCents: number;
   /** CPF/CNPJ de quem pagou (só dígitos), quando o provedor informa. */
   payerDocument: string | null;
+  /** Moeda da cobrança (ISO 4217, maiúsculas), quando o provedor informa. Diferente de BRL, o depósito fica retido. */
+  currency?: string;
 }
 
 export interface TransferInfo {
@@ -38,7 +42,9 @@ export interface CreateChargeArgs {
 }
 
 export interface PixProvider {
-  name: "mock" | "asaas";
+  name: "mock" | "asaas" | "stripe";
+  /** Consegue pagar Pix a terceiros (saque automático)? Sem isso (Stripe) o saque é pago à mão pelo administrador. */
+  canSendPix: boolean;
   createCharge(args: CreateChargeArgs): Promise<{ chargeId: string; copyPaste: string; qrImage?: string | null }>;
   /** Consulta o estado REAL da cobrança no provedor — a fonte da verdade (nunca o corpo do webhook). */
   getCharge(chargeId: string): Promise<ChargeInfo>;
