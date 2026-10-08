@@ -12,7 +12,7 @@ const dirs: string[] = [];
 
 /** Roda o instalador com um ambiente limpo e sem terminal (stdin fechado). */
 function exec(env: Record<string, string>, args: string[] = []) {
-  const r = spawnSync("bash", [SCRIPT, ...args], { env: env as NodeJS.ProcessEnv, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const r = spawnSync("bash", [SCRIPT, ...args], { env: { PA_NO_TTY: "1", ...env } as unknown as NodeJS.ProcessEnv, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 const OK = {
@@ -110,12 +110,18 @@ describe.skipIf(process.platform === "win32")("instalador de servidor (scripts/i
     ["domínio sem ponto", { PA_DOMAIN: "localhost" }, /Domínio inválido/],
     ["e-mail do administrador inválido", { PA_ADMIN_EMAIL: "isso-nao-e-email" }, /E-mail inválido/],
     ["SMTP sem smtp://", { PA_SMTP_URL: "http://servidor:587" }, /smtp:\/\//],
-    ["SMTP com cifrão (quebraria o arquivo)", { PA_SMTP_URL: "smtp://u:senha$x@servidor:587" }, /caractere que quebraria/],
-    ["SMTP com aspas", { PA_SMTP_URL: 'smtp://u:se"nha@servidor:587' }, /caractere que quebraria/],
-    ["SMTP com crase", { PA_SMTP_URL: "smtp://u:se`nha@servidor:587" }, /caractere que quebraria/],
+    ["SMTP com cifrão (quebraria o arquivo)", { PA_SMTP_URL: "smtp://u:senha$x@servidor:587" }, /caractere  \$  que quebraria.*%24/],
+    ["SMTP com aspas", { PA_SMTP_URL: 'smtp://u:se"nha@servidor:587' }, /caractere  "  que quebraria.*%22/],
+    ["SMTP com crase", { PA_SMTP_URL: "smtp://u:se`nha@servidor:587" }, /caractere  `  que quebraria.*%60/],
+    ["SMTP com # solto na senha (cortaria o endereço)", { PA_SMTP_URL: "smtp://u:se#nha@servidor:587" }, /mal formado.*%23/],
+    ["SMTP com ? solto na senha", { PA_SMTP_URL: "smtp://u:se?nha@servidor:587" }, /mal formado.*%3F/],
+    ["SMTP com / solto na senha", { PA_SMTP_URL: "smtp://u:se/nha@servidor:587" }, /mal formado.*%2F/],
+    ["SMTP com @ solto na senha (dois @)", { PA_SMTP_URL: "smtp://u:se@nha@servidor:587" }, /mal formado.*%40/],
+    ["SMTP com porta inválida", { PA_SMTP_URL: "smtp://u:p@servidor:abc" }, /mal formado/],
+    ["SMTP com % solto", { PA_SMTP_URL: "smtp://u:50%@servidor:587" }, /% solto/],
     ["remetente sem e-mail", { PA_MAIL_FROM: "Prime Arena" }, /endereço de e-mail/],
     ["remetente @primearena.local", { PA_MAIL_FROM: "Prime Arena <no-reply@primearena.local>" }, /\.local/],
-    ["remetente com cifrão", { PA_MAIL_FROM: "Prime $Arena <a@arena.exemplo.com.br>" }, /não permitido/],
+    ["remetente com cifrão", { PA_MAIL_FROM: "Prime $Arena <a@arena.exemplo.com.br>" }, /caractere  \$  que não é permitido/],
   ])("recusa e não grava nada: %s", (_nome, over, msg) => {
     const d = workdir();
     const r = run(d, { ...OK, ...over });
@@ -171,7 +177,11 @@ describe.skipIf(process.platform === "win32")("instalador: fluxo completo com co
     };
     stub("docker", `echo "docker $*" >> "$STUB_LOG"
 [ "$1" = "--version" ] && echo "Docker version 99.0.0"
-[ "$1" = "volume" ] && [ -n "\${STUB_VOLUME:-}" ] && echo "\$STUB_VOLUME"
+[ "$1" = "info" ] && [ "\${STUB_DOCKER_DOWN:-0}" = "1" ] && exit 1
+if [ "$1" = "volume" ]; then
+  [ "\${STUB_VOLUME_FAIL:-0}" = "1" ] && exit 1
+  [ -n "\${STUB_VOLUME:-}" ] && echo "\$STUB_VOLUME"
+fi
 if [ "$1" = "compose" ]; then
   case "$2" in
     version) if [ "\${STUB_NOCOMPOSE:-0}" = "1" ] && [ ! -f "\$STUB_FLAGS/compose-installed" ]; then exit 1; fi; echo "Docker Compose version v9" ;;
@@ -192,19 +202,29 @@ exit 0`);
     stub("getent", `if [ "$1" = "ahostsv6" ]; then [ -n "\${STUB_AAAA:-}" ] && echo "\$STUB_AAAA STREAM $2"; exit 0; fi
 [ "\${STUB_DNS_FAIL:-0}" = "1" ] && exit 2
 echo "\${STUB_DNS_IP:-203.0.113.5} STREAM $2"`);
-    stub("ss", `[ -n "\${STUB_BUSY:-}" ] && echo 'LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:(("'"\$STUB_BUSY"'",pid=812,fd=6))'
+    stub("ss", `case "$*" in
+  *sport*) [ -n "\${STUB_BUSY:-}" ] && echo 'LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:(("'"\$STUB_BUSY"'",pid=812,fd=6))' ;;
+  *) [ -n "\${STUB_SSHD_PORT:-}" ] && echo 'LISTEN 0 128 0.0.0.0:'"\$STUB_SSHD_PORT"' 0.0.0.0:* users:(("sshd",pid=700,fd=3))' ;;
+esac
 exit 0`);
     stub("id", `if [ "$1" = "-u" ]; then echo "\${STUB_UID:-0}"; else /usr/bin/id "$@"; fi`);
-    stub("ufw", `echo "ufw $*" >> "$STUB_LOG"`);
+    stub("ufw", `echo "ufw $*" >> "$STUB_LOG"
+[ "\${STUB_UFW_FAIL:-0}" = "1" ] && exit 1
+exit 0`);
     stub("apt-get", `echo "apt-get $*" >> "$STUB_LOG"
-case "$*" in *" update"*) [ "\${STUB_APT_FAIL:-0}" = "1" ] && exit 100 ;; esac
+case "$*" in *" update"*)
+  [ "\${STUB_APT_FAIL:-0}" = "1" ] && exit 100
+  if [ "\${STUB_APT_LOCK:-0}" -gt 0 ]; then
+    n=$(cat "\$STUB_FLAGS/lock-count" 2>/dev/null || echo 0)
+    if [ "$n" -lt "\$STUB_APT_LOCK" ]; then echo $((n + 1)) > "\$STUB_FLAGS/lock-count"; echo "E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 812" >&2; exit 100; fi
+  fi ;; esac
 case "$*" in *docker-compose-plugin*|*docker-compose-v2*) [ "\${STUB_APT_NOCOMPOSE:-0}" = "1" ] || : > "\$STUB_FLAGS/compose-installed" ;; esac
 exit 0`);
     stub("systemctl", `echo "systemctl $*" >> "$STUB_LOG"`);
     stub("sshd", `echo "port 2200"`);
     stub("sleep", `exit 0`);
     // NENHUM teste pode mexer no sistema de quem o roda: swap e fstab apontam para arquivos temporários e estes comandos são simulados
-    stub("fallocate", `echo "fallocate $*" >> "$STUB_LOG"; : > "$3"`);
+    stub("fallocate", `echo "fallocate $*" >> "$STUB_LOG"; [ "\${STUB_SWAP_FAIL:-0}" = "1" ] && exit 1; : > "$3"`);
     stub("dd", `echo "dd $*" >> "$STUB_LOG"; exit 1`);
     stub("mkswap", `echo "mkswap $*" >> "$STUB_LOG"`);
     stub("swapon", `echo "swapon $*" >> "$STUB_LOG"`);
@@ -351,7 +371,8 @@ exit 0`);
     const r = sb.go({ PA_YES: "1", STUB_BUSY: "nginx" });
     expect(r.status).not.toBe(0);
     expect(r.stderr).toMatch(/portas 80\/443 já estão em uso por: nginx/);
-    expect(r.stderr).toMatch(/systemctl disable --now apache2 nginx/);
+    expect(r.stderr).toMatch(/systemctl disable --now nginx\b/);
+    expect(r.stderr).not.toMatch(/apache2/); // só o programa que realmente está nas portas
     expect(sb.calls()).not.toContain("compose up");
   });
 
@@ -435,11 +456,15 @@ exit 0`);
     expect(pending.stdout).not.toMatch(/Pronto\./);
   });
 
-  it("dica de cópia do .env funciona para quem entrou com outro usuário (sudo) e para root", () => {
+  it("dica de cópia do .env e comandos seguintes funcionam para quem entrou com outro usuário (sudo) e para root", () => {
     const asUser = sandbox().go({ PA_YES: "1", SUDO_USER: "ubuntu" });
-    expect(asUser.stdout).toMatch(/ssh ubuntu@203\.0\.113\.5 'sudo cat .*\.env' > env-primearena\.txt/);
+    expect(asUser.stdout).toMatch(/rode no servidor:  sudo cat .*\.env/);
+    expect(asUser.stdout).not.toMatch(/scp /);
+    expect(asUser.stdout).toMatch(/sudo docker compose ps/); // sem sudo o usuário comum não conseguiria
     const asRoot = sandbox().go({ PA_YES: "1" });
+    expect(asRoot.stdout).toMatch(/rode no servidor:  cat .*\.env/);
     expect(asRoot.stdout).toMatch(/scp root@203\.0\.113\.5:.*\.env \.\/env-primearena\.txt/);
+    expect(asRoot.stdout).not.toMatch(/sudo docker compose/);
   });
 
   it("remetente com 'test' ou 'local' no meio do domínio é aceito (só o final do endereço conta)", () => {
@@ -449,5 +474,160 @@ exit 0`);
       expect(r.status, `${from}: ${r.stderr}`).toBe(0);
       expect(envOf(d).MAIL_FROM).toBe(from);
     }
+  });
+
+  // ───────── correções da revisão adversária (2ª rodada) ─────────
+  it("SMTP bem formado é aceito: senha com símbolos em código %XX, sem usuário, porta padrão", () => {
+    for (const smtp of [
+      "smtp://usuario%40exemplo.com:s%23nh%2Fa%3F%25@smtp.exemplo.com:587",
+      "smtps://apikey:SG.abc-123_xyz@smtp.sendgrid.net:465",
+      "smtp://localhost:25",
+      "smtp://smtp.exemplo.com",
+    ]) {
+      const d = workdir();
+      const r = run(d, { ...OK, PA_SMTP_URL: smtp });
+      expect(r.status, `${smtp}: ${r.stderr}`).toBe(0);
+      expect(envOf(d).SMTP_URL).toBe(smtp);
+    }
+  });
+
+  it(".env editado no Windows (fim de linha CRLF) funciona e a verificação final usa o endereço certo", () => {
+    const sb = sandbox();
+    expect(sb.go({ PA_YES: "1" }).status).toBe(0);
+    const envPath = path.join(sb.d, ".env");
+    writeFileSync(envPath, readFileSync(envPath, "utf8").replace(/\n/g, "\r\n"));
+    const r = sb.go({ PA_YES: "1" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(sb.calls()).toContain("https://arena.exemplo.com.br/entrar");
+    expect(sb.calls()).not.toMatch(/\r/);
+  });
+
+  it(".env existente com APP_URL diferente do DOMAIN ou remetente de exemplo é recusado", () => {
+    const sb = sandbox();
+    expect(sb.go({ PA_YES: "1" }).status).toBe(0);
+    const envPath = path.join(sb.d, ".env");
+    const good = readFileSync(envPath, "utf8");
+    writeFileSync(envPath, good.replace(/^APP_URL=.*$/m, 'APP_URL="https://outro-dominio.com.br"'));
+    const a = sb.go({ PA_YES: "1" });
+    expect(a.status).not.toBe(0);
+    expect(a.stderr).toMatch(/APP_URL \(deveria ser https:\/\/arena\.exemplo\.com\.br/);
+    writeFileSync(envPath, good.replace(/^MAIL_FROM=.*$/m, 'MAIL_FROM="Prime Arena <nao-responda@meusite.com.br>"'));
+    const b = sb.go({ PA_YES: "1" });
+    expect(b.status).not.toBe(0);
+    expect(b.stderr).toMatch(/MAIL_FROM \(ainda é o exemplo/);
+  });
+
+  it("servidor recém-criado com o apt ocupado: espera e segue; erro de apt de verdade aparece na hora", () => {
+    const sb = sandbox();
+    const r = sb.go({ PA_YES: "1", STUB_APT_LOCK: "2" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toMatch(/terminando atualizações automáticas/);
+    expect(sb.calls().match(/apt-get .*update/g)?.length).toBe(3); // 2 tentativas presas + 1 que passou
+  });
+
+  it("Docker instalado mas sem responder: para com instrução; consulta de volumes que falha também para (não gera chaves às cegas)", () => {
+    const down = sandbox().go({ PA_YES: "1", STUB_DOCKER_DOWN: "1" });
+    expect(down.status).not.toBe(0);
+    expect(down.stderr).toMatch(/não está respondendo.*systemctl restart docker/);
+    const sb = sandbox();
+    const vol = sb.go({ PA_YES: "1", STUB_VOLUME_FAIL: "1" });
+    expect(vol.status).not.toBe(0);
+    expect(vol.stderr).toMatch(/Não consegui consultar os volumes do Docker/);
+    expect(existsSync(path.join(sb.d, ".env"))).toBe(false);
+  });
+
+  it("swap e firewall que falham NÃO derrubam a instalação: avisam e seguem", () => {
+    const sb = sandbox();
+    writeFileSync(path.join(sb.d, "meminfo"), "MemTotal:       1000000 kB\nSwapTotal:            0 kB\n");
+    const r = sb.go({ PA_YES: "1", STUB_SWAP_FAIL: "1", STUB_UFW_FAIL: "1" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toMatch(/Não consegui criar o swap/);
+    expect(r.stderr).toMatch(/Não consegui configurar o firewall/);
+    expect(sb.calls()).toContain("docker compose up -d --build");
+  });
+
+  it("swap de uma tentativa anterior que ficou pela metade é refeito e ativado", () => {
+    const sb = sandbox();
+    writeFileSync(path.join(sb.d, "meminfo"), "MemTotal:       1000000 kB\nSwapTotal:            0 kB\n");
+    writeFileSync(sb.swapfile, ""); // arquivo existe, mas nunca foi ativado
+    const r = sb.go({ PA_YES: "1", PA_SKIP_FIREWALL: "1" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(sb.calls()).toContain(`mkswap ${sb.swapfile}`);
+    expect(sb.calls()).toContain(`swapon ${sb.swapfile}`);
+  });
+
+  it("firewall nunca tranca o SSH: porta informada (PA_SSH_PORT) e a do sshd lida do sistema também são liberadas antes de ligar", () => {
+    const sb = sandbox();
+    const r = sb.go({ PA_YES: "1", PA_SSH_PORT: "2222", STUB_SSHD_PORT: "2299", SSH_CONNECTION: "" });
+    expect(r.status, r.stderr).toBe(0);
+    const calls = sb.calls();
+    for (const port of ["22", "2200", "2222", "2299"]) expect(calls, port).toContain(`ufw allow ${port}/tcp`);
+    expect(calls.lastIndexOf("ufw allow 2299/tcp")).toBeLessThan(calls.indexOf("ufw --force enable"));
+  });
+
+  it("portas ocupadas por apache2: o comando sugerido é só do apache2", () => {
+    const r = sandbox().go({ PA_YES: "1", STUB_BUSY: "apache2" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/systemctl disable --now apache2\b/);
+    expect(r.stderr).not.toMatch(/nginx/);
+  });
+});
+
+// ───────── Enter na pergunta de risco = NÃO (precisa de um terminal de verdade: usa pty via python3) ─────────
+const hasPython = spawnSync("python3", ["--version"]).status === 0;
+describe.skipIf(process.platform === "win32" || !hasPython)("instalador: perguntas com terminal de verdade (pty)", () => {
+  const PTY = String.raw`
+import os, pty, select, sys, time, json, re
+cfg = json.loads(sys.argv[1])
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvpe("bash", ["bash", cfg["script"]], cfg["env"])
+out = b""; t0 = time.time(); i = 0
+while time.time() - t0 < 30:
+    r, _, _ = select.select([fd], [], [], 0.3)
+    if r:
+        try: chunk = os.read(fd, 4096)
+        except OSError: break
+        if not chunk: break
+        out += chunk
+        last = out.decode("utf8", "replace").split("\n")[-1]
+        if i < len(cfg["answers"]) and re.search(cfg["prompt"], last):
+            os.write(fd, (cfg["answers"][i] + "\n").encode()); i += 1
+    else:
+        try:
+            if os.waitpid(pid, os.WNOHANG)[0]: break
+        except ChildProcessError: break
+print(re.sub(r"\x1b\[[0-9;]*m", "", out.decode("utf8", "replace")))
+`;
+  function ptyRun(env: Record<string, string>, answers: string[], prompt: string) {
+    const r = spawnSync("python3", ["-c", PTY, JSON.stringify({ script: SCRIPT, env, answers, prompt })], { encoding: "utf8" });
+    return r.stdout;
+  }
+
+  it("Enter em 'Continuar mesmo assim?' (DNS errado) INTERROMPE a instalação; 's' continua", () => {
+    const mk = () => {
+      const d = workdir();
+      const bin = path.join(d, "_bin");
+      mkdirSync(bin);
+      const stub = (n: string, body: string) => { writeFileSync(path.join(bin, n), `#!/bin/sh\n${body}\n`); chmodSync(path.join(bin, n), 0o755); };
+      stub("docker", `[ "$1" = "--version" ] && echo "Docker version 99"; exit 0`);
+      stub("curl", `for a in "$@"; do case "$a" in *ipify*|*ifconfig.me*) echo 203.0.113.5; exit 0;; esac; done; exit 0`);
+      stub("getent", `[ "$1" = "ahostsv6" ] && exit 0; echo "192.0.2.77 STREAM $2"`);
+      stub("id", `[ "$1" = "-u" ] && echo 0 || /usr/bin/id "$@"`);
+      stub("apt-get", `exit 0`); stub("systemctl", `exit 0`); stub("sleep", `exit 0`); stub("ss", `exit 0`);
+      const osr = path.join(d, "os-release"); writeFileSync(osr, "ID=ubuntu\n");
+      const mem = path.join(d, "meminfo"); writeFileSync(mem, "MemTotal: 4000000 kB\nSwapTotal: 0 kB\n");
+      const env = { PATH: `${bin}:${process.env.PATH ?? ""}`, HOME: process.env.HOME ?? "", TERM: "xterm", PA_DIR: d, PA_OS_RELEASE: osr, PA_MEMINFO: mem, PA_SKIP_FIREWALL: "1", PA_SKIP_SWAP: "1", ...OK };
+      return { d, env };
+    };
+    const a = mk();
+    const enter = ptyRun(a.env, [""], "Continuar mesmo assim\\? \\[s/N\\]: $");
+    expect(enter).toContain("[s/N]"); // o padrão (Enter) é NÃO
+    expect(enter).toMatch(/Instalação interrompida/);
+    expect(existsSync(path.join(a.d, ".env"))).toBe(false);
+    const b = mk();
+    const yes = ptyRun(b.env, ["s"], "Continuar mesmo assim\\? \\[s/N\\]: $");
+    expect(yes).not.toMatch(/Instalação interrompida/);
+    expect(existsSync(path.join(b.d, ".env"))).toBe(true);
   });
 });

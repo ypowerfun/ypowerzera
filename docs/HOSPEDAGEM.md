@@ -53,8 +53,9 @@ bash scripts/instalar-servidor.sh
 
 O instalador instala o Docker, cria o arquivo de memória (swap) se faltar RAM, libera só as portas SSH/80/443 no firewall, **faz 4 perguntas** (domínio, o seu e-mail de administrador, o endereço SMTP, que você digita **sem ele aparecer na tela**, e o remetente dos e-mails), confere se o domínio já aponta para o servidor, gera os segredos, cria o `.env` e sobe o site com HTTPS. No fim mostra se `https://seudominio` já está no ar e os próximos passos.
 
-- Se entrou no servidor com outro usuário (não `root`), use `sudo bash scripts/instalar-servidor.sh`.
-- Se baixou o zip pelo GitHub ("Download ZIP"), ele cria uma pasta extra: entre nela (`cd /opt/primearena/ypowerzera-*`) antes de rodar o instalador.
+- Se entrou no servidor com outro usuário (não `root`), coloque `sudo` na frente de cada comando do bloco acima (`sudo apt-get …`, `sudo mkdir …`, `sudo unzip …`) e rode o instalador com `sudo bash scripts/instalar-servidor.sh`. Depois do instalador, os comandos `docker compose …` também levam `sudo`.
+- "Pasta do projeto" é a pasta onde ficam o `docker-compose.yml` e o `.env` (neste guia, `/opt/primearena`). Todos os comandos `docker compose …` precisam ser rodados dentro dela (`cd /opt/primearena`).
+- Se baixou o zip pelo GitHub ("Download ZIP"), ele cria uma pasta extra dentro de `/opt/primearena`: entre nela (`cd /opt/primearena/ypowerzera-*`) antes de rodar o instalador e, neste guia, leia "`/opt/primearena`" como essa pasta. (O zip entregue pronto não tem essa pasta extra.)
 - O instalador **para e explica** se: o DNS ainda não aponta para o servidor (ou há um registro IPv6/AAAA de outro lugar), as portas 80/443 já estão ocupadas por outro programa (apache2/nginx), o `.env` que já existe está incompleto, ou já existe um banco deste site no servidor mas o `.env` sumiu (nesse caso **restaure o `.env` guardado**: gerar chaves novas tornaria os CPFs salvos ilegíveis).
 - **Rodar de novo é seguro: ele nunca troca os segredos de um `.env` completo.** Para **mudar uma resposta depois** (domínio, SMTP, remetente), edite o `.env` (`nano .env`) e rode `docker compose up -d`; se mudar o domínio, ajuste `DOMAIN` e `APP_URL` e o DNS.
 
@@ -77,7 +78,7 @@ Depois, siga a **seção 6** (criar o administrador), a **seção 7** (conferir 
 1. Contrate o VPS e anote o **IP público** dele (ex.: `203.0.113.10`).
 2. No painel onde o domínio foi comprado, abra **DNS** e crie:
    - registro **A**: nome `@` (ou o próprio domínio) → o IP do VPS
-   - registro **A**: nome `www` → o mesmo IP (opcional)
+   - **não crie** o registro `www`: o site responde só no endereço exato do domínio (sem `www`) e um `www` apontado para o servidor daria erro de certificado. Se quiser o `www`, faça-o redirecionar para o domínio no painel do seu registro de domínio.
 3. **Cloudflare:** se usar, deixe a nuvem **cinza ("somente DNS")**. Com a nuvem laranja (proxy) todos os visitantes aparecem com o IP da Cloudflare e os limites anti-abuso por IP passam a valer para todo mundo junto.
 4. Espere o DNS propagar (de minutos a poucas horas). Teste: `ping meusite.com.br` deve mostrar o IP do VPS.
 
@@ -148,6 +149,7 @@ chmod 600 .env          # só o dono lê (ele guarda as senhas)
 No seu computador com Node instalado: `npm run secrets`. No servidor, sem Node:
 
 ```bash
+cd /opt/primearena
 docker run --rm -v "$PWD/scripts:/s:ro" node:22-bookworm-slim node /s/gen-secrets.mjs
 ```
 
@@ -216,7 +218,7 @@ Do **seu computador** (precisa do Node):
 npm run verificar-site -- https://meusite.com.br
 ```
 
-Ou, sem Node, do servidor: `docker run --rm -v "$PWD/scripts:/s:ro" node:22-bookworm-slim node /s/check-site.mjs https://meusite.com.br`
+Ou, sem Node, do servidor (dentro de `/opt/primearena`): `docker run --rm -v "$PWD/scripts:/s:ro" node:22-bookworm-slim node /s/check-site.mjs https://meusite.com.br`
 
 Ele só faz leituras e confere: HTTPS e cabeçalhos de segurança, que as áreas `/admin`, `/carteira` e `/conta` exigem login, que arquivos como `.env`, `package.json` e o código não são servidos, que o simulador de Pix não existe, que o agendador e os webhooks recusam quem não tem o segredo e que erros não mostram detalhes técnicos. Tudo precisa estar ✔.
 

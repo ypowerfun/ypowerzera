@@ -15,10 +15,15 @@ Este pacote é o site completo, pronto para colocar no ar. **Você não precisa 
 
 Com um servidor **Ubuntu/Debian novo**, o domínio já apontando para ele e o endereço SMTP em mãos:
 
+No seu computador: `scp prime-arena-1.0.zip root@IP_DO_SERVIDOR:/root/`. Depois, no servidor (`ssh root@IP_DO_SERVIDOR`):
+
 ```bash
-unzip prime-arena-1.0.zip -d /opt/primearena && cd /opt/primearena
+apt-get update && apt-get install -y unzip
+unzip /root/prime-arena-1.0.zip -d /opt/primearena && cd /opt/primearena
 bash scripts/instalar-servidor.sh
 ```
+
+(Se entrou com outro usuário que não seja `root`, coloque `sudo` na frente de cada comando.)
 
 Ele faz 4 perguntas e cuida do resto (Docker, firewall, segredos, HTTPS). Detalhes e o que fazer antes: seção "Caminho rápido" de [`docs/HOSPEDAGEM.md`](docs/HOSPEDAGEM.md).
 

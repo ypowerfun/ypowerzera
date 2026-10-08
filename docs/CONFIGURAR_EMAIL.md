@@ -70,7 +70,7 @@ SMTP_URL="smtps://resend:SUA_CHAVE_API@smtp.resend.com:465"                    #
 ```
 
 ### Caracteres especiais na senha
-Se o usuário ou a senha tiverem `@ : / # ? % $ ! & +` ou espaço, troque cada um pelo código `%XX`:
+Se o usuário ou a senha tiverem `@ : / # ? % $ ! & + " ' ` e a barra invertida `\`, ou espaço, troque cada um pelo código `%XX`. O instalador e o site recusam o endereço se algum desses vier "solto":
 
 | Caractere | Código | | Caractere | Código |
 |---|---|---|---|---|
@@ -78,6 +78,9 @@ Se o usuário ou a senha tiverem `@ : / # ? % $ ! & +` ou espaço, troque cada u
 | `:` | `%3A` | | `?` | `%3F` |
 | `/` | `%2F` | | `%` | `%25` |
 | espaço | `%20` | | `+` | `%2B` |
+| `$` | `%24` | | `` ` `` (crase) | `%60` |
+| `"` | `%22` | | `'` | `%27` |
+| `\` | `%5C` | | `&` | `%26` |
 
 Exemplo: a senha `abc@123/x` vira `abc%40123%2Fx`. Dica: se o login for um e-mail (`voce@exemplo.com`), o `@` dele também vira `%40`.
 
@@ -112,7 +115,7 @@ Depois, para aplicar:
 docker compose up -d
 ```
 
-> ⚠️ **`APP_URL` errado = link quebrado.** Se estiver `http://localhost:3000`, o site se recusa a subir em produção; se estiver com um domínio errado, o link do e-mail leva para o lugar errado.
+> ⚠️ **`APP_URL` errado = link quebrado.** O site só confere se o endereço começa com `https://`; se estiver com um domínio errado (ou `http://localhost:3000`), o link do e-mail leva para o lugar errado e o usuário não consegue confirmar a conta. Confira sempre que `APP_URL` é o endereço real do site.
 
 ---
 

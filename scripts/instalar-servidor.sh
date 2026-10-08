@@ -23,7 +23,7 @@
 #      PA_DOMAIN=meusite.com.br PA_ADMIN_EMAIL=voce@exemplo.com PA_SMTP_URL='smtp://usuario:senha@servidor:587' \
 #      PA_MAIL_FROM='Prime Arena <nao-responda@meusite.com.br>' PA_YES=1 sudo -E bash scripts/instalar-servidor.sh
 #  Outras: PA_DIR (pasta do projeto), PA_DRY_RUN=1 (só cria o .env, não instala nem sobe nada), PA_IGNORE_DNS=1,
-#          PA_SKIP_FIREWALL=1, PA_SKIP_SWAP=1, PA_FORCE_NEW_KEYS=1, PA_SWAPFILE (padrão /swapfile), PA_FSTAB (padrão /etc/fstab).
+#          PA_SKIP_FIREWALL=1, PA_SKIP_SWAP=1, PA_FORCE_NEW_KEYS=1, PA_SSH_PORT (porta do SSH, se não for a 22), PA_NO_TTY=1, PA_SWAPFILE (padrão /swapfile), PA_FSTAB (padrão /etc/fstab).
 # ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -42,7 +42,7 @@ case "${1:-}" in
 esac
 
 # Existe um terminal para conversar com a pessoa? (/dev/tty pode existir como arquivo sem estar disponível de verdade)
-have_tty() { [ -t 0 ] && return 0; ( : </dev/tty ) 2>/dev/null; }
+have_tty() { [ "${PA_NO_TTY:-0}" = "1" ] && return 1; [ -t 0 ] && return 0; ( : </dev/tty ) 2>/dev/null; }
 
 # pergunta (usa a variável de ambiente se já veio preenchida; sem terminal e sem valor, aborta)
 ask() { # ask VAR "Pergunta" [padrão] [secreto]   (secreto=1: a digitação não aparece na tela)
@@ -61,25 +61,51 @@ ask() { # ask VAR "Pergunta" [padrão] [secreto]   (secreto=1: a digitação nã
   fi
   printf -v "$var" '%s' "${ans:-$def}"
 }
-confirm() { # confirm "Pergunta" (padrão: sim). Sem terminal e sem PA_YES=1, a resposta é NÃO (nada arriscado roda sem pedir).
+confirm() { # confirm "Pergunta" [s|n]  (padrão da tecla Enter: s = sim, n = não). Sem terminal e sem PA_YES=1, a resposta é NÃO.
   if [ "$YES" = "1" ]; then return 0; fi
-  local ans=""
+  local ans="" def="${2:-s}" hint="[S/n]"
+  [ "$def" = "n" ] && hint="[s/N]"
   if ! have_tty; then warn "Sem terminal para perguntar; pulei: $1 (use PA_YES=1 para aceitar tudo)"; return 1; fi
-  if [ -t 0 ]; then read -r -p "$1 [S/n]: " ans; else read -r -p "$1 [S/n]: " ans </dev/tty; fi
-  case "${ans:-s}" in s|S|sim|Sim|SIM|y|Y|yes) return 0 ;; *) return 1 ;; esac
+  if [ -t 0 ]; then read -r -p "$1 $hint: " ans; else read -r -p "$1 $hint: " ans </dev/tty; fi
+  case "${ans:-$def}" in s|S|sim|Sim|SIM|y|Y|yes) return 0 ;; *) return 1 ;; esac
 }
+
+# primeiro caractere proibido (quebraria o arquivo de configuração) em um texto
+bad_char() {
+  local c
+  for c in '$' '`' '"' "'" '\'; do case "$1" in *"$c"*) printf '%s' "$c"; return 0 ;; esac; done
+  return 0
+}
+code_of() { case "$1" in '$') printf '%%24' ;; '`') printf '%%60' ;; '"') printf '%%22' ;; "'") printf '%%27' ;; '\') printf '%%5C' ;; esac; }
 
 rand_hex() { if command -v openssl >/dev/null 2>&1; then openssl rand -hex "$1"; else od -An -tx1 -N"$1" /dev/urandom | tr -d ' \n'; fi; }
 rand_b64() { if command -v openssl >/dev/null 2>&1; then openssl rand -base64 "$1" | tr -d '\n'; else head -c "$1" /dev/urandom | base64 | tr -d '\n'; fi; }
 
 # apt que ESPERA o servidor recém-criado terminar as atualizações automáticas (que seguram o "lock" nos primeiros minutos)
 apt_get() { DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 "$@"; }
+# apt que ESPERA (até ~5 min) quando outro processo segura o lock; qualquer outro erro aparece na hora
+apt_retry() {
+  local i out rc=0
+  for i in $(seq 1 30); do
+    rc=0; out="$(apt_get "$@" 2>&1)" || rc=$?
+    if [ "$rc" -eq 0 ]; then return 0; fi
+    if printf '%s' "$out" | grep -Eqi 'Could not get lock|Unable to acquire the dpkg|dpkg frontend lock|is held by process'; then
+      [ "$i" -eq 1 ] && warn "O servidor está terminando atualizações automáticas (comum em servidor recém-criado). Vou esperar e tentar de novo, por até uns 5 minutos…"
+      sleep 10; continue
+    fi
+    printf '%s\n' "$out" >&2; return "$rc"
+  done
+  printf '%s\n' "$out" >&2; return 1
+}
 
 # valor de uma chave do .env, sem aspas
 env_value() {
   local line v
   line="$(grep -m1 "^$1=" "$ENV_FILE" 2>/dev/null || true)"
-  v="${line#*=}"; v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+  line="${line%$'\r'}"                       # arquivo editado no Windows (fim de linha CRLF)
+  v="${line#*=}"
+  v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"   # espaços nas pontas
+  v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
   printf '%s' "$v"
 }
 
@@ -107,6 +133,10 @@ else
   warn "Modo de teste (PA_DRY_RUN=1): não instala nada e não sobe o site; só cria o .env."
 fi
 
+# Quem entrou com outro usuário (ex.: ubuntu) e usou sudo precisa do sudo nos comandos seguintes (o .env é só do root)
+SUDO=""
+if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then SUDO="sudo "; fi
+
 ENV_FILE="$PA_DIR/.env"
 HAVE_ENV=0
 if [ -f "$ENV_FILE" ]; then
@@ -123,20 +153,23 @@ if [ -f "$ENV_FILE" ]; then
   v="$(env_value APP_URL)"
   if [ -n "$v" ] && [[ "$v" != https://* ]]; then missing+=("APP_URL (precisa começar com https://)"); fi
   if [ "$(env_value DOMAIN)" = "meusite.com.br" ]; then missing+=("DOMAIN (ainda é o exemplo meusite.com.br)"); fi
+  dom="$(env_value DOMAIN)"; url="$(env_value APP_URL)"
+  if [ -n "$dom" ] && [ -n "$url" ] && [ "$url" != "https://$dom" ]; then missing+=("APP_URL (deveria ser https://$dom, igual ao DOMAIN)"); fi
+  if [[ "$(env_value MAIL_FROM)" == *"@meusite.com.br"* ]]; then missing+=("MAIL_FROM (ainda é o exemplo @meusite.com.br)"); fi
   if [ "$(env_value ADMIN_EMAILS)" = "voce@exemplo.com" ]; then missing+=("ADMIN_EMAILS (ainda é o exemplo voce@exemplo.com)"); fi
   if [ "${#missing[@]}" -gt 0 ]; then
-    die "O .env que já existe em $ENV_FILE não está pronto. Falta ou está inválido: ${missing[*]}. Se foi você quem o editou, complete esses itens (nano .env). Se é um modelo ou um .env de teste, renomeie-o (mv .env .env.antigo) e rode o instalador de novo."
+    die "O .env que já existe em $ENV_FILE não está pronto. Falta ou está inválido: ${missing[*]}. Se foi você quem o editou, complete esses itens (${SUDO}nano .env). Se é um modelo ou um .env de teste, renomeie-o (${SUDO}mv .env .env.antigo) e rode o instalador de novo."
   fi
   ok "Já existe um .env completo em $PA_DIR: os segredos NÃO serão trocados."
-  say "Para mudar uma resposta (domínio, SMTP...), edite o .env (nano .env) e rode:  docker compose up -d"
+  say "Para mudar uma resposta (domínio, SMTP...), edite o .env (${SUDO}nano .env) e rode:  ${SUDO}docker compose up -d"
 fi
 
 # ─────────── 1) pacotes e Docker ───────────
 if [ "$DRY" != "1" ]; then
   say "Preparando o servidor (se ele acabou de ser criado, pode levar alguns minutos esperando as atualizações automáticas)…"
-  apt_get -qq update || die "Não consegui atualizar a lista de pacotes do servidor (apt-get update). Confira se o servidor tem internet e rode de novo."
+  apt_retry -qq update || die "Não consegui atualizar a lista de pacotes do servidor (apt-get update). Veja a mensagem acima, confira se o servidor tem internet e rode de novo."
   if ! command -v curl >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1; then
-    apt_get install -y curl unzip ca-certificates || die "Não consegui instalar curl/unzip. Rode de novo em alguns minutos."
+    apt_retry install -y curl unzip ca-certificates || die "Não consegui instalar curl/unzip. Rode de novo em alguns minutos."
   fi
   if ! command -v docker >/dev/null 2>&1; then
     say "Instalando o Docker (script oficial get.docker.com)…"
@@ -144,16 +177,18 @@ if [ "$DRY" != "1" ]; then
   fi
   if ! docker compose version >/dev/null 2>&1; then
     # Docker que já existia sem o "docker compose" (ex.: pacote docker.io do Ubuntu): tenta instalar o complemento
-    apt_get install -y docker-compose-plugin >/dev/null 2>&1 || apt_get install -y docker-compose-v2 >/dev/null 2>&1 || true
+    apt_retry install -y docker-compose-plugin >/dev/null 2>&1 || apt_retry install -y docker-compose-v2 >/dev/null 2>&1 || true
   fi
   docker compose version >/dev/null 2>&1 || die "Este servidor já tinha o Docker, mas sem o comando 'docker compose'. Remova a versão antiga (apt-get remove -y docker.io) e rode o instalador de novo: ele instala a versão oficial completa."
   systemctl enable --now docker >/dev/null 2>&1 || true
+  docker info >/dev/null 2>&1 || die "O Docker está instalado, mas não está respondendo (o serviço não iniciou). Tente:  systemctl restart docker   e rode o instalador de novo."
   ok "Docker pronto: $(docker --version)"
 
   # Já existe um banco deste site neste servidor mas o .env sumiu: segredos novos tornariam os CPFs salvos ilegíveis.
   if [ "$HAVE_ENV" = "0" ] && [ "${PA_FORCE_NEW_KEYS:-0}" != "1" ]; then
     project="$(basename "$PA_DIR" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g; s/^[^a-z0-9]*//')"
-    vol="$(docker volume ls -q --filter "label=com.docker.compose.project=${project}" --filter "label=com.docker.compose.volume=data" 2>/dev/null | head -n1 || true)"
+    vols="$(docker volume ls -q --filter "label=com.docker.compose.project=${project}" --filter "label=com.docker.compose.volume=data" 2>/dev/null)" || die "Não consegui consultar os volumes do Docker (para saber se já existe um banco deste site). Rode de novo em instantes."
+    vol="$(printf '%s\n' "$vols" | head -n1)"
     if [ -n "$vol" ]; then
       die "Já existe um banco de dados deste site neste servidor (volume '$vol'), mas não há .env nesta pasta. Gerar segredos NOVOS tornaria ilegíveis os CPFs já salvos e derrubaria todos os logins. Coloque aqui o .env que você guardou (cópia de segurança) e rode de novo. Se esse banco é só de teste e pode ser descartado, rode com PA_FORCE_NEW_KEYS=1 (os dados antigos continuarão no volume, mas os CPFs cifrados não abrirão)."
     fi
@@ -167,12 +202,18 @@ if [ "$DRY" != "1" ]; then
     if confirm "Criar 2 GB de swap agora?"; then
       swapfile="${PA_SWAPFILE:-/swapfile}"
       fstab="${PA_FSTAB:-/etc/fstab}"
-      if [ ! -f "$swapfile" ]; then
-        fallocate -l 2G "$swapfile" 2>/dev/null || dd if=/dev/zero of="$swapfile" bs=1M count=2048 status=none
-        chmod 600 "$swapfile" && mkswap "$swapfile" >/dev/null && swapon "$swapfile"
+      make_swap() {
+        if [ ! -f "$swapfile" ]; then
+          { fallocate -l 2G "$swapfile" 2>/dev/null || dd if=/dev/zero of="$swapfile" bs=1M count=2048 status=none; } || return 1
+        fi
+        chmod 600 "$swapfile" || return 1
+        # arquivo de uma tentativa anterior que ficou pela metade: refaz e ativa
+        if ! swapon --show=NAME --noheadings 2>/dev/null | grep -qxF "$swapfile"; then
+          mkswap "$swapfile" >/dev/null && swapon "$swapfile" || return 1
+        fi
         grep -qF "$swapfile " "$fstab" || echo "$swapfile none swap sw 0 0" >> "$fstab"
-        ok "Swap de 2 GB criado."
-      fi
+      }
+      if make_swap; then ok "Swap de 2 GB criado."; else warn "Não consegui criar o swap (alguns servidores/containers não permitem). Sigo sem ele; se a montagem do site falhar por memória, use um servidor com 2 GB ou mais."; fi
     fi
   fi
 
@@ -180,21 +221,28 @@ if [ "$DRY" != "1" ]; then
   if [ "${PA_SKIP_FIREWALL:-0}" != "1" ]; then
     say "Firewall: só SSH, 80 e 443 ficam abertos."
     if confirm "Configurar o firewall (ufw) agora? (o seu acesso por SSH é mantido)"; then
-      command -v ufw >/dev/null 2>&1 || apt_get install -y ufw || die "Não consegui instalar o ufw (firewall)."
-      ports=(22)
-      # nunca se trancar para fora: libera a porta SSH em uso por esta conexão e as configuradas no sshd
-      if [ -n "${SSH_CONNECTION:-}" ]; then ports+=("$(awk '{print $4}' <<<"$SSH_CONNECTION")"); fi
-      if command -v sshd >/dev/null 2>&1; then while read -r p; do ports+=("$p"); done < <(sshd -T 2>/dev/null | awk '/^port / {print $2}'); fi
-      opened=()
-      while read -r p; do
-        case "$p" in ''|*[!0-9]*) continue ;; esac
-        ufw allow "$p/tcp" >/dev/null
-        opened+=("$p")
-      done < <(printf '%s\n' "${ports[@]}" | sort -un)
-      ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw allow 443/udp >/dev/null
-      ufw --force enable >/dev/null
-      ok "Firewall ligado (portas abertas: ${opened[*]} 80 443)."
-      warn "Se o painel do seu provedor de VPS tem um firewall próprio, libere 80 e 443 lá também."
+      make_firewall() {
+        command -v ufw >/dev/null 2>&1 || apt_retry install -y ufw || return 1
+        ports=(22)
+        # nunca se trancar para fora: libera a porta SSH desta conexão, a informada (PA_SSH_PORT) e as que o sshd usa
+        if [ -n "${SSH_CONNECTION:-}" ]; then ports+=("$(awk '{print $4}' <<<"$SSH_CONNECTION")"); fi
+        if [ -n "${PA_SSH_PORT:-}" ]; then ports+=("$PA_SSH_PORT"); fi
+        if command -v sshd >/dev/null 2>&1; then while read -r p; do ports+=("$p"); done < <(sshd -T 2>/dev/null | awk '/^port / {print $2}'); fi
+        if command -v ss >/dev/null 2>&1; then while read -r p; do ports+=("$p"); done < <(ss -ltnpH 2>/dev/null | awk '/"sshd"/ {n = split($4, a, ":"); print a[n]}'); fi
+        opened=()
+        while read -r p; do
+          case "$p" in ''|*[!0-9]*) continue ;; esac
+          ufw allow "$p/tcp" >/dev/null || return 1
+          opened+=("$p")
+        done < <(printf '%s\n' "${ports[@]}" | sort -un)
+        ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null && ufw allow 443/udp >/dev/null && ufw --force enable >/dev/null || return 1
+      }
+      if make_firewall; then
+        ok "Firewall ligado (portas abertas: ${opened[*]} 80 443)."
+        warn "Se o painel do seu provedor de VPS tem um firewall próprio, libere 80 e 443 lá também."
+      else
+        warn "Não consegui configurar o firewall (ufw). O site funciona sem ele, mas proteja o servidor: libere só SSH, 80 e 443 no firewall do painel do seu provedor."
+      fi
     fi
   fi
 fi
@@ -212,15 +260,22 @@ if [ "$HAVE_ENV" = "0" ]; then
 
   say "O site precisa enviar e-mails (confirmação de conta, recuperação de senha). Veja docs/CONFIGURAR_EMAIL.md para pegar o endereço SMTP."
   ask PA_SMTP_URL "3/4 Endereço SMTP (ex.: smtp://usuario:senha@servidor:587; o que você digita não aparece na tela)" "" 1
-  printf '%s' "$PA_SMTP_URL" | grep -Eq '^smtps?://[^[:space:]]+$' || die "O SMTP precisa começar com smtp:// ou smtps:// e não ter espaços."
   case "$PA_SMTP_URL" in
-    *$'\n'*|*$'\r'*|*\$*|*\`*|*\"*|*\'*|*\\*) die "O endereço SMTP tem um caractere que quebraria o arquivo de configuração (\$ \` \" ' \\). Troque esse caractere pelo código %XX (ex.: \$ vira %24). Veja docs/CONFIGURAR_EMAIL.md." ;;
+    *$'\n'*|*$'\r'*) die "O endereço SMTP não pode ter quebra de linha." ;;
   esac
+  c="$(bad_char "$PA_SMTP_URL")"
+  if [ -n "$c" ]; then
+    die "O endereço SMTP tem o caractere  $c  que quebraria o arquivo de configuração. Troque esse caractere pelo código $(code_of "$c") (a tabela completa está em docs/CONFIGURAR_EMAIL.md, seção 4)."
+  fi
+  printf '%s' "$PA_SMTP_URL" | grep -Eq '^smtps?://([^/?#@[:space:]]+@)?[^/?#@:[:space:]]+(:[0-9]{1,5})?/?$' \
+    || die "O endereço SMTP está mal formado. Ele deve ser como smtp://usuario:senha@servidor:587. Se o usuário ou a senha tiverem símbolos (@ : / # ? % e outros), troque cada um pelo código %XX (@ vira %40, / vira %2F, # vira %23, ? vira %3F, % vira %25). Tabela em docs/CONFIGURAR_EMAIL.md, seção 4."
+  printf '%s' "$PA_SMTP_URL" | grep -Eq '%($|[^0-9A-Fa-f]|[0-9A-Fa-f]($|[^0-9A-Fa-f]))' \
+    && die "O endereço SMTP tem um % solto. Um % só pode aparecer como código de dois dígitos (ex.: %40). Para escrever o próprio símbolo %, use %25."
 
   ask PA_MAIL_FROM "4/4 Remetente dos e-mails" "Prime Arena <nao-responda@${PA_DOMAIN}>"
-  case "$PA_MAIL_FROM" in
-    *\$*|*\`*|*\"*|*\\*|*$'\n'*|*$'\r'*) die "O remetente tem caractere não permitido." ;;
-  esac
+  c="$(bad_char "$PA_MAIL_FROM")"
+  [ -z "$c" ] || die "O remetente tem o caractere  $c  que não é permitido (use só letras, espaços, < > @ . - _)."
+  case "$PA_MAIL_FROM" in *$'\n'*|*$'\r'*) die "O remetente não pode ter quebra de linha." ;; esac
   printf '%s' "$PA_MAIL_FROM" | grep -Eq '@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' || die "O remetente precisa ter um endereço de e-mail (ex.: Prime Arena <nao-responda@${PA_DOMAIN}>)."
   printf '%s' "$PA_MAIL_FROM" | grep -Eqi '@[^[:space:]>]*\.(local|invalid|test)[>[:space:]]*$' && die "O endereço do remetente não pode terminar em .local, .invalid ou .test: use um endereço do seu domínio."
 fi
@@ -253,7 +308,7 @@ if [ "$HAVE_ENV" = "0" ] && [ "$DRY" != "1" ] && [ "${PA_IGNORE_DNS:-0}" != "1" 
   else
     warn "Sem o DNS certo o HTTPS não sai (e tentativas falhas podem ser bloqueadas por um tempo pela Let's Encrypt). Usa Cloudflare? Deixe a nuvem CINZA (somente DNS)."
     [ "$YES" = "1" ] && die "Abortando (use PA_IGNORE_DNS=1 para continuar mesmo assim)."
-    confirm "Continuar mesmo assim?" || die "Instalação interrompida. Ajuste o DNS e rode de novo."
+    confirm "Continuar mesmo assim?" n || die "Instalação interrompida. Ajuste o DNS e rode de novo."
   fi
 fi
 
@@ -296,12 +351,11 @@ if [ "$HAVE_ENV" = "0" ]; then
   chmod 600 "$ENV_FILE"
   ok ".env criado (somente você lê: permissão 600)."
   printf '\n%s\n' "${Y}${B}GUARDE UMA CÓPIA DO .env FORA DESTE SERVIDOR.${N} Sem a DATA_ENCRYPTION_KEY que está nele, os CPFs cifrados não podem ser recuperados."
-  who="${SUDO_USER:-root}"
-  ip_hint="${SERVER_IP:-IP_DO_SERVIDOR}"
-  if [ "$who" = "root" ]; then
-    printf '%s\n\n' "No seu computador:  scp root@${ip_hint}:${ENV_FILE} ./env-primearena.txt   (e guarde num gerenciador de senhas)"
+  printf '%s\n' "Para ver o conteúdo e copiá-lo para o seu gerenciador de senhas, rode no servidor:  ${SUDO}cat ${ENV_FILE}"
+  if [ -z "$SUDO" ]; then
+    printf '%s\n\n' "(ou, do seu computador:  scp root@${SERVER_IP:-IP_DO_SERVIDOR}:${ENV_FILE} ./env-primearena.txt)"
   else
-    printf '%s\n\n' "No seu computador:  ssh ${who}@${ip_hint} 'sudo cat ${ENV_FILE}' > env-primearena.txt   (e guarde num gerenciador de senhas)"
+    printf '\n'
   fi
 fi
 
@@ -319,7 +373,16 @@ if command -v ss >/dev/null 2>&1; then
   busy="$(ss -ltnpH '( sport = :80 or sport = :443 )' 2>/dev/null | grep -v 'docker-proxy' || true)"
   if [ -n "$busy" ]; then
     names="$(printf '%s\n' "$busy" | grep -o 'users:(("[^"]*"' | cut -d'"' -f2 | sort -u | tr '\n' ' ' || true)"
-    die "As portas 80/443 já estão em uso por: ${names:-outro programa}. O site precisa delas. Se for apache2 ou nginx, desligue-o (systemctl disable --now apache2 nginx) e rode o instalador de novo."
+    units=""
+    for n in $names; do
+      case "$n" in
+        nginx) units="$units nginx" ;;
+        apache2|httpd) units="$units apache2" ;;
+        caddy) units="$units caddy" ;;
+        *) units="$units $n" ;;
+      esac
+    done
+    die "As portas 80/443 já estão em uso por: ${names:-outro programa}. O site precisa delas. Desligue-o e rode o instalador de novo:  ${SUDO}systemctl disable --now${units:- <programa>}   (se o nome não for de um serviço, encerre esse programa de outra forma)."
   fi
 fi
 
@@ -337,7 +400,7 @@ done
 if [ "$healthy" != "1" ]; then
   warn "O site não respondeu a tempo. Últimas linhas do registro (o motivo costuma estar aqui):"
   docker compose logs --tail=40 app || true
-  die "Corrija o que o registro indica (geralmente o .env) e rode: docker compose up -d"
+  die "Corrija o que o registro indica (geralmente o .env) e rode: ${SUDO}docker compose up -d"
 fi
 ok "O site está respondendo por dentro do servidor."
 
@@ -351,7 +414,7 @@ if [ "$public" = "1" ]; then
   title="${G}${B}Pronto.${N}"
 else
   warn "Ainda não abre em https://${domain}. Quase sempre é o DNS ainda propagando (ou um registro AAAA/IPv6 de outro lugar) ou as portas 80/443 fechadas no firewall do provedor."
-  warn "Veja o certificado:  docker compose logs --tail=50 caddy   (o Caddy continua tentando sozinho)"
+  warn "Veja o certificado:  ${SUDO}docker compose logs --tail=50 caddy   (o Caddy continua tentando sozinho)"
   title="${Y}${B}Quase pronto:${N} o site está de pé no servidor, mas o endereço público ainda não abre."
 fi
 
@@ -363,5 +426,5 @@ ${title} Próximos passos (detalhes em docs/HOSPEDAGEM.md, seção 6):
   3. Em Admin → Configurações, use "Enviar e-mail de teste para mim" e confira a "Verificação do site".
   4. Faça uma cópia do .env e dos backups para fora do servidor (docs/HOSPEDAGEM.md, seção 8).
 
-Comandos úteis (nesta pasta):  docker compose ps   |   docker compose logs --tail=100 app   |   docker compose up -d
+Comandos úteis (nesta pasta):  ${SUDO}docker compose ps   |   ${SUDO}docker compose logs --tail=100 app   |   ${SUDO}docker compose up -d
 EOF
