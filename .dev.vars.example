@@ -1,5 +1,7 @@
 # Variáveis para testar localmente com `npm run preview:sites` (copie para .dev.vars; NUNCA envie o .dev.vars a ninguém).
 APP_URL=http://localhost:8787
+# Só no seu computador: deixa a prévia usar APP_URL http://localhost. NUNCA coloque isto nas configurações do site de verdade.
+PA_LOCAL_PREVIEW=1
 APP_SECRET=troque-por-um-texto-aleatorio-com-pelo-menos-32-caracteres
 DATA_ENCRYPTION_KEY=
 CRON_SECRET=troque-por-um-texto-aleatorio-com-pelo-menos-24-caracteres

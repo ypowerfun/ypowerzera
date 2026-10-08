@@ -22,6 +22,7 @@ if (!existsSync(vars)) {
     vars,
     [
       "APP_URL=http://localhost:8787",
+      "PA_LOCAL_PREVIEW=1",
       `APP_SECRET=${randomBytes(32).toString("hex")}`,
       `CRON_SECRET=${randomBytes(24).toString("hex")}`,
       `DATA_ENCRYPTION_KEY=${randomBytes(32).toString("hex")}`,

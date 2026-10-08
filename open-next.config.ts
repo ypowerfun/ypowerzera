@@ -5,4 +5,8 @@ import { defineCloudflareConfig } from "@opennextjs/cloudflare";
 // ANTES de o `next build` rodar (e o ambiente é herdado), qualquer que seja quem chame o comando.
 process.env.PA_TARGET = "sites";
 
-export default defineCloudflareConfig({});
+const config = defineCloudflareConfig({});
+// Passo "next build" próprio (scripts/next-build-sites.mjs): recusa .env no disco (os segredos não podem ir para o pacote) e, depois
+// do build, limpa as listas de rastreio para o Worker caber nos limites da Cloudflare.
+config.buildCommand = "node scripts/next-build-sites.mjs";
+export default config;

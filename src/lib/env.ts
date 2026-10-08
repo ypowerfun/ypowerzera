@@ -16,6 +16,11 @@ export function isValidDataEncryptionKey(key: string): boolean {
   return raw.length >= 32;
 }
 
+/** Rodando dentro do Cloudflare Workers? (defesa: se a variável PA_RUNTIME for esquecida, as regras do Sites valem do mesmo jeito) */
+function inCloudflareWorkers(): boolean {
+  return typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+}
+
 export type MailProvider = "resend" | "brevo" | "smtp" | "none";
 
 function pickMailProvider(): MailProvider {
@@ -58,7 +63,9 @@ export function getEnv() {
     /** Quem envia: MAIL_PROVIDER explícito ou, se vazio, o primeiro configurado (Resend, Brevo, SMTP). "none" = nada configurado. */
     mailProvider: pickMailProvider(),
     /** "sites" = rodando no ChatGPT Sites (Cloudflare Workers + D1). Definido pelo wrangler.jsonc; no servidor próprio fica "server". */
-    runtime: (process.env.PA_RUNTIME === "sites" ? "sites" : "server") as "sites" | "server",
+    /** SÓ no seu computador (npm run preview:sites / smoke:sites): aceita APP_URL http://localhost na prévia do Sites. Nunca defina no site de verdade. */
+    localPreview: bool(process.env.PA_LOCAL_PREVIEW, false),
+    runtime: (process.env.PA_RUNTIME === "sites" || inCloudflareWorkers() ? "sites" : "server") as "sites" | "server",
     adminEmails: (process.env.ADMIN_EMAILS ?? "")
       .split(",")
       .map((s) => s.trim().toLowerCase())
@@ -127,6 +134,13 @@ export function assertProductionConfig() {
   // "app.test-arena.com.br" e "loja.local.com.br" são domínios legítimos.
   if (!process.env.MAIL_FROM?.trim() || /@[^\s>]*\.(local|invalid|test)\s*>?\s*$/i.test(env.mailFrom)) {
     problems.push('MAIL_FROM é obrigatório em produção e precisa ser um endereço do seu domínio (ex.: "Prime Arena <nao-responda@meusite.com.br>"); o padrão de desenvolvimento (@primearena.local) é recusado pelos provedores de e-mail.');
+  }
+  if (env.runtime === "sites") {
+    // No Sites o endereço padrão (http://localhost:3000) deixaria os links dos e-mails e o agendador errados em silêncio.
+    if (!env.localPreview && (!process.env.APP_URL || !/^https:\/\//i.test(env.appUrl) || /localhost|127\.0\.0\.1/.test(env.appUrl))) {
+      problems.push("No ChatGPT Sites, defina APP_URL com o endereço público https:// do site (ex.: https://meusite.com.br): ele vai nos links dos e-mails de confirmação.");
+    }
+    if (env.cronSecret.length < 24) problems.push("No ChatGPT Sites, defina CRON_SECRET (24+ caracteres): sem ele o agendador (limpeza, Pix expirado, desafios) não roda.");
   }
   if (env.adminEmails.length === 0) {
     problems.push("ADMIN_EMAILS é obrigatório em produção: é assim que o seu e-mail vira administrador depois de confirmado (o seed de demonstração não roda em produção).");

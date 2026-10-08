@@ -30,6 +30,7 @@ writeFileSync(
   devVars,
   [
     `APP_URL=${BASE}`,
+    "PA_LOCAL_PREVIEW=1",
     "APP_SECRET=smoke-test-secret-smoke-test-secret-0123456789",
     "CRON_SECRET=smoke-cron-secret-0123456789abcdef",
     "ADMIN_EMAILS=admin-smoke@exemplo.com",
@@ -57,17 +58,32 @@ try {
   check("migrações aplicadas no D1 local", mig.status === 0, mig.status === 0 ? "" : (mig.stderr || mig.stdout).slice(-300));
   if (mig.status !== 0) throw new Error("migrações");
 
+  // conta de demonstração (senha pública) no banco: a trava na entrada do Worker tem que bloquear TUDO até ela sair
+  const demoSql = (cmd) => wrangler(["d1", "execute", "primearena", "--local", "--persist-to", persist, "--command", cmd]);
+  const ins = demoSql("INSERT INTO User (id, email, username, displayName, passwordHash, role, updatedAt) VALUES ('demo1', 'admin@primearena.local', 'admin_demo', 'Admin', 'x', 'ADMIN', '2026-01-01T00:00:00.000+00:00')");
+  check("conta de demonstração inserida no D1 (para testar a trava)", ins.status === 0);
+
   server = spawn("npx", ["wrangler", "dev", "--local", "--port", String(PORT), "--persist-to", persist, "--log-level", "warn"], { cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: true });
   let serverLog = "";
   server.stdout.on("data", (d) => (serverLog += d));
   server.stderr.on("data", (d) => (serverLog += d));
+  let blockedStatus = 0;
   for (let i = 0; i < 90; i++) {
     try {
       const r = await fetch(`${BASE}/entrar`);
-      if (r.status === 200) break;
+      if (r.status === 200 || r.status === 503) {
+        blockedStatus = r.status;
+        break;
+      }
     } catch {}
     await new Promise((r) => setTimeout(r, 1000));
   }
+  check("com conta de demonstração no banco o site responde 503 (trava de subida)", blockedStatus === 503, String(blockedStatus));
+  const blockedAction = await fetch(`${BASE}/api/cron/wallet`, { method: "POST", headers: { authorization: "Bearer smoke-cron-secret-0123456789abcdef" } });
+  check("a trava vale também para rotas de API (cron)", blockedAction.status === 503, String(blockedAction.status));
+  demoSql("DELETE FROM User WHERE id = 'demo1'");
+  const after = await fetch(`${BASE}/entrar`);
+  check("sem a conta de demonstração o site volta ao ar na hora", after.status === 200, String(after.status));
   const home = await fetch(`${BASE}/`);
   check("página inicial responde 200 (lê o D1)", home.status === 200, String(home.status));
   const csp = home.headers.get("content-security-policy");

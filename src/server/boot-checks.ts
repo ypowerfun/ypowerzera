@@ -17,6 +17,10 @@ export async function assertNoDemoAccounts(): Promise<void> {
     }
   } catch (e) {
     if (e instanceof DemoAccountsError) throw e;
-    // banco ainda sem as tabelas (primeira subida): nada a conferir
+    // Só "banco ainda sem as tabelas" (primeira subida) é aceitável; qualquer outro erro (banco fora do ar, coluna ausente…) NÃO
+    // pode passar em silêncio, senão uma falha momentânea deixaria o site "confirmado" com contas de demonstração no banco.
+    const msg = String((e as { message?: unknown })?.message ?? e);
+    const code = (e as { code?: unknown })?.code;
+    if (code !== "P2021" && !/no such table|does not exist/i.test(msg)) throw e;
   }
 }

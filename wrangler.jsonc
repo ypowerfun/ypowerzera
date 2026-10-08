@@ -8,6 +8,10 @@
   "compatibility_date": "2025-06-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // registra os erros do site (configuração bloqueada, recuperação do banco…) para você ler depois no painel
+  "observability": { "enabled": true },
+  // não apaga as variáveis cadastradas no painel a cada publicação
+  "keep_vars": true,
   "d1_databases": [
     {
       "binding": "DB",
