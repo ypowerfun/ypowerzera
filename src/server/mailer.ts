@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getEnv } from "@/lib/env";
+import { sendResendMail } from "./resend-mail";
 
 export interface MailMessage {
   to: string;
@@ -39,6 +40,8 @@ export function safeMailError(e: unknown): string {
   const raw = e instanceof Error ? `${e.message}` : String(e);
   const { smtpUrl } = getEnv();
   let out = raw;
+  const resendKey = getEnv().resendApiKey;
+  if (resendKey) out = out.split(resendKey).join("***");
   try {
     const u = new URL(smtpUrl);
     for (const secret of [u.password, decodeURIComponent(u.password), u.username, decodeURIComponent(u.username)]) {
@@ -60,13 +63,17 @@ export async function sendMail(msg: MailMessage): Promise<void> {
     testOutbox.push(msg);
     return;
   }
+  if (env.resendApiKey) {
+    await sendResendMail(msg, env.resendApiKey, env.mailFrom);
+    return;
+  }
   if (env.smtpUrl) {
     const nodemailer = await import("nodemailer");
     const transport = nodemailer.createTransport(smtpTransportOptions(env.smtpUrl, env.isProd));
     await transport.sendMail({ from: env.mailFrom, to: msg.to, subject: msg.subject, text: msg.text });
     return;
   }
-  if (env.isProd) console.warn(`[mail] SMTP_URL não configurado: e-mail para ${msg.to} ("${msg.subject}") não foi enviado.`);
+  if (env.isProd) throw new Error("O envio de e-mail não está configurado.");
   const dir = path.join(process.cwd(), ".dev-mail");
   await mkdir(dir, { recursive: true });
   const safe = msg.to.replace(/[^a-z0-9@._-]/gi, "_");
@@ -80,7 +87,7 @@ export async function sendMail(msg: MailMessage): Promise<void> {
  */
 export async function sendTestMail(to: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const env = getEnv();
-  if (!env.smtpUrl && !env.isTest) {
+  if (!env.smtpUrl && !env.resendApiKey && !env.isTest) {
     return { ok: false, error: "O SMTP_URL não está configurado. Sem ele nenhum e-mail sai (nem a confirmação de conta). Veja docs/CONFIGURAR_EMAIL.md." };
   }
   try {

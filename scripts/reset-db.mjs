@@ -5,7 +5,7 @@
 //   npm run reset -- --no-backup → não guarda a cópia de segurança
 //   npm run reset -- --force     → não confere se o site está rodando
 // Antes de apagar, guarda uma cópia do banco em prisma/backups/. Só mexe em banco SQLite local (nunca em produção).
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -101,8 +101,9 @@ function run(label, cmd, cmdArgs) {
   if (r.status !== 0) fail(`Falhou: ${label}. O banco antigo está na cópia de segurança (prisma/backups/), se você não usou --no-backup.`);
 }
 
+writeFileSync(dbFile, "");
 run("Criando as tabelas", "npx", ["prisma", "db", "push", "--skip-generate"]);
-run("Carregando as contas e os dados padrão", "npx", ["tsx", "prisma/seed.ts"]);
+run("Carregando as contas e os dados padrão", "node", ["--import", "tsx", "prisma/seed.ts"]);
 
 console.log("\n✔ Pronto: só as contas padrão restaram. Inicie o site de novo com:  npm run dev");
 console.log("  Logins (senha Prime#Arena2026): admin@primearena.local · organizador@primearena.local · lider1@primearena.local · jogador1@primearena.local\n");

@@ -33,6 +33,7 @@ export function getEnv() {
     reservationMinutes: int(process.env.RESERVATION_MINUTES, 30),
     mailFrom: process.env.MAIL_FROM ?? "Prime Arena <no-reply@primearena.local>",
     smtpUrl: process.env.SMTP_URL ?? "",
+    resendApiKey: process.env.RESEND_API_KEY ?? "",
     adminEmails: (process.env.ADMIN_EMAILS ?? "")
       .split(",")
       .map((s) => s.trim().toLowerCase())
@@ -76,7 +77,7 @@ export function assertProductionConfig() {
   if (!/^https:\/\//i.test(env.appUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(env.appUrl)) {
     problems.push("APP_URL precisa ser o endereço público do site com https:// (ex.: https://meusite.com.br): ele vai nos links dos e-mails de confirmação e de redefinição de senha.");
   }
-  if (!env.smtpUrl) {
+  if (!env.smtpUrl && !env.resendApiKey) {
     problems.push("SMTP_URL é obrigatório em produção: sem ele nenhum e-mail de confirmação de conta sai e ninguém consegue confirmar o cadastro (veja docs/CONFIGURAR_EMAIL.md).");
   }
   if (!process.env.MAIL_FROM?.trim() || /\.(local|invalid|test)\b/i.test(env.mailFrom)) {

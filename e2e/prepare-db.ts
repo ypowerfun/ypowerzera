@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -14,5 +14,6 @@ for (const f of ["e2e.db", "e2e.db-journal"]) {
   const p = path.join(root, "prisma", f);
   if (existsSync(p)) rmSync(p);
 }
+writeFileSync(path.join(root, "prisma", "e2e.db"), "");
 execSync("npx prisma db push --skip-generate", { cwd: root, env: process.env, stdio: "pipe" });
-execSync("npx tsx prisma/seed.ts", { cwd: root, env: process.env, stdio: "pipe" });
+execSync("node --import tsx prisma/seed.ts", { cwd: root, env: process.env, stdio: "pipe" });

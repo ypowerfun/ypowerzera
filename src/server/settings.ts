@@ -145,7 +145,7 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
   const urlOk = env.appUrl.startsWith("https://") && !/localhost|127\.0\.0\.1/.test(env.appUrl);
   items.push({ key: "url", label: "Endereço público com https", ok: urlOk, hint: urlOk ? `Os links dos e-mails usam ${env.appUrl}.` : `APP_URL está como ${env.appUrl}. Em produção use o endereço https:// do site, senão os links dos e-mails ficam errados.` });
 
-  const smtpOk = !!env.smtpUrl;
+  const smtpOk = !!env.smtpUrl || !!env.resendApiKey;
   items.push({ key: "smtp", label: "E-mail de confirmação de conta (SMTP)", ok: smtpOk, hint: smtpOk ? `Envio configurado; remetente: ${env.mailFrom}. Use o botão abaixo para testar.` : "SMTP_URL não está configurado: ninguém recebe o e-mail de confirmação (docs/CONFIGURAR_EMAIL.md)." });
 
   const lastRaw = await read(K_CRON_LAST);

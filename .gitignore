@@ -26,3 +26,7 @@ playwright-report/
 .test-db/
 
 .DS_Store
+.open-next/
+dist/
+.wrangler/
+.dev.vars

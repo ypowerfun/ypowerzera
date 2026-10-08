@@ -20,7 +20,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: `npx tsx e2e/prepare-db.ts && npx next dev -p ${PORT}`,
+    command: `node --import tsx e2e/prepare-db.ts && node node_modules/next/dist/bin/next dev -p ${PORT} -H 127.0.0.1`,
     url: `http://localhost:${PORT}/entrar`,
     timeout: 180_000,
     reuseExistingServer: false,

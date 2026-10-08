@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export default function setup() {
@@ -8,6 +8,7 @@ export default function setup() {
   const file = path.join(dir, "test.db");
   rmSync(file, { force: true });
   rmSync(`${file}-journal`, { force: true });
+  writeFileSync(file, ""); // Prisma 6 requires an existing SQLite file in this runtime.
   // O arquivo é apagado acima, então um `db push` comum já cria o schema do zero (sem --force-reset).
   execSync("npx prisma db push --skip-generate", {
     stdio: "pipe",
