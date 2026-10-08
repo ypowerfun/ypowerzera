@@ -26,3 +26,6 @@ playwright-report/
 .test-db/
 
 .DS_Store
+
+# cliente D1 para testes em Node (gerado por `prisma generate`; o de Workers fica no repositório)
+src/generated/prisma-d1-node/

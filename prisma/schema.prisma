@@ -7,6 +7,30 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Cliente para o ChatGPT Sites (Cloudflare Workers + D1): sem motor nativo, consultas compiladas em WebAssembly.
+// A saída fica no repositório (src/generated/prisma-d1) para a publicação não depender de rodar `prisma generate`.
+// Regerar: npm run generate:d1
+generator d1worker {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma-d1"
+  runtime                = "cloudflare"
+  engineType             = "client"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = ""
+}
+
+// O mesmo cliente para Node: usado só pelos testes do modo D1 (Miniflare). Não vai para a publicação.
+generator d1node {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma-d1-node"
+  runtime                = "nodejs"
+  engineType             = "client"
+  moduleFormat           = "cjs"
+  generatedFileExtension = "ts"
+  importFileExtension    = ""
+}
+
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
