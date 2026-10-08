@@ -2,7 +2,7 @@
 
 Quando alguém cria uma conta no site, o site manda um e-mail com um link: **"Confirme seu e-mail para poder se inscrever em campeonatos"**. O mesmo caminho envia o e-mail de "esqueci minha senha". Para isso o site precisa de uma conta de **envio de e-mail (SMTP)**. Este guia leva você do zero até o primeiro e-mail chegando.
 
-> **Resumo em 5 passos:** (1) escolha um provedor de envio, (2) verifique o seu domínio, (3) pegue o endereço SMTP, (4) cole em `SMTP_URL` e `MAIL_FROM` no `.env`, (5) teste com `npm run mail:test -- seu@email.com` ou pelo botão em **Admin → Configurações**.
+> **Resumo em 5 passos:** (1) escolha um provedor de envio, (2) verifique o seu domínio, (3) pegue o endereço SMTP **ou a chave de API** (obrigatória no ChatGPT Sites: veja a seção 4B), (4) cole em `SMTP_URL` / `RESEND_API_KEY` / `BREVO_API_KEY` e `MAIL_FROM`, (5) teste com `npm run mail:test -- seu@email.com` ou pelo botão em **Admin → Configurações**.
 
 ---
 
@@ -16,7 +16,7 @@ Quando alguém cria uma conta no site, o site manda um e-mail com um link: **"Co
 | E-mail não confirmado | O usuário usa o site, mas **não consegue se inscrever em campeonatos**. Também não vira administrador por `ADMIN_EMAILS` até confirmar. |
 | E-mail de **administrador** (`ADMIN_EMAILS`) | Ao clicar no link de confirmação, o site pede para **criar a senha** (a do cadastro é descartada). É proposital: só quem lê aquela caixa de entrada vira administrador. |
 | "Esqueci minha senha" | Envia um link que vale **1 hora**. A resposta na tela é a mesma exista a conta ou não (ninguém descobre quais e-mails estão cadastrados). |
-| Produção sem `SMTP_URL` | O site **se recusa a subir** e diz o motivo (para você não lançar um site que não manda e-mail). |
+| Produção sem nenhum envio configurado (`SMTP_URL`, `RESEND_API_KEY` ou `BREVO_API_KEY`) | O site **se recusa a subir** e diz o motivo (para você não lançar um site que não manda e-mail). |
 
 O site **não** manda propaganda: só estes dois e-mails (mais o de teste, que só o administrador dispara).
 
@@ -96,6 +96,27 @@ O que está entre `< >` precisa ser do domínio verificado no passo 3.
 3. `SMTP_URL="smtps://seuemail%40gmail.com:SENHA_DE_APP@smtp.gmail.com:465"` e `MAIL_FROM="Prime Arena <seuemail@gmail.com>"`.
 
 O site exige **TLS** em produção (a senha do SMTP nunca viaja em texto puro). Por isso use a 587 ou a 465 de um provedor que aceite TLS, que é o caso de todos os acima.
+
+---
+
+## 4B. No ChatGPT Sites: use a API do Resend ou do Brevo (não o SMTP)
+
+A hospedagem do ChatGPT Sites (Cloudflare Workers) **não abre conexões SMTP**. Nela o e-mail precisa sair por **API HTTP**. O site já vem pronto para isso: basta uma chave de API, no lugar do `SMTP_URL`. Se você hospedar em servidor próprio (Docker), pode continuar com o SMTP, ou usar a API também.
+
+| Variável | Valor | Onde conseguir |
+|---|---|---|
+| `RESEND_API_KEY` | chave que começa com `re_…` | Resend → **API Keys** → *Create API Key* (permissão "Sending access") |
+| `BREVO_API_KEY` | chave que começa com `xkeysib-…` | Brevo → *SMTP & API* → **API Keys** |
+| `MAIL_FROM` | `Prime Arena <nao-responda@seudominio.com.br>` | endereço do **seu domínio verificado** no provedor (passo 3 acima) |
+| `MAIL_PROVIDER` | `resend` ou `brevo` (opcional) | só precisa se você configurar mais de um; sem isso o site usa o primeiro que achar (Resend, depois Brevo, depois SMTP) |
+
+No Sites, cadastre `RESEND_API_KEY` (ou `BREVO_API_KEY`) como **segredo** (secret) nas configurações do site, nunca em arquivo ou conversa. O teste do passo 6 (botão em **Admin → Configurações**) funciona do mesmo jeito. Erros comuns e o que significam:
+
+| Mensagem | O que fazer |
+|---|---|
+| "A chave da API de e-mail foi recusada" | Copie a chave de novo (sem espaços) e confira se é a do provedor escolhido. |
+| "O provedor recusou o remetente" | O domínio do `MAIL_FROM` ainda não foi verificado no Resend/Brevo (passo 3). |
+| "Limite de envios do plano" | O plano grátis tem limite diário; espere ou aumente o plano. |
 
 ---
 

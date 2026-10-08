@@ -9,6 +9,7 @@ Este pacote é o site completo, pronto para colocar no ar. **Você não precisa 
 | 1 | [`docs/HOSPEDAGEM.md`](docs/HOSPEDAGEM.md) | Alugar o servidor, apontar o domínio e colocar o site no ar com HTTPS | 1 a 2 h |
 | 2 | [`docs/CONFIGURAR_EMAIL.md`](docs/CONFIGURAR_EMAIL.md) | Fazer o **e-mail de confirmação de conta** (e de "esqueci a senha") chegar aos usuários | 20 a 40 min |
 | 3 | [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | O que foi verificado, o que ainda é risco e a rotina semanal de 10 minutos | 10 min de leitura |
+| 1B | [`docs/SITES.md`](docs/SITES.md) | **Alternativa ao servidor:** hospedar no **ChatGPT Sites** (Cloudflare + banco D1). Vem com um texto pronto para colar no ChatGPT: [`PROMPT_PARA_O_CHATGPT.md`](PROMPT_PARA_O_CHATGPT.md) | 1 a 2 h |
 | 4 | [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md) | **Depois**, com o site estável: ligar depósitos, saques e desafios com dinheiro (Pix) | dias (aprovação do provedor) |
 
 ## O caminho mais curto
@@ -27,7 +28,7 @@ bash scripts/instalar-servidor.sh
 
 Ele faz 4 perguntas e cuida do resto (Docker, firewall, segredos, HTTPS). Detalhes e o que fazer antes: seção "Caminho rápido" de [`docs/HOSPEDAGEM.md`](docs/HOSPEDAGEM.md).
 
-> Nenhuma IA (ChatGPT, Codex, Claude…) consegue colocar o site no ar sozinha, porque isso exige o seu servidor e o DNS do seu domínio. E **nunca** envie a ninguém o arquivo `.env` nem as senhas do servidor.
+> No **servidor próprio**, nenhuma IA (ChatGPT, Codex, Claude…) consegue colocar o site no ar sozinha, porque isso exige o seu servidor e o DNS do seu domínio. No **ChatGPT Sites** o próprio ChatGPT publica na sua conta (veja `docs/SITES.md`), mas o domínio, o e-mail e os segredos continuam sendo seus. E **nunca** envie a ninguém o arquivo `.env`, as chaves de API nem as senhas do servidor.
 
 ## Como lançar sem correr risco
 
