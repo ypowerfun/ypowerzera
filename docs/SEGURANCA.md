@@ -86,3 +86,17 @@ docker compose exec app node -e "const {PrismaClient}=require('@prisma/client');
 ```
 
 Troque também a senha de quem foi afetado (**Esqueci minha senha** na tela de entrada). A `DATA_ENCRYPTION_KEY` (que protege os CPFs) **nunca** deve ser trocada com o site no ar.
+
+---
+
+## 5. Se você hospedar no ChatGPT Sites (Cloudflare Workers + D1)
+
+As proteções das seções anteriores valem também no Sites (o código é o mesmo). O que muda, em termos de segurança:
+
+- **Conferência na subida.** No Sites não existe "subida do servidor", então as mesmas travas do Docker (configuração perigosa, contas de demonstração no banco) rodam **uma vez por Worker, antes de qualquer página** (`src/server/boot-guard.ts`). Configuração insegura => o site responde erro em tudo, em vez de ficar no ar. **Atenção:** os endpoints de API (`/api/cron`, webhooks) não passam por essa conferência; eles se protegem pelos próprios segredos (`CRON_SECRET`, assinaturas dos webhooks).
+- **IP do visitante.** Os limites de tentativas usam o cabeçalho `cf-connecting-ip`, que a Cloudflare **sobrescreve** em todo pedido (o visitante não consegue forjá-lo). Se o site for acessado por um caminho que não passa pela Cloudflare (ex.: pré-visualização local), o IP vira "desconhecido" e todos dividem o mesmo limite: comportamento seguro, só mais restritivo.
+- **Segredos.** Ficam nas *secrets* do Sites, nunca em arquivo do projeto. Nada de `.env` no pacote.
+- **Dinheiro e banco.** O D1 não tem transações; o motor próprio (`src/lib/d1-engine.ts`, explicado em `SITES.md`, seção 2) devolve o "tudo ou nada". A **conciliação** em *Admin → Carteiras* continua sendo o seu detector de qualquer divergência; olhe-a toda semana. A tabela `_JournalDead` deve ficar **vazia**: se aparecer algo nela, houve uma transação que não pôde ser desfeita e a conciliação precisa ser conferida.
+- **E-mail.** Só por API (Resend/Brevo). A chave é um segredo: se vazar, gere outra no painel do provedor.
+- **Limites da hospedagem.** O tempo de CPU por pedido e o número de consultas ao banco são limitados pelo plano; o hash de senha é caro de propósito. Se o login passar a falhar por tempo, **não** reduza o custo do hash sem pedir ajuda: troque de plano ou de hospedagem.
+
