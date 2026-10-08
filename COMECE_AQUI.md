@@ -11,6 +11,19 @@ Este pacote é o site completo, pronto para colocar no ar. **Você não precisa 
 | 3 | [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | O que foi verificado, o que ainda é risco e a rotina semanal de 10 minutos | 10 min de leitura |
 | 4 | [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md) | **Depois**, com o site estável: ligar depósitos, saques e desafios com dinheiro (Pix) | dias (aprovação do provedor) |
 
+## O caminho mais curto
+
+Com um servidor **Ubuntu/Debian novo**, o domínio já apontando para ele e o endereço SMTP em mãos:
+
+```bash
+unzip prime-arena-1.0.zip -d /opt/primearena && cd /opt/primearena
+bash scripts/instalar-servidor.sh
+```
+
+Ele faz 4 perguntas e cuida do resto (Docker, firewall, segredos, HTTPS). Detalhes e o que fazer antes: seção "Caminho rápido" de [`docs/HOSPEDAGEM.md`](docs/HOSPEDAGEM.md).
+
+> Nenhuma IA (ChatGPT, Codex, Claude…) consegue colocar o site no ar sozinha, porque isso exige o seu servidor e o DNS do seu domínio. E **nunca** envie a ninguém o arquivo `.env` nem as senhas do servidor.
+
 ## Como lançar sem correr risco
 
 1. **Fase 1: só campeonatos gratuitos.** O arquivo de configuração já vem assim (`WALLET_ENABLED="false"`, `PAYMENTS_PROVIDER="none"`). Não há dinheiro envolvido.

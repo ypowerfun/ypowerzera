@@ -28,6 +28,45 @@ O arquivo de configuração já vem na Fase 1 (`WALLET_ENABLED="false"`, `PAYMEN
 
 ---
 
+## Caminho rápido (recomendado): o instalador de um comando
+
+Se o seu servidor é **Ubuntu ou Debian novo** (22.04, 24.04 ou Debian 12), este caminho faz as seções 2, 4 e 5 abaixo **sozinho**. Você só precisa de três coisas prontas:
+
+1. o **servidor (VPS)** contratado, com o IP anotado e acesso por SSH;
+2. o **DNS do domínio já apontando para o IP** do servidor (seção 1 abaixo; sem isso o HTTPS não sai);
+3. o **endereço SMTP** do seu provedor de e-mail ([`CONFIGURAR_EMAIL.md`](CONFIGURAR_EMAIL.md), seções 2 a 4).
+
+No **seu computador**, envie o zip (ajuste o nome e o IP):
+
+```bash
+scp prime-arena-1.0.zip root@IP_DO_SERVIDOR:/root/
+```
+
+No **servidor** (`ssh root@IP_DO_SERVIDOR`):
+
+```bash
+apt-get update && apt-get install -y unzip
+mkdir -p /opt/primearena && cd /opt/primearena
+unzip /root/prime-arena-1.0.zip
+bash scripts/instalar-servidor.sh
+```
+
+O instalador instala o Docker, cria o arquivo de memória (swap) se faltar RAM, libera só as portas SSH/80/443 no firewall, **faz 4 perguntas** (domínio, o seu e-mail de administrador, o endereço SMTP e o remetente dos e-mails), confere se o domínio já aponta para o servidor, gera os segredos, cria o `.env` e sobe o site com HTTPS. No fim mostra se `https://seudominio` já está no ar e os próximos passos. Rodar de novo é seguro: **ele nunca troca os segredos de um `.env` existente**.
+
+Depois, siga a **seção 6** (criar o administrador), a **seção 7** (conferir a segurança) e a **seção 8** (backups). Se algo falhar, o instalador mostra o motivo; a seção 5 explica os sintomas mais comuns.
+
+> O instalador foi testado com comandos simulados (a lógica de perguntas, validações, `.env`, firewall, DNS e espera pelo site). Ele **não pôde ser executado num servidor real com Docker** no ambiente onde o projeto foi desenvolvido; se algo se comportar diferente no seu servidor, as seções 2 a 5 abaixo fazem o mesmo passo a passo à mão.
+
+### Pedir ajuda a uma IA (ChatGPT, Codex…) ou a um técnico, com segurança
+
+- Nenhuma IA consegue **colocar o site no ar sozinha**: isso exige um servidor e o DNS do domínio, que só você tem. O que ela pode fazer é ajudar a **entender os passos e os erros**.
+- **Nunca envie** a uma IA ou a um desconhecido: a senha do servidor, o login do seu registro de domínio ou do provedor de e-mail, o arquivo `.env`, chaves de API (Asaas, Stripe) ou a `DATA_ENCRYPTION_KEY`. Quem tem o `.env` controla o site e os CPFs dos usuários.
+- **Pode enviar** (depois de dar uma olhada): mensagens de erro, a saída de `docker compose logs --tail=100 app` e prints sem dados pessoais.
+- Se contratar um técnico, dê acesso por um **usuário/chave temporários** e remova ao final; depois **troque as senhas** que ele chegou a ver.
+- Se uma ferramenta de IA falha **antes de abrir o arquivo** (por exemplo, "setup refresh had errors" no Codex), o problema é do ambiente dela, não do projeto: tente outro chat ou ferramenta, ou siga este guia direto no servidor.
+
+---
+
 ## 1. Aponte o domínio para o servidor
 
 1. Contrate o VPS e anote o **IP público** dele (ex.: `203.0.113.10`).

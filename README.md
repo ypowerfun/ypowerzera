@@ -129,6 +129,8 @@ Nenhum sistema é "à prova de fraude". O desenho reduz a superfície e faz as f
 | [`docs/SEGURANCA.md`](docs/SEGURANCA.md) | O que foi verificado e corrigido, o que ainda é risco, e a rotina de segurança semanal |
 | [`docs/CONFIGURAR_PIX.md`](docs/CONFIGURAR_PIX.md) | Pix real (depósito e saque com liberação do admin), da conta no provedor até o QR Code, e o que resolver antes (conformidade) |
 
+**Mais curto ainda:** em um servidor Ubuntu/Debian novo, `bash scripts/instalar-servidor.sh` faz 4 perguntas e instala tudo (Docker, firewall, segredos, `.env`, HTTPS).
+
 O pacote inclui `Dockerfile`, `docker-compose.yml` (site + HTTPS automático com Caddy + agendador + backup diário) e `.env.production.example`. Comandos úteis: `npm run secrets` (gera os segredos), `npm run mail:test -- voce@exemplo.com` (testa o e-mail), `npm run verificar-site -- https://seusite.com.br` (confere a segurança do site no ar), `npm run backup` (cópia do banco). Em **Admin → Configurações → Verificação do site** há um checklist e o botão de e-mail de teste.
 
 **Lançamento em duas fases (recomendado):** primeiro só campeonatos (`WALLET_ENABLED="false"`, `PAYMENTS_PROVIDER="none"`), depois a carteira com Pix quando o provedor estiver aprovado e testado no sandbox.
