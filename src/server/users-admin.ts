@@ -1,3 +1,6 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { getEnv } from "@/lib/env";
+import { changeD1UserRole, changeD1UserBan } from "./d1/users-admin";
 import { clampPage } from "@/lib/url";
 import type { Prisma, Role } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -67,6 +70,12 @@ export async function setUserRole(actorIn: Actor | null, userId: string, role: R
   if (effectiveRole(target) === "ADMIN") throw new AppError("O cargo de um administrador não é alterado por aqui.", "FORBIDDEN");
   if (target.role === role) return { changed: false, from: target.role, to: role };
 
+  const d1 = sitesDatabase();
+  if (d1) {
+    const impact = await changeD1UserRole(d1, { actorId: actor.id, userId: target.id, adminSubjects: getEnv().chatgptAdminUserIds,
+      from: target.role as "USER" | "ORGANIZER", to: role });
+    return { changed: true, from: target.role, to: role, impact };
+  }
   const res = await db.$transaction(async (tx) => {
     // compare-and-set: se outro admin mudou o cargo nesse meio-tempo, não sobrescreve às cegas
     const upd = await tx.user.updateMany({ where: { id: target.id, role: target.role }, data: { role } });
@@ -105,6 +114,8 @@ export async function setUserBan(actorIn: Actor | null, userId: string, ban: boo
   if (effectiveRole(target) === "ADMIN") throw new AppError("Administradores não são suspensos por aqui.", "FORBIDDEN");
   const why = reason.trim().slice(0, 300);
   if (ban && why.length < 5) throw new AppError("Informe o motivo da suspensão (mínimo de 5 caracteres).");
+  const d1 = sitesDatabase();
+  if (d1) return changeD1UserBan(d1, { actorId: actor.id, userId: target.id, adminSubjects: getEnv().chatgptAdminUserIds, ban, reason: why });
   await db.$transaction(async (tx) => {
     const upd = await tx.user.updateMany({
       where: { id: target.id, bannedAt: ban ? null : { not: null } },

@@ -8,6 +8,7 @@ import {PrismaClient} from '@primearena/prisma-worker/wasm.js';
 import {guardedAdapter} from './src/lib/d1-prisma-adapter';
 import {createD1ChatGPTProfile} from './src/server/d1/chatgpt-profile';
 import {createD1Team,createD1Organization} from './src/server/d1/create-groups';
+import {changeD1UserRole,changeD1UserBan} from './src/server/d1/users-admin';
 import {saveD1GameAccount} from './src/server/d1/game-account';
 import {createD1Tournament,transitionD1Tournament} from './src/server/d1/tournaments';
 import {reserveD1RateLimit} from './src/server/d1/rate-limit';
@@ -15,6 +16,8 @@ export default {async fetch(request,env){try{
  const db=new PrismaClient({adapter:guardedAdapter(env.DB)});
  const path=new URL(request.url).pathname;
  if(path==='/profile')return Response.json(await createD1ChatGPTProfile(env.DB,await request.json()));
+ if(path==='/role'){const result=await changeD1UserRole(env.DB,await request.json());return Response.json({ok:true,result});}
+ if(path==='/ban'){await changeD1UserBan(env.DB,await request.json());return Response.json({ok:true});}
  if(path==='/game')return Response.json(await saveD1GameAccount(env.DB,await request.json()));
  if(path==='/tournament'){const i=await request.json();return Response.json(await createD1Tournament(env.DB,i.actor,i.data,i.stages));}
  if(path==='/publish'){await transitionD1Tournament(env.DB,await request.json());return Response.json({ok:true});}
@@ -71,5 +74,25 @@ try{
  assert.equal((await call('/tournament',{...tournament,data:{...tournament.data,slug:'rollback'}})).status,409);
  assert.equal((await db.prepare('SELECT count(*) n FROM Tournament').first()).n,1);
  assert.equal((await db.prepare('SELECT count(*) n FROM Stage').first()).n,1);
- console.log('PASS: Prisma WASM D1 reads/dates; atomic profile, team and organization; concurrent profile and rate limits; rollback; unique game identities; tournament creation/publication races and rollback; unsupported transactions fail before writes.');
+ const target=(await db.prepare("SELECT id FROM User WHERE username='race'").first()).id;
+ const admin={actorId:first.data,userId:target,adminSubjects:['one']};
+ assert.equal((await call('/role',{...admin,adminSubjects:[],from:'USER',to:'ORGANIZER'})).status,409);
+ assert.equal((await call('/role',{...admin,userId:first.data,from:'USER',to:'ORGANIZER'})).status,409);
+ const promotions=await Promise.all(Array.from({length:10},()=>call('/role',{...admin,from:'USER',to:'ORGANIZER'})));
+ assert.equal(promotions.filter(r=>r.status===200).length,1);
+ await db.prepare("INSERT INTO Session(id,userId,expiresAt) VALUES ('session',?,999999)").bind(target).run();
+ await db.prepare("CREATE TRIGGER fail_admin_audit BEFORE INSERT ON AuditLog WHEN NEW.action IN ('user.role','user.ban') BEGIN SELECT RAISE(ABORT,'injected failure'); END").run();
+ assert.equal((await call('/role',{...admin,from:'ORGANIZER',to:'USER'})).status,409);
+ assert.equal((await db.prepare('SELECT role FROM User WHERE id=?').bind(target).first()).role,'ORGANIZER');
+ assert.equal((await call('/ban',{...admin,ban:true,reason:'Teste de suspensão'})).status,409);
+ assert.equal((await db.prepare('SELECT bannedAt FROM User WHERE id=?').bind(target).first()).bannedAt,null);
+ assert.equal((await db.prepare('SELECT count(*) n FROM Session').first()).n,1);
+ await db.prepare('DROP TRIGGER fail_admin_audit').run();
+ assert.equal((await call('/ban',{...admin,ban:true,reason:'Teste de suspensão'})).status,200);
+ assert.equal((await db.prepare('SELECT count(*) n FROM Session').first()).n,0);
+ assert.equal((await call('/ban',{...admin,ban:true,reason:'Repetição'})).status,409);
+ assert.equal((await call('/ban',{...admin,ban:false,reason:''})).status,200);
+ await db.prepare('UPDATE User SET bannedAt=1 WHERE id=?').bind(first.data).run();
+ assert.equal((await call('/role',{...admin,from:'ORGANIZER',to:'USER'})).status,409);
+ console.log('PASS: Prisma WASM D1 reads/dates; atomic profile, team and organization; concurrent profile and rate limits; rollback; unique game identities; tournament creation/publication races and rollback; admin CAS, subject authorization, audit/session rollback; unsupported transactions fail before writes.');
 }finally{await mf.dispose();}

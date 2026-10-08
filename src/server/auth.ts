@@ -1,3 +1,4 @@
+import { sitesDatabase } from "@/lib/sites-d1";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -327,6 +328,13 @@ export async function updateProfile(userId: string, input: { displayName: string
     })
     .safeParse(input);
   if (!data.success) throw new AppError(data.error.issues[0].message);
+  const d1 = sitesDatabase();
+  if (d1) {
+    const changed = await d1.prepare("UPDATE User SET displayName=?,country=?,bio=?,updatedAt=MAX(updatedAt+1,?) WHERE id=? AND bannedAt IS NULL RETURNING id")
+      .bind(data.data.displayName,data.data.country||null,data.data.bio||null,Date.now(),userId).first();
+    if (!changed) throw new AppError("Sua conta não pode realizar esta alteração.", "FORBIDDEN");
+    return toSafeUser(await db.user.findUniqueOrThrow({ where: { id: userId } }));
+  }
   return toSafeUser(
     await db.user.update({
       where: { id: userId },

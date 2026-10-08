@@ -24,7 +24,9 @@
     "mail:test": "tsx --env-file-if-exists=.env scripts/mail-test.ts",
     "verificar-site": "node scripts/check-site.mjs",
     "e2e": "playwright test",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "build:sites": "opennextjs-cloudflare build && node scripts/package-opennext.mjs",
+    "test:sites": "node tests/runtime-migration.mjs && node tests/runtime-prisma-d1.mjs && node tests/runtime-d1.mjs && node tests/runtime-viradao.mjs && node tests/runtime-app-smoke.mjs"
   },
   "dependencies": {
     "@prisma/adapter-d1": "6.19.3",

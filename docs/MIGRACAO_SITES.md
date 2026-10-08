@@ -20,6 +20,7 @@ O adapter normaliza parâmetros DateTime para milissegundos, compatíveis com as
 - Inscrição gratuita: capacidade, elenco, plataforma, conta suspensa, papel do capitão, estado do campeonato e auditoria reavaliados dentro do batch.
 - Check-in/desfazer e retirada gratuita: condições no banco; retirada, notificação, promoção da fila e auditoria no mesmo batch. O caminho financeiro não é aceito por essas operações gratuitas.
 - Criação de campeonato com suas fases/auditoria; publicação e abertura de check-in com versão e autorização verificadas no batch.
+- Administração de usuários: troca de cargo e suspensão/reativação em batch, revalidação do administrador por subject/papel, proteção de administradores, compare-and-set, auditoria, notificações e revogação de sessões com rollback. Edição do perfil usa atualização condicional preparada.
 - Notificações avulsas e marcação como lidas em SQL preparado. Notificações pertencentes a outra transação continuam sob responsabilidade do respectivo batch.
 
 ## Login e Viradão
@@ -43,17 +44,17 @@ Na inspeção anterior da produção: tournaments/recovery_challenges/recovery_l
 ## Validações executadas
 
 - 632 testes unitários passaram em 34 arquivos. Após o ajuste da criação de campeonato, 33 testes direcionados de campeonatos, organizações e ChatGPT passaram novamente.
-- Typecheck passou.
+- Typecheck passou. Após a migração administrativa, 23 testes de papéis/autorização e sete de login ChatGPT passaram novamente.
 - `node tests/runtime-prisma-d1.mjs`: leitura Prisma WASM/D1, comparação de datas, perfil concorrente, times/organizações, limites simultâneos, unicidade de conta de jogo, criação/publicação concorrente de campeonato e rollback com falha de auditoria. Transações não suportadas falham antes de gravar.
 - `node tests/runtime-d1.mjs`: 20 inscrições para três vagas resultaram em três confirmadas e 17 em espera; repetição idempotente; conflito de elenco; suspensão/versão; check-in; retirada e promoção de fila; rollback.
 - `node tests/runtime-migration.mjs`: migração aditiva e preservação dos registros antigos em D1.
 - OpenNext build e dry-run Wrangler passaram. Pacote Worker observado com aproximadamente 3,4 MiB comprimidos. `scripts/package-opennext.mjs` recusa variáveis privadas incorporadas e limpa somente saídas reproduzíveis para não incluir chunks antigos.
-- O teste do aplicativo completo confirmou páginas de login/cadastro/Viradão, API pública e consulta autenticada com D1. A validação de envio real de Server Action é registrada pelo resultado atual de `tests/runtime-app-smoke.mjs`, não presumida pelo build.
+- O teste do aplicativo completo confirmou páginas de login/cadastro/Viradão, API pública e consulta autenticada com D1. O envio real do formulário de cadastro criou o perfil e redirecionou para a conta. O teste da compilação limpa confirmou a página administrativa e a promoção de usuário a organizador pela Server Action; a mesma ação sem permissão foi recusada. O Miniflare exige origem/host locais consistentes e corpo multipart serializado; isso é configuração do teste, sem afrouxar a proteção de origem do aplicativo. O cache persistente de compilação foi desativado após detectar reutilização de código antigo entre sessões restauradas.
 - Os 29 testes de navegador não foram aprovados nesta migração: a tentativa anterior não encontrou Chromium utilizável. O teste HTTP/Worker não é um substituto da validação de navegador.
 
 ## Pendências obrigatórias antes de substituir a publicação
 
-1. Portar as demais operações de administração, edição/transferência/exclusão de times e organizações, edição/início/cancelamento de campeonatos, fases, partidas, placares, desclassificação e demais escritas implícitas. A proteção transacional continua recusando caminhos não portados.
+1. Portar as demais operações de administração de conteúdo, edição/transferência/exclusão de times e organizações, edição/início/cancelamento de campeonatos, fases, partidas, placares, desclassificação e demais escritas implícitas. A proteção transacional continua recusando caminhos não portados.
 2. Concluir testes integrados das ações do produto no Worker e navegador, incluindo administração, fases/resultados e registro/retirada sob concorrência. Um teste unitário SQLite não comprova o comportamento D1.
 3. Provisionar o administrador com subject confiável **do mesmo Site**; não inferir pela conta/e-mail do conector. Preservar `ADMIN_EMAIL` existente, que não foi lido nem alterado.
 4. Preservar segredos existentes e configurar apenas os necessários pelo Sites: APP_URL, AUTH_PROVIDER=chatgpt, CHATGPT_ADMIN_USER_IDS, APP_SECRET e envio HTTP. Não gravar segredos no Git ou manifesto.

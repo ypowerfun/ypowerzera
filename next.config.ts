@@ -23,6 +23,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@primearena/prisma-worker"],
   env: { NEXT_PUBLIC_SITES_RUNTIME: process.env.SITES_BUILD === "1" ? "1" : "0" },
   ...(process.env.SITES_BUILD === "1" ? { turbopack: { resolveAlias: { "@/lib/db": "./src/lib/db.worker.ts" } } } : {}),
+  // Avoid stale compilation state when the workspace is restored between cloud sessions.
+  experimental: { turbopackFileSystemCacheForBuild: false },
   poweredByHeader: false,
   async headers() {
     return [

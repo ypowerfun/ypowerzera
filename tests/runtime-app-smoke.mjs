@@ -1,6 +1,6 @@
 import {applyD1Schema} from './helpers/d1-schema.mjs';
 import {Miniflare} from 'miniflare';
-import {readFileSync,readdirSync,writeFileSync} from 'node:fs';
+import {readdirSync} from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 const entry=process.env.WORKER_BUNDLE_PATH??'.sites-runtime/worker/worker.js';
@@ -8,23 +8,44 @@ const root=path.dirname(entry);
 const modules=[{type:'ESModule',path:entry},...readdirSync(root).filter(n=>n.endsWith('.wasm')).map(n=>({type:'CompiledWasm',path:path.join(root,n)}))];
 const mf=new Miniflare({routes:["primearena1.com.br/*"],modules,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:{APP_URL:'https://primearena1.com.br',APP_SECRET:'local-runtime-probe-only-000000000000000000000000000000',ADMIN_EMAILS:'admin@example.com',AUTH_PROVIDER:'chatgpt',CHATGPT_ADMIN_USER_IDS:'runtime-admin',MAIL_FROM:'Prime <test@primearena1.com.br>',RESEND_API_KEY:'local-probe-no-email',TRUST_PROXY:'false',WALLET_ENABLED:'false',PAYMENTS_PROVIDER:'none'}});
 try {
+ const base=(await mf.ready).origin;
  const db=await mf.getD1Database('DB');
  await applyD1Schema(db);
  for(const route of ['/entrar','/cadastro','/viradao','/api/viradao']){
-  const r=await (await mf.getWorker()).fetch('https://primearena1.com.br'+route);assert.equal(r.status,200,route);await r.text();
+  const r=await mf.dispatchFetch(base+route);assert.equal(r.status,200,route);await r.text();
  }
- const r=await (await mf.getWorker()).fetch('https://primearena1.com.br/cadastro',{headers:{'oai-authenticated-user-id':'runtime-user','oai-authenticated-user-email':'runtime@example.com'}});
+ const r=await mf.dispatchFetch(base+'/cadastro',{headers:{'oai-authenticated-user-id':'runtime-user','oai-authenticated-user-email':'runtime@example.com'}});
  assert.equal(r.status,200,'authenticated profile lookup');const html=await r.text();assert.match(html,/usuário|perfil/i);
  const decode=s=>s.replace(/&quot;/g,'"').replace(/&#x27;/g,"'").replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
  const fd=new FormData();
  for(const tag of html.match(/<input[^>]*>/g)??[]){const name=/name="([^"]+)"/.exec(tag)?.[1],value=/value="([^"]*)"/.exec(tag)?.[1];if(name?.startsWith('$ACTION'))fd.append(decode(name),decode(value??''));}
  assert([...fd.keys()].some(k=>k.startsWith('$ACTION')),'server action metadata');
  fd.set('username','runtimeplayer');fd.set('displayName','Runtime Player');fd.set('terms','on');fd.set('next','/conta');
- const encoded=new Request('https://primearena1.com.br/cadastro',{method:'POST',body:fd});
- const submit=await (await mf.getWorker()).fetch('https://primearena1.com.br/cadastro',{method:'POST',headers:{host:'primearena1.com.br','x-forwarded-host':'primearena1.com.br','content-type':encoded.headers.get('content-type'),origin:'https://primearena1.com.br','oai-authenticated-user-id':'runtime-user','oai-authenticated-user-email':'runtime@example.com'},body:await encoded.arrayBuffer()});
- const submittedHtml=await submit.text();if(submit.status!==303)writeFileSync('../smoke-response.html',submittedHtml);assert.equal(submit.status,303,'profile server action');
+ const encoded=new Request(base+'/cadastro',{method:'POST',body:fd});
+ const submit=await mf.dispatchFetch(base+'/cadastro',{method:'POST',redirect:'manual',headers:{'content-type':encoded.headers.get('content-type'),origin:base,'oai-authenticated-user-id':'runtime-user','oai-authenticated-user-email':'runtime@example.com'},body:await encoded.arrayBuffer()});
+await submit.text();assert.equal(submit.status,303,'profile server action');
  assert.equal((await db.prepare('SELECT count(*) n FROM ChatGPTIdentity').first()).n,1);
- const account=await (await mf.getWorker()).fetch('https://primearena1.com.br/conta',{headers:{'oai-authenticated-user-id':'runtime-user','oai-authenticated-user-email':'runtime@example.com'}});
+ const account=await mf.dispatchFetch(base+'/conta',{headers:{'oai-authenticated-user-id':'runtime-user','oai-authenticated-user-email':'runtime@example.com'}});
  assert.equal(account.status,200,'authenticated account');assert.match(await account.text(),/Runtime Player/);
- console.log('PASS: packaged Next Worker, anonymous login/profile/Viradão/API and authenticated profile creation through a real Server Action and account lookup on D1.');
+ // A trusted Site subject, not its e-mail, bootstraps the administrator.
+ await db.prepare("INSERT INTO User(id,email,username,displayName,passwordHash,emailVerifiedAt,createdAt,updatedAt) VALUES ('admin','admin@example.com','runtimeadmin','Runtime Admin','chatgpt-only:test',1,1,1)").run();
+ await db.prepare("INSERT INTO ChatGPTIdentity(subject,userId,createdAt) VALUES ('runtime-admin','admin',1)").run();
+ const adminHeaders={'oai-authenticated-user-id':'runtime-admin','oai-authenticated-user-email':'admin@example.com'};
+ const adminPage=await mf.dispatchFetch(base+'/admin/usuarios',{headers:adminHeaders});assert.equal(adminPage.status,200);
+ const adminHtml=await adminPage.text();
+ const roleForm=(adminHtml.match(/<form[\s\S]*?<\/form>/g)??[]).find(form=>form.includes('name="role" value="ORGANIZER"'));
+ assert(roleForm,'organizer promotion form');
+ const promote=new FormData();
+ for(const tag of roleForm.match(/<input[^>]*>/g)??[]){const name=/name="([^"]+)"/.exec(tag)?.[1],value=/value="([^"]*)"/.exec(tag)?.[1];if(name)promote.append(decode(name),decode(value??''));}
+ const promoteRequest=new Request(base+'/admin/usuarios',{method:'POST',body:promote});
+ const promotionBody=await promoteRequest.arrayBuffer();
+ const postHeaders={...adminHeaders,origin:base,'content-type':promoteRequest.headers.get('content-type')};
+ const rejected=await mf.dispatchFetch(base+'/admin/usuarios',{method:'POST',redirect:'manual',headers:{...postHeaders,'oai-authenticated-user-id':'runtime-user','oai-authenticated-user-email':'runtime@example.com'},body:promotionBody});
+ assert(rejected.status>=400,'regular user cannot promote through the admin action');await rejected.text();
+ assert.equal((await db.prepare("SELECT role FROM User WHERE username='runtimeplayer'").first()).role,'USER');
+ const promoted=await mf.dispatchFetch(base+'/admin/usuarios',{method:'POST',redirect:'manual',headers:postHeaders,body:promotionBody});
+ assert.equal(promoted.status,303,'admin role server action');await promoted.text();
+ assert.equal((await db.prepare("SELECT role FROM User WHERE username='runtimeplayer'").first()).role,'ORGANIZER');
+ assert.equal((await db.prepare("SELECT count(*) n FROM AuditLog WHERE action='user.role'").first()).n,1);
+ console.log('PASS: packaged Next Worker, anonymous login/profile/Viradão/API and authenticated profile creation through a real Server Action and account lookup on D1; admin page and actual role action; forged admin action denied.');
 } finally {await mf.dispose();}
