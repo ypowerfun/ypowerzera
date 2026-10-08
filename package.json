@@ -24,7 +24,9 @@
     "mail:test": "tsx --env-file-if-exists=.env scripts/mail-test.ts",
     "verificar-site": "node scripts/check-site.mjs",
     "e2e": "playwright test",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "admin:criar": "tsx --env-file-if-exists=.env scripts/criar-admin.ts",
+    "contas:verificar": "tsx --env-file-if-exists=.env scripts/verificar-banco-vazio.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
