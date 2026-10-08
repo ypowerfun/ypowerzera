@@ -22,7 +22,8 @@ Domínio: https://primearena1.com.br, público e HTTPS ativos.
 - Testes específicos do transporte HTTP e configuração: 24 passaram, incluindo três testes novos.
 - Scrypt com N=32768, r=8, p=3 e chave de 64 bytes funcionou no workerd local (aproximadamente 202 ms).
 - `node tests/runtime-d1.mjs`: vinte inscrições concorrentes para três vagas produziram três confirmadas e dezessete em espera; repetição idempotente não duplicou registros; conflito de jogador entre times reverteu participante, elenco e auditoria; condições alteradas e suspensão foram recusadas; falha injetada na auditoria reverteu a operação inteira.
-- OpenNext empacotou o Next 16.3.8. Isso não prova compatibilidade da camada Prisma nativa em runtime.
+- OpenNext empacotou o Next 16.3.8. O dry-run do Wrangler passou após normalizar declarações de ambiente duplicadas emitidas pelo OpenNext. `scripts/package-opennext.mjs` prepara `dist/server/index.js` e `dist/client`, e o empacotador do Sites aceitou o arquivo local.
+- O smoke test do aplicativo completo em workerd falhou: `/entrar` respondeu 500 porque o Prisma procura um motor nativo indisponível no Worker. Não resolver adicionando um binaryTarget: o banco em disco e o motor nativo precisam ser substituídos pelo caminho D1.
 - O E2E chegou à etapa de iniciar Chromium, mas o binário não existe neste ambiente; o download retornou arquivos inválidos. Não considerar os 29 testes aprovados.
 
 ## Banco publicado preservado
@@ -42,6 +43,6 @@ A versão atual tem upload privado de comprovantes em R2 e rotas de viradão. Pr
 7. Preparar exportação consistente/recuperação do D1 e substituir rotinas de limpeza/cron de Docker pelas capacidades disponíveis no Sites.
 8. Configurar somente novos valores necessários no Sites: `APP_URL=https://primearena1.com.br`, `WALLET_ENABLED=false`, `PAYMENTS_PROVIDER=none`, `ADMIN_EMAILS`, `MAIL_FROM`, `RESEND_API_KEY`, segredos novos necessários. Preservar `ADMIN_EMAIL` existente; o valor é secreto e não foi lido nem alterado. Nunca guardar chaves no manifesto ou no Git.
 9. Validar o Worker completo com D1: cadastro, confirmação, recuperação, administração, inscrição e concorrência. Executar os testes de navegador quando o Chromium estiver disponível.
-10. Adaptar a saída OpenNext ao contrato `dist/server/index.js` e `dist/client`, validar o arquivo com o empacotador do Sites, usar `site-workflow.mjs`, salvar versão e publicar no mesmo Site público. Conferir o status da implantação e executar a verificação pós-publicação.
+10. Depois de integrar e validar todos os repositórios D1, reconstruir, executar `scripts/package-opennext.mjs` e o smoke test, usar `site-workflow.mjs`, salvar versão e publicar no mesmo Site público. Conferir o status da implantação e executar a verificação pós-publicação.
 
 Não houve publicação, alteração de DNS, mudança de público, alteração de variáveis ou escrita no banco publicado neste checkpoint. Esta branch não é uma versão completa pronta para substituir a atual.
