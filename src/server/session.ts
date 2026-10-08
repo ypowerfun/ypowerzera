@@ -5,10 +5,17 @@ import { getEnv } from "@/lib/env";
 import { normalizeClientIp } from "@/lib/ip";
 import { getUserBySessionToken, SESSION_DAYS, type SafeUser } from "./auth";
 import type { Actor } from "./types";
+import { getChatGPTUser } from "./chatgpt-auth";
+import { findChatGPTProfile } from "./chatgpt-users";
+import { AppError } from "@/lib/errors";
 
 export const SESSION_COOKIE = "pam_session";
 
 export const getCurrentUser = cache(async (): Promise<SafeUser | null> => {
+  if (getEnv().authProvider === "chatgpt") {
+    const identity = await getChatGPTUser();
+    return identity ? findChatGPTProfile(identity) : null;
+  }
   const store = await cookies();
   return getUserBySessionToken(store.get(SESSION_COOKIE)?.value);
 });
@@ -23,8 +30,17 @@ export function toActor(u: SafeUser): Actor {
 
 export async function requireUser(next?: string): Promise<SafeUser> {
   const u = await getCurrentUser();
-  if (!u) redirect(`/entrar${next ? `?next=${encodeURIComponent(next)}` : ""}`);
+  if (!u) {
+    const target = getEnv().authProvider === "chatgpt" && await getChatGPTUser() ? "/cadastro" : "/entrar";
+    redirect(`${target}${next ? `?next=${encodeURIComponent(next)}` : ""}`);
+  }
   return u;
+}
+
+export async function requireActionUser(_next?: string): Promise<SafeUser> {
+  const user = await getCurrentUser();
+  if (!user) throw new AppError("Entre com sua conta e complete seu perfil para continuar.", "UNAUTHENTICATED");
+  return user;
 }
 
 export async function requireAdmin(): Promise<SafeUser> {
@@ -60,4 +76,10 @@ export async function clientMeta(): Promise<{ ip: string; userAgent?: string }> 
   // Último item de x-forwarded-for: é o que o SEU proxy anotou. O primeiro pode vir escrito pelo próprio cliente.
   const forwarded = trusted ? h.get("x-forwarded-for")?.split(",").map((x) => x.trim()).filter(Boolean).at(-1) || h.get("x-real-ip") : null;
   return { ip: forwarded ? normalizeClientIp(forwarded) : "unknown", userAgent: h.get("user-agent") ?? undefined };
+}
+
+export async function requireActionAdmin(): Promise<SafeUser> {
+  const user = await requireActionUser();
+  if (user.role !== "ADMIN") throw new AppError("Apenas administradores.", "FORBIDDEN");
+  return user;
 }

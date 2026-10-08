@@ -195,6 +195,7 @@ model User {
 
   kyc            KycProfile?
 
+  chatgptIdentity ChatGPTIdentity?
   sessions       Session[]
   tokens         AuthToken[]
   gameAccounts   GameAccount[]
@@ -941,4 +942,12 @@ model MockPixTransfer {
   externalReference String   @unique
   endToEndId        String?
   createdAt         DateTime @default(now())
+}
+
+// Stable, Site-scoped identity. Never link accounts by contact email.
+model ChatGPTIdentity {
+  subject String @id
+  userId String @unique
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }

@@ -83,10 +83,11 @@ export function toSafeUser(u: User): SafeUser {
   return rest;
 }
 
-/** Papel efetivo: e-mails em ADMIN_EMAILS viram administradores, mas só depois de verificados. */
-export function effectiveRole(u: Pick<User, "email" | "role" | "emailVerifiedAt">): Role {
+/** Papel efetivo: subject autorizado no Sites, ou e-mail verificado no modo local legado. */
+export function effectiveRole(u: Pick<User, "email" | "role" | "emailVerifiedAt"> & { chatgptIdentity?: { subject: string } | null }): Role {
   if (u.role === "ADMIN") return "ADMIN";
-  if (u.emailVerifiedAt && getEnv().adminEmails.includes(u.email.toLowerCase())) return "ADMIN";
+  if (getEnv().authProvider === "chatgpt" && u.chatgptIdentity && getEnv().chatgptAdminUserIds.includes(u.chatgptIdentity.subject)) return "ADMIN";
+  if (getEnv().authProvider === "local" && u.emailVerifiedAt && getEnv().adminEmails.includes(u.email.toLowerCase())) return "ADMIN";
   return u.role;
 }
 

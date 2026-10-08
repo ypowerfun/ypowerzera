@@ -4,9 +4,19 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { guard, safeNext, str, strRaw, type FormState } from "@/lib/action-helpers";
 import { changePassword, login, logout, registerUser, requestPasswordReset, resendVerification, resetPassword, updateProfile, verifyEmail } from "@/server/auth";
-import { clearSessionCookie, clientMeta, currentToken, requireUser, setSessionCookie } from "@/server/session";
+import { getEnv } from "@/lib/env";
+import { getChatGPTUser } from "@/server/chatgpt-auth";
+import { createChatGPTProfile } from "@/server/chatgpt-users";
+import { clearSessionCookie, clientMeta, currentToken, requireActionUser as requireUser, setSessionCookie } from "@/server/session";
 
 export async function registerAction(_: FormState, fd: FormData): Promise<FormState> {
+  if (getEnv().authProvider === "chatgpt") {
+    const identity = await getChatGPTUser();
+    if (!identity) return { error: "Entre com ChatGPT antes de completar o perfil." };
+    const res = await guard(() => createChatGPTProfile(identity, { username: str(fd, "username"), displayName: str(fd, "displayName"), terms: fd.get("terms") === "on" }));
+    if (!res.ok) return { error: res.error };
+    redirect(safeNext(str(fd, "next") || "/conta?boas-vindas=1"));
+  }
   const meta = await clientMeta();
   const password = strRaw(fd, "password");
   if (password !== strRaw(fd, "password2")) return { error: "As senhas não conferem." };
@@ -21,6 +31,7 @@ export async function registerAction(_: FormState, fd: FormData): Promise<FormSt
 }
 
 export async function loginAction(_: FormState, fd: FormData): Promise<FormState> {
+  if (getEnv().authProvider === "chatgpt") return { error: "O acesso é gerenciado pela sua conta ChatGPT." };
   const meta = await clientMeta();
   const res = await guard(() => login({ identifier: str(fd, "identifier"), password: strRaw(fd, "password") }, meta));
   if (!res.ok) return { error: res.error };
@@ -29,12 +40,14 @@ export async function loginAction(_: FormState, fd: FormData): Promise<FormState
 }
 
 export async function logoutAction() {
+  if (getEnv().authProvider === "chatgpt") return; // Browser sign-out is a top-level dispatch link.
   await logout(await currentToken());
   await clearSessionCookie();
   redirect("/");
 }
 
 export async function forgotPasswordAction(_: FormState, fd: FormData): Promise<FormState> {
+  if (getEnv().authProvider === "chatgpt") return { error: "O acesso é gerenciado pela sua conta ChatGPT." };
   const meta = await clientMeta();
   const res = await guard(() => requestPasswordReset(str(fd, "email"), meta));
   if (!res.ok) return { error: res.error };
@@ -42,6 +55,7 @@ export async function forgotPasswordAction(_: FormState, fd: FormData): Promise<
 }
 
 export async function resetPasswordAction(_: FormState, fd: FormData): Promise<FormState> {
+  if (getEnv().authProvider === "chatgpt") return { error: "O acesso é gerenciado pela sua conta ChatGPT." };
   const password = strRaw(fd, "password");
   if (password !== strRaw(fd, "password2")) return { error: "As senhas não conferem." };
   const res = await guard(() => resetPassword(str(fd, "token"), password));
@@ -50,11 +64,13 @@ export async function resetPasswordAction(_: FormState, fd: FormData): Promise<F
 }
 
 export async function verifyEmailAction(token: string): Promise<{ ok: boolean; error?: string; resetToken?: string }> {
+  if (getEnv().authProvider === "chatgpt") return { ok: false, error: "Entre com ChatGPT para continuar." };
   const res = await guard(() => verifyEmail(token));
   return res.ok ? { ok: true, resetToken: res.value.resetToken } : { ok: false, error: res.error };
 }
 
 export async function resendVerificationAction(_: FormState): Promise<FormState> {
+  if (getEnv().authProvider === "chatgpt") return { error: "O acesso é confirmado pelo ChatGPT." };
   const user = await requireUser("/conta");
   const res = await guard(() => resendVerification(user.id));
   if (!res.ok) return { error: res.error };
@@ -70,6 +86,7 @@ export async function updateProfileAction(_: FormState, fd: FormData): Promise<F
 }
 
 export async function changePasswordAction(_: FormState, fd: FormData): Promise<FormState> {
+  if (getEnv().authProvider === "chatgpt") return { error: "O acesso é gerenciado pela sua conta ChatGPT." };
   const user = await requireUser("/conta");
   const next = strRaw(fd, "next");
   if (next !== strRaw(fd, "next2")) return { error: "As senhas novas não conferem." };

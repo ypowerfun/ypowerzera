@@ -8,7 +8,7 @@ import { markAllRead } from "@/server/notifications";
 import { createTeam, deleteTeam, inviteToTeam, removeFromTeam, respondToInvite, setMemberRole } from "@/server/teams";
 import { requestBalanceReview } from "@/server/team-release";
 import { createOrganization } from "@/server/orgs";
-import { requireUser, toActor } from "@/server/session";
+import { requireActionUser as requireUser, toActor } from "@/server/session";
 import { getGame } from "@/games";
 
 export async function saveGameAccountAction(_: FormState, fd: FormData): Promise<FormState> {

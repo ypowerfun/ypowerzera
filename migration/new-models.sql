@@ -584,6 +584,14 @@ CREATE TABLE "MockPixTransfer" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- CreateTable
+CREATE TABLE "ChatGPTIdentity" (
+    "subject" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ChatGPTIdentity_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -778,4 +786,7 @@ CREATE INDEX "Challenge_opponentTeamId_idx" ON "Challenge"("opponentTeamId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "MockPixTransfer_externalReference_key" ON "MockPixTransfer"("externalReference");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ChatGPTIdentity_userId_key" ON "ChatGPTIdentity"("userId");
 

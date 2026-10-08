@@ -29,7 +29,7 @@ import { setBrGameCode, submitBrResults } from "@/server/leaderboard";
 import { createCoupon, refundOrder } from "@/server/orders";
 import { markPrizePaid } from "@/server/organizer";
 import { addOrgMember, deleteOrganization, removeOrgMember, updateOrganization } from "@/server/orgs";
-import { requireUser, toActor } from "@/server/session";
+import { requireActionUser as requireUser, toActor } from "@/server/session";
 
 function dateField(fd: FormData, k: string): Date | null {
   return parseLocalDateTime(str(fd, k));

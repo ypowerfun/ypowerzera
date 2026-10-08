@@ -8,7 +8,7 @@ import { adminResolveProcessing, reviewWithdrawal } from "@/server/withdrawals";
 import { resolveHeldDeposit } from "@/server/deposits";
 import { resolveChallenge } from "@/server/challenges";
 import { adminAdjustWallet, adminFreezeWallet, adminUnfreezeWallet, runReconciliation } from "@/server/admin-wallet";
-import { requireAdmin, toActor } from "@/server/session";
+import { requireActionAdmin as requireAdmin, toActor } from "@/server/session";
 import { setUserBan, setUserRole } from "@/server/users-admin";
 import { deleteTeam } from "@/server/teams";
 import { reviewBalanceRequest } from "@/server/team-release";

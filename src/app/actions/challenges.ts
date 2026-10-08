@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { guard, int, str, type FormState } from "@/lib/action-helpers";
 import { db } from "@/lib/db";
 import { acceptChallenge, cancelChallenge, createChallenge, disputeChallenge, reportChallengeResult, submitChallengeEvidence } from "@/server/challenges";
-import { requireUser, toActor } from "@/server/session";
+import { requireActionUser as requireUser, toActor } from "@/server/session";
 import { creditsToCents } from "@/server/money-config";
 
 export async function createChallengeAction(_: FormState, fd: FormData): Promise<FormState> {

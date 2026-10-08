@@ -21,6 +21,8 @@ export function getEnv() {
   const isTest = process.env.NODE_ENV === "test" || !!process.env.VITEST;
   return {
     isProd,
+    authProvider: (process.env.AUTH_PROVIDER ?? "chatgpt") as "chatgpt" | "local",
+    chatgptAdminUserIds: (process.env.CHATGPT_ADMIN_USER_IDS ?? "").split(",").map(v => v.trim()).filter(Boolean),
     isTest,
     appUrl: (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, ""),
     appSecret: process.env.APP_SECRET ?? "",
@@ -62,6 +64,7 @@ export function assertProductionConfig() {
   const env = getEnv();
   if (!env.isProd) return;
   const problems: string[] = [];
+  if (!["chatgpt", "local"].includes(env.authProvider)) problems.push("AUTH_PROVIDER deve ser chatgpt ou local.");
   if (env.appSecret.length < 32 || env.appSecret.includes("troque") || env.appSecret.includes("dev-only")) {
     problems.push("APP_SECRET precisa ter pelo menos 32 caracteres e não pode ser o valor de exemplo.");
   }
@@ -77,13 +80,13 @@ export function assertProductionConfig() {
   if (!/^https:\/\//i.test(env.appUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(env.appUrl)) {
     problems.push("APP_URL precisa ser o endereço público do site com https:// (ex.: https://meusite.com.br): ele vai nos links dos e-mails de confirmação e de redefinição de senha.");
   }
-  if (!env.smtpUrl && !env.resendApiKey) {
+  if (env.authProvider === "local" && !env.smtpUrl && !env.resendApiKey) {
     problems.push("SMTP_URL é obrigatório em produção: sem ele nenhum e-mail de confirmação de conta sai e ninguém consegue confirmar o cadastro (veja docs/CONFIGURAR_EMAIL.md).");
   }
   if (!process.env.MAIL_FROM?.trim() || /\.(local|invalid|test)\b/i.test(env.mailFrom)) {
     problems.push('MAIL_FROM é obrigatório em produção e precisa ser um endereço do seu domínio (ex.: "Prime Arena <nao-responda@meusite.com.br>"); o padrão de desenvolvimento (@primearena.local) é recusado pelos provedores de e-mail.');
   }
-  if (env.adminEmails.length === 0) {
+  if (env.authProvider === "local" && env.adminEmails.length === 0) {
     problems.push("ADMIN_EMAILS é obrigatório em produção: é assim que o seu e-mail vira administrador depois de confirmado (o seed de demonstração não roda em produção).");
   }
   if (env.paymentsProvider === "stripe" && (!env.stripeSecretKey || !env.stripeWebhookSecret)) {

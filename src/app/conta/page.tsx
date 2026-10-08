@@ -1,3 +1,4 @@
+import { getEnv } from "@/lib/env";
 import { flatParams } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -11,14 +12,15 @@ export const metadata: Metadata = { title: "Minha conta" };
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ "boas-vindas"?: string }> }) {
+  const chatgpt = getEnv().authProvider === "chatgpt";
   const user = await requireUser("/conta");
   const sp = flatParams(await searchParams);
   const kyc = await getKyc(user.id);
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageTitle title="Minha conta" subtitle={`@${user.username} · ${user.email}`} />
-      {sp["boas-vindas"] && <Alert tone="ok">Conta criada! Confirme seu e-mail e vincule suas contas de jogo para começar a se inscrever.</Alert>}
-      {!user.emailVerifiedAt && (
+      {sp["boas-vindas"] && <Alert tone="ok">Perfil criado! Vincule suas contas de jogo para começar a se inscrever.</Alert>}
+      {!chatgpt && !user.emailVerifiedAt && (
         <Alert tone="warn" className="space-y-3">
           <p>Seu e-mail ainda não foi confirmado. É necessário para se inscrever, depositar e sacar.</p>
           <ActionForm action={resendVerificationAction} className="" submit="Reenviar e-mail de confirmação" submitVariant="secondary" submitClassName="">{null}</ActionForm>
@@ -41,7 +43,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           <Field label="Bio" htmlFor="bio"><Textarea id="bio" name="bio" defaultValue={user.bio ?? ""} maxLength={300} /></Field>
         </ActionForm>
       </Card>
-      <Card>
+      {chatgpt ? <Card><h2 className="font-bold">Acesso com ChatGPT</h2><p className="mt-2 text-sm text-muted">Seu login e a segurança de acesso são gerenciados pela sua conta ChatGPT.</p></Card> : <Card>
         <h2 className="mb-1 font-bold">Segurança</h2>
         <p className="mb-4 text-sm text-muted">Ao trocar a senha, as outras sessões são encerradas e os saques ficam bloqueados por 24 horas.</p>
         <ActionForm action={changePasswordAction} submit="Alterar senha" submitClassName="">
@@ -49,7 +51,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
           <Field label="Nova senha" htmlFor="next"><Input id="next" name="next" type="password" autoComplete="new-password" required minLength={8} /></Field>
           <Field label="Repita a nova senha" htmlFor="next2"><Input id="next2" name="next2" type="password" autoComplete="new-password" required minLength={8} /></Field>
         </ActionForm>
-      </Card>
+      </Card>}
     </div>
   );
 }

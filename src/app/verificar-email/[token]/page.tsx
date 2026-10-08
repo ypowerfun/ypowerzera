@@ -1,3 +1,4 @@
+import { getEnv } from "@/lib/env";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { verifyEmailAction } from "@/app/actions/auth";
@@ -6,6 +7,7 @@ import { Alert, ButtonLink, Card } from "@/components/ui";
 export const metadata: Metadata = { title: "Confirmar e-mail", robots: { index: false } };
 
 export default async function VerifyPage({ params }: { params: Promise<{ token: string }> }) {
+  if (getEnv().authProvider === "chatgpt") redirect("/entrar");
   const { token } = await params;
   const res = await verifyEmailAction(token);
   // E-mail de administrador: a senha é (re)criada por quem tem acesso a esta caixa de entrada, nunca por quem se cadastrou antes.

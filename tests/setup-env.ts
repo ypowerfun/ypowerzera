@@ -5,3 +5,5 @@ process.env.APP_URL = "http://localhost:3000";
 process.env.APP_SECRET = "test-secret-test-secret-test-secret-123456";
 process.env.PAYMENTS_PROVIDER = "mock";
 process.env.PLATFORM_FEE_BPS = "1000";
+
+process.env.AUTH_PROVIDER = "local";

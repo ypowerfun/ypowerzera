@@ -1,3 +1,5 @@
+import { getEnv } from "@/lib/env";
+import { chatGPTSignOutPath } from "@/server/chatgpt-auth";
 import Link from "next/link";
 import { logoutAction } from "@/app/actions/auth";
 import { db } from "@/lib/db";
@@ -21,6 +23,7 @@ export async function Header() {
   const showOrganizer = !!user && (user.role !== "USER" || orgMemberships > 0);
   const links: NavItem[] = [
     { href: "/torneios", label: "Torneios" },
+    { href: "/viradao", label: "Viradão" },
     { href: "/jogos", label: "Jogos" },
     ...(walletOn ? [{ href: "/desafios", label: "Desafios" }] : []),
     ...(user && walletOn ? [{ href: "/carteira", label: "Carteira" }] : []),
@@ -67,9 +70,9 @@ export async function Header() {
                       {label}
                     </Link>
                   ))}
-                  <form action={logoutAction}>
+                  {getEnv().authProvider === "chatgpt" ? <a href={chatGPTSignOutPath()} target="_top" className="mt-1 block rounded-md px-3 py-2 text-sm text-danger hover:bg-danger/10">Sair</a> : <form action={logoutAction}>
                     <button className="mt-1 w-full rounded-md px-3 py-2 text-left text-sm text-danger hover:bg-danger/10">Sair</button>
-                  </form>
+                  </form>}
                 </div>
               </details>
             </>
@@ -106,6 +109,7 @@ export async function Footer() {
           <p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-silver">Plataforma</p>
           <ul className="space-y-2 text-muted">
             <li><Link href="/torneios" className="hover:text-ink">Torneios</Link></li>
+            <li><Link href="/viradao" className="hover:text-ink">Viradão</Link></li>
             <li><Link href="/jogos" className="hover:text-ink">Jogos e formatos</Link></li>
             {walletOn && <li><Link href="/desafios" className="hover:text-ink">Desafios equipe vs equipe</Link></li>}
             {showOrganizer && <li><Link href="/organizar" className="hover:text-ink">Organizar um campeonato</Link></li>}

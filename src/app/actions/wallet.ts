@@ -8,7 +8,7 @@ import { getEnv } from "@/lib/env";
 import { submitKyc } from "@/server/kyc";
 import { createDeposit } from "@/server/deposits";
 import { cancelWithdrawal, confirmWithdrawal, requestWithdrawal } from "@/server/withdrawals";
-import { requireUser, toActor } from "@/server/session";
+import { requireActionUser as requireUser, toActor } from "@/server/session";
 import { creditsToCents } from "@/server/money-config";
 import { db } from "@/lib/db";
 import { handlePixWebhook } from "@/server/pix-webhooks";

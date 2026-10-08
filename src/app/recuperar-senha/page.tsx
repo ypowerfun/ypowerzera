@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getEnv } from "@/lib/env";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { forgotPasswordAction } from "@/app/actions/auth";
@@ -7,6 +9,7 @@ import { Card, Field, Input } from "@/components/ui";
 export const metadata: Metadata = { title: "Recuperar senha" };
 
 export default function ForgotPage() {
+  if (getEnv().authProvider === "chatgpt") redirect("/entrar");
   return (
     <div className="mx-auto max-w-md">
       <Card className="p-7">

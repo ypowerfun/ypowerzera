@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getEnv } from "@/lib/env";
 import type { Metadata } from "next";
 import { flatParams } from "@/lib/url";
 import { resetPasswordAction } from "@/app/actions/auth";
@@ -7,6 +9,7 @@ import { Alert, Card, Field, Input } from "@/components/ui";
 export const metadata: Metadata = { title: "Nova senha", robots: { index: false } };
 
 export default async function ResetPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ admin?: string }> }) {
+  if (getEnv().authProvider === "chatgpt") redirect("/entrar");
   const { token } = await params;
   const { admin } = flatParams(await searchParams);
   return (

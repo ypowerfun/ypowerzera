@@ -29,7 +29,7 @@ export async function listUsers(actorIn: Actor | null, opts: { q?: string; role?
       orderBy: [{ role: "asc" }, { createdAt: "desc" }],
       skip: (page - 1) * USERS_PAGE_SIZE,
       take: USERS_PAGE_SIZE,
-      select: { id: true, email: true, username: true, displayName: true, role: true, emailVerifiedAt: true, createdAt: true, bannedAt: true },
+      select: { id: true, email: true, username: true, displayName: true, role: true, emailVerifiedAt: true, createdAt: true, bannedAt: true, chatgptIdentity: { select: { subject: true } } },
     }),
   ]);
   const ids = users.map((u) => u.id);
@@ -62,7 +62,7 @@ export async function setUserRole(actorIn: Actor | null, userId: string, role: R
   requireAdmin(actor);
   if (role !== "USER" && role !== "ORGANIZER") throw new AppError("Escolha Jogador ou Organizador.");
   if (userId === actor.id) throw new AppError("Você não pode alterar o seu próprio cargo.", "FORBIDDEN");
-  const target = await db.user.findUnique({ where: { id: userId } });
+  const target = await db.user.findUnique({ where: { id: userId }, include: { chatgptIdentity: true } });
   if (!target) throw new AppError("Usuário não encontrado.", "NOT_FOUND");
   if (effectiveRole(target) === "ADMIN") throw new AppError("O cargo de um administrador não é alterado por aqui.", "FORBIDDEN");
   if (target.role === role) return { changed: false, from: target.role, to: role };
@@ -100,7 +100,7 @@ export async function setUserBan(actorIn: Actor | null, userId: string, ban: boo
   const actor = requireActor(actorIn);
   requireAdmin(actor);
   if (userId === actor.id) throw new AppError("Você não pode suspender a si mesmo.", "FORBIDDEN");
-  const target = await db.user.findUnique({ where: { id: userId } });
+  const target = await db.user.findUnique({ where: { id: userId }, include: { chatgptIdentity: true } });
   if (!target) throw new AppError("Usuário não encontrado.", "NOT_FOUND");
   if (effectiveRole(target) === "ADMIN") throw new AppError("Administradores não são suspensos por aqui.", "FORBIDDEN");
   const why = reason.trim().slice(0, 300);

@@ -5,10 +5,23 @@ import { loginAction } from "@/app/actions/auth";
 import { ActionForm } from "@/components/action-form";
 import { Alert, Card, Field, Input } from "@/components/ui";
 
+import { getEnv } from "@/lib/env";
+import { chatGPTSignInPath } from "@/server/chatgpt-auth";
+import { safeNext } from "@/lib/action-helpers";
+
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Entrar" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; "senha-redefinida"?: string }> }) {
   const sp = flatParams(await searchParams);
+  if (getEnv().authProvider === "chatgpt") return (
+    <div className="mx-auto max-w-md"><Card className="p-7">
+      <h1 className="text-2xl font-extrabold">Entrar na Prime Arena</h1>
+      <p className="mt-3 text-muted">Use sua conta ChatGPT para acessar seus times e inscrições.</p>
+      <a href={chatGPTSignInPath(safeNext(sp.next || "/conta"))} target="_top" className="mt-6 block rounded-lg bg-brand px-5 py-3 text-center font-bold text-white">Entrar com ChatGPT</a>
+      <p className="mt-4 text-sm text-muted">No primeiro acesso, você escolhe seu nome de jogador.</p>
+    </Card></div>
+  );
   return (
     <div className="mx-auto max-w-md">
       <Card className="p-7">

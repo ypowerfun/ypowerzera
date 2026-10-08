@@ -6,7 +6,7 @@ import { bool, guard, int, str, type FormState } from "@/lib/action-helpers";
 import { checkIn, registerForTournament, undoCheckIn, withdrawRegistration } from "@/server/registration";
 import { cancelPendingOrder, completeOrder, failOrder, startCheckout } from "@/server/orders";
 import { openDispute, reportMatch, vetoAction } from "@/server/matches";
-import { requireUser, toActor } from "@/server/session";
+import { requireActionUser as requireUser, toActor } from "@/server/session";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { AppError } from "@/lib/errors";
