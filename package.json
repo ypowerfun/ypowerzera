@@ -29,7 +29,9 @@
     "generate:meta": "node scripts/gen-model-meta.mjs",
     "build:sites": "opennextjs-cloudflare build",
     "preview:sites": "node scripts/sites-local.mjs",
-    "test:d1": "TEST_DB=d1 vitest run"
+    "test:d1": "TEST_DB=d1 vitest run",
+    "export:d1": "node scripts/export-to-d1.mjs",
+    "smoke:sites": "node scripts/sites-smoke.mjs"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.20.9",

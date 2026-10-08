@@ -21,7 +21,7 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     // no modo D1 ficam de fora os testes que dependem do SQLite/Node ou do próprio instalador de servidor
-    exclude: d1 ? ["node_modules/**", "tests/reset-db.test.ts", "tests/installer.test.ts"] : ["node_modules/**"],
+    exclude: d1 ? ["node_modules/**", "tests/reset-db.test.ts", "tests/installer.test.ts", "tests/d1/**"] : ["node_modules/**"],
     environment: "node",
     testTimeout: 60000,
     hookTimeout: 60000,
