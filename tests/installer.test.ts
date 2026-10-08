@@ -16,10 +16,10 @@ function exec(env: Record<string, string>, args: string[] = []) {
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 const OK = {
-  PA_DOMAIN: "meusite.com.br",
+  PA_DOMAIN: "arena.exemplo.com.br",
   PA_ADMIN_EMAIL: "Dono@Exemplo.com",
   PA_SMTP_URL: "smtp://usuario%40exemplo.com:s3nha%24forte@smtp.exemplo.com:587",
-  PA_MAIL_FROM: "Prime Arena <nao-responda@meusite.com.br>",
+  PA_MAIL_FROM: "Prime Arena <nao-responda@arena.exemplo.com.br>",
 };
 
 function workdir() {
@@ -46,8 +46,8 @@ describe.skipIf(process.platform === "win32")("instalador de servidor (scripts/i
     expect(statSync(path.join(d, ".env")).mode & 0o777).toBe(0o600);
     const env = envOf(d);
     expect(env).toMatchObject({
-      DOMAIN: "meusite.com.br",
-      APP_URL: "https://meusite.com.br",
+      DOMAIN: "arena.exemplo.com.br",
+      APP_URL: "https://arena.exemplo.com.br",
       ADMIN_EMAILS: "dono@exemplo.com",
       SMTP_URL: OK.PA_SMTP_URL,
       MAIL_FROM: OK.PA_MAIL_FROM,
@@ -105,8 +105,8 @@ describe.skipIf(process.platform === "win32")("instalador de servidor (scripts/i
   });
 
   it.each([
-    ["domínio com https://", { PA_DOMAIN: "https://meusite.com.br" }, /Domínio inválido/],
-    ["domínio com barra", { PA_DOMAIN: "meusite.com.br/" }, /Domínio inválido/],
+    ["domínio com https://", { PA_DOMAIN: "https://arena.exemplo.com.br" }, /Domínio inválido/],
+    ["domínio com barra", { PA_DOMAIN: "arena.exemplo.com.br/" }, /Domínio inválido/],
     ["domínio sem ponto", { PA_DOMAIN: "localhost" }, /Domínio inválido/],
     ["e-mail do administrador inválido", { PA_ADMIN_EMAIL: "isso-nao-e-email" }, /E-mail inválido/],
     ["SMTP sem smtp://", { PA_SMTP_URL: "http://servidor:587" }, /smtp:\/\//],
@@ -115,7 +115,7 @@ describe.skipIf(process.platform === "win32")("instalador de servidor (scripts/i
     ["SMTP com crase", { PA_SMTP_URL: "smtp://u:se`nha@servidor:587" }, /caractere que quebraria/],
     ["remetente sem e-mail", { PA_MAIL_FROM: "Prime Arena" }, /endereço de e-mail/],
     ["remetente @primearena.local", { PA_MAIL_FROM: "Prime Arena <no-reply@primearena.local>" }, /\.local/],
-    ["remetente com cifrão", { PA_MAIL_FROM: "Prime $Arena <a@meusite.com.br>" }, /não permitido/],
+    ["remetente com cifrão", { PA_MAIL_FROM: "Prime $Arena <a@arena.exemplo.com.br>" }, /não permitido/],
   ])("recusa e não grava nada: %s", (_nome, over, msg) => {
     const d = workdir();
     const r = run(d, { ...OK, ...over });
@@ -137,7 +137,7 @@ describe.skipIf(process.platform === "win32")("instalador de servidor (scripts/i
     void _ignorado;
     const r = run(d, semRemetente);
     expect(r.status, r.stderr).toBe(0);
-    expect(envOf(d).MAIL_FROM).toBe("Prime Arena <nao-responda@meusite.com.br>");
+    expect(envOf(d).MAIL_FROM).toBe("Prime Arena <nao-responda@arena.exemplo.com.br>");
   });
 
   it("recusa rodar fora da pasta do projeto", () => {
@@ -171,9 +171,11 @@ describe.skipIf(process.platform === "win32")("instalador: fluxo completo com co
     };
     stub("docker", `echo "docker $*" >> "$STUB_LOG"
 [ "$1" = "--version" ] && echo "Docker version 99.0.0"
+[ "$1" = "volume" ] && [ -n "\${STUB_VOLUME:-}" ] && echo "\$STUB_VOLUME"
 if [ "$1" = "compose" ]; then
   case "$2" in
-    version) echo "Docker Compose version v9" ;;
+    version) if [ "\${STUB_NOCOMPOSE:-0}" = "1" ] && [ ! -f "\$STUB_FLAGS/compose-installed" ]; then exit 1; fi; echo "Docker Compose version v9" ;;
+    up) [ "\${STUB_UP:-ok}" = "ok" ] || { echo "Error response from daemon: simulated failure" >&2; exit 1; } ;;
     exec) [ "\${STUB_HEALTH:-ok}" = "ok" ] || exit 1 ;;
     logs) echo "app | linha simulada do registro" ;;
   esac
@@ -187,10 +189,17 @@ for a in "$@"; do
   esac
 done
 exit 0`);
-    stub("getent", `echo "\${STUB_DNS_IP:-203.0.113.5} STREAM $3"`);
+    stub("getent", `if [ "$1" = "ahostsv6" ]; then [ -n "\${STUB_AAAA:-}" ] && echo "\$STUB_AAAA STREAM $2"; exit 0; fi
+[ "\${STUB_DNS_FAIL:-0}" = "1" ] && exit 2
+echo "\${STUB_DNS_IP:-203.0.113.5} STREAM $2"`);
+    stub("ss", `[ -n "\${STUB_BUSY:-}" ] && echo 'LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:(("'"\$STUB_BUSY"'",pid=812,fd=6))'
+exit 0`);
     stub("id", `if [ "$1" = "-u" ]; then echo "\${STUB_UID:-0}"; else /usr/bin/id "$@"; fi`);
     stub("ufw", `echo "ufw $*" >> "$STUB_LOG"`);
-    stub("apt-get", `echo "apt-get $*" >> "$STUB_LOG"`);
+    stub("apt-get", `echo "apt-get $*" >> "$STUB_LOG"
+case "$*" in *" update"*) [ "\${STUB_APT_FAIL:-0}" = "1" ] && exit 100 ;; esac
+case "$*" in *docker-compose-plugin*|*docker-compose-v2*) [ "\${STUB_APT_NOCOMPOSE:-0}" = "1" ] || : > "\$STUB_FLAGS/compose-installed" ;; esac
+exit 0`);
     stub("systemctl", `echo "systemctl $*" >> "$STUB_LOG"`);
     stub("sshd", `echo "port 2200"`);
     stub("sleep", `exit 0`);
@@ -199,6 +208,8 @@ exit 0`);
     stub("dd", `echo "dd $*" >> "$STUB_LOG"; exit 1`);
     stub("mkswap", `echo "mkswap $*" >> "$STUB_LOG"`);
     stub("swapon", `echo "swapon $*" >> "$STUB_LOG"`);
+    const flags = path.join(d, "_flags");
+    mkdirSync(flags);
     const swapfile = path.join(d, "fake-swapfile");
     const fstab = path.join(d, "fake-fstab");
     writeFileSync(fstab, "# fstab de teste\n");
@@ -208,7 +219,7 @@ exit 0`);
     writeFileSync(mem, "MemTotal:       4000000 kB\nSwapTotal:            0 kB\n");
     const go = (env: Record<string, string> = {}) =>
       exec({
-        PATH: `${bin}:${process.env.PATH ?? ""}`, HOME: process.env.HOME ?? "", PA_DIR: d, PA_OS_RELEASE: osr, PA_MEMINFO: mem, STUB_LOG: log, PA_SWAPFILE: swapfile, PA_FSTAB: fstab,
+        PATH: `${bin}:${process.env.PATH ?? ""}`, HOME: process.env.HOME ?? "", PA_DIR: d, PA_OS_RELEASE: osr, PA_MEMINFO: mem, STUB_LOG: log, STUB_FLAGS: flags, PA_SWAPFILE: swapfile, PA_FSTAB: fstab,
         SSH_CONNECTION: "198.51.100.9 50000 203.0.113.5 2200", ...OK, ...env,
       });
     return { d, go, swapfile, fstab, calls: () => readFileSync(log, "utf8") };
@@ -221,7 +232,7 @@ exit 0`);
     const calls = sb.calls();
     for (const c of ["ufw allow 2200/tcp", "ufw allow 80/tcp", "ufw allow 443/tcp", "ufw allow 443/udp", "ufw --force enable", "docker compose up -d --build"]) expect(calls, c).toContain(c);
     expect(calls.indexOf("ufw allow 2200/tcp")).toBeLessThan(calls.indexOf("ufw --force enable")); // libera o SSH ANTES de ligar o firewall
-    expect(r.stdout).toMatch(/https:\/\/meusite\.com\.br está no ar com HTTPS/);
+    expect(r.stdout).toMatch(/https:\/\/arena\.exemplo\.com\.br está no ar com HTTPS/);
     expect(existsSync(path.join(sb.d, ".env"))).toBe(true);
   });
 
@@ -250,7 +261,7 @@ exit 0`);
     const sb = sandbox();
     const r = sb.go({ PA_YES: "1", STUB_PUBLIC: "bad" });
     expect(r.status, r.stderr).toBe(0);
-    expect(r.stderr).toMatch(/Ainda não abre em https:\/\/meusite\.com\.br/);
+    expect(r.stderr).toMatch(/Ainda não abre em https:\/\/arena\.exemplo\.com\.br/);
   });
 
   it("sem ser administrador do servidor: recusa", () => {
@@ -315,5 +326,128 @@ exit 0`);
     const r = sb.go({ PA_YES: "1", PA_SKIP_FIREWALL: "1" });
     expect(r.status, r.stderr).toBe(0);
     expect(sb.calls()).not.toMatch(/mkswap|swapon|fallocate/);
+  });
+
+  // ───────── correções da revisão adversária ─────────
+  it("DNS que ainda não existe: explica o problema em vez de abortar em silêncio", () => {
+    const sb = sandbox();
+    const r = sb.go({ PA_YES: "1", STUB_DNS_FAIL: "1" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/aponta para 'nenhum endereço'/);
+    expect(r.stderr).toMatch(/Abortando \(use PA_IGNORE_DNS=1/);
+    expect(existsSync(path.join(sb.d, ".env"))).toBe(false);
+  });
+
+  it("registro AAAA (IPv6) de outro lugar: avisa e não sobe (a Let's Encrypt validaria por IPv6)", () => {
+    const sb = sandbox();
+    const r = sb.go({ PA_YES: "1", STUB_AAAA: "2001:db8::99" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/registro IPv6 \(AAAA\).*2001:db8::99/);
+    expect(sb.calls()).not.toContain("compose up");
+  });
+
+  it("portas 80/443 ocupadas por nginx/apache: explica antes de tentar subir", () => {
+    const sb = sandbox();
+    const r = sb.go({ PA_YES: "1", STUB_BUSY: "nginx" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/portas 80\/443 já estão em uso por: nginx/);
+    expect(r.stderr).toMatch(/systemctl disable --now apache2 nginx/);
+    expect(sb.calls()).not.toContain("compose up");
+  });
+
+  it("falha do docker compose up: mensagem em português com as causas comuns", () => {
+    const r = sandbox().go({ PA_YES: "1", STUB_UP: "bad" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/A montagem ou a inicialização falhou/);
+    expect(r.stderr).toMatch(/pouca memória/);
+  });
+
+  it("apt espera o lock das atualizações automáticas e uma falha do apt aborta com mensagem clara", () => {
+    const ok = sandbox();
+    expect(ok.go({ PA_YES: "1" }).status).toBe(0);
+    expect(ok.calls()).toContain("DPkg::Lock::Timeout=300");
+    const bad = sandbox().go({ PA_YES: "1", STUB_APT_FAIL: "1" });
+    expect(bad.status).not.toBe(0);
+    expect(bad.stderr).toMatch(/Não consegui atualizar a lista de pacotes/);
+  });
+
+  it("Docker já instalado sem 'docker compose': instala o complemento; se não der, explica o que fazer", () => {
+    const sb = sandbox();
+    const fixed = sb.go({ PA_YES: "1", STUB_NOCOMPOSE: "1" });
+    expect(fixed.status, fixed.stderr).toBe(0);
+    expect(sb.calls()).toMatch(/apt-get .*install -y docker-compose-plugin/);
+    const stuck = sandbox().go({ PA_YES: "1", STUB_NOCOMPOSE: "1", STUB_APT_NOCOMPOSE: "1" });
+    expect(stuck.status).not.toBe(0);
+    expect(stuck.stderr).toMatch(/sem o comando 'docker compose'/);
+    expect(stuck.stderr).toMatch(/apt-get remove -y docker\.io/);
+  });
+
+  it(".env que já existe mas está incompleto (modelo sem preencher): recusa, nomeia o que falta e não sobe", () => {
+    const sb = sandbox();
+    copyFileSync(path.join(sb.d, ".env.production.example"), path.join(sb.d, ".env"));
+    const r = sb.go({ PA_YES: "1" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/não está pronto/);
+    for (const k of ["APP_SECRET", "DATA_ENCRYPTION_KEY", "CRON_SECRET", "SMTP_URL", "ADMIN_EMAILS", "DOMAIN"]) expect(r.stderr, k).toContain(k); // inclui os exemplos não preenchidos
+    expect(r.stderr).toMatch(/mv \.env \.env\.antigo/);
+    expect(sb.calls()).not.toContain("compose up");
+  });
+
+  it(".env de desenvolvimento (segredo de exemplo, http://) também é recusado", () => {
+    const sb = sandbox();
+    writeFileSync(path.join(sb.d, ".env"), 'DOMAIN="x.com.br"\nAPP_URL="http://localhost:3000"\nAPP_SECRET="troque-esta-chave-em-producao-por-algo-bem-longo"\nDATA_ENCRYPTION_KEY="abc"\nCRON_SECRET="curto"\nSMTP_URL="smtp://u:p@h:587"\nMAIL_FROM="a <a@x.com.br>"\nADMIN_EMAILS="a@x.com.br"\n');
+    const r = sb.go({ PA_YES: "1" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toMatch(/APP_SECRET \(fraco ou de exemplo\)/);
+    expect(r.stderr).toMatch(/CRON_SECRET \(curto demais\)/);
+    expect(r.stderr).toMatch(/APP_URL \(precisa começar com https:\/\/\)/);
+    expect(r.stderr).not.toContain("troque-esta-chave"); // o valor do segredo nunca é impresso
+  });
+
+  it("banco deste site já existe no servidor mas o .env sumiu: NÃO gera segredos novos (os CPFs cifrados ficariam ilegíveis)", () => {
+    const sb = sandbox();
+    const bad = sb.go({ PA_YES: "1", STUB_VOLUME: "primearena_data" });
+    expect(bad.status).not.toBe(0);
+    expect(bad.stderr).toMatch(/Já existe um banco de dados deste site neste servidor/);
+    expect(bad.stderr).toMatch(/CPFs já salvos/);
+    expect(existsSync(path.join(sb.d, ".env"))).toBe(false);
+    expect(sb.calls()).not.toContain("compose up");
+    const forced = sb.go({ PA_YES: "1", STUB_VOLUME: "primearena_data", PA_FORCE_NEW_KEYS: "1" });
+    expect(forced.status, forced.stderr).toBe(0);
+    expect(existsSync(path.join(sb.d, ".env"))).toBe(true);
+  });
+
+  it("com .env presente o volume existente é o esperado: segue normalmente (atualização do site)", () => {
+    const sb = sandbox();
+    expect(sb.go({ PA_YES: "1" }).status).toBe(0);
+    const again = sb.go({ PA_YES: "1", STUB_VOLUME: "primearena_data" });
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout).toMatch(/edite o \.env \(nano \.env\)/);
+  });
+
+  it("'Pronto' só aparece quando o endereço público abre; senão diz 'Quase pronto'", () => {
+    const good = sandbox().go({ PA_YES: "1" });
+    expect(good.stdout).toMatch(/Pronto\./);
+    expect(good.stdout).not.toMatch(/Quase pronto/);
+    const pending = sandbox().go({ PA_YES: "1", STUB_PUBLIC: "bad" });
+    expect(pending.status, pending.stderr).toBe(0);
+    expect(pending.stdout).toMatch(/Quase pronto/);
+    expect(pending.stdout).not.toMatch(/Pronto\./);
+  });
+
+  it("dica de cópia do .env funciona para quem entrou com outro usuário (sudo) e para root", () => {
+    const asUser = sandbox().go({ PA_YES: "1", SUDO_USER: "ubuntu" });
+    expect(asUser.stdout).toMatch(/ssh ubuntu@203\.0\.113\.5 'sudo cat .*\.env' > env-primearena\.txt/);
+    const asRoot = sandbox().go({ PA_YES: "1" });
+    expect(asRoot.stdout).toMatch(/scp root@203\.0\.113\.5:.*\.env \.\/env-primearena\.txt/);
+  });
+
+  it("remetente com 'test' ou 'local' no meio do domínio é aceito (só o final do endereço conta)", () => {
+    for (const from of ["Prime Arena <nao-responda@app.test-arena.com.br>", "Prime Arena <a@loja.local.com.br>"]) {
+      const d = workdir();
+      const r = run(d, { ...OK, PA_MAIL_FROM: from });
+      expect(r.status, `${from}: ${r.stderr}`).toBe(0);
+      expect(envOf(d).MAIL_FROM).toBe(from);
+    }
   });
 });

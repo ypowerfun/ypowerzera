@@ -56,6 +56,18 @@ describe("configuração de produção", () => {
     expect(() => assertProductionConfig()).not.toThrow();
   });
 
+  it("MAIL_FROM: domínios legítimos que contêm 'test' ou 'local' no meio são aceitos; só o final do endereço conta", () => {
+    prod();
+    for (const ok of ["Prime Arena <nao-responda@app.test-arena.com.br>", "Prime Arena <a@loja.local.com.br>", "a@meusite.com.br", "Prime <a@testando.dev>"]) {
+      process.env.MAIL_FROM = ok;
+      expect(() => assertProductionConfig(), ok).not.toThrow();
+    }
+    for (const bad of ["Prime <a@meusite.local>", "Prime <a@x.invalid>", "a@servidor.test", "Prime <a@primearena.local>"]) {
+      process.env.MAIL_FROM = bad;
+      expect(() => assertProductionConfig(), bad).toThrow(/MAIL_FROM/);
+    }
+  });
+
   it("exige escolha explícita de TRUST_PROXY (evita IP forjado burlando limites)", () => {
     prod();
     delete process.env.TRUST_PROXY;

@@ -79,7 +79,9 @@ export function assertProductionConfig() {
   if (!env.smtpUrl) {
     problems.push("SMTP_URL é obrigatório em produção: sem ele nenhum e-mail de confirmação de conta sai e ninguém consegue confirmar o cadastro (veja docs/CONFIGURAR_EMAIL.md).");
   }
-  if (!process.env.MAIL_FROM?.trim() || /\.(local|invalid|test)\b/i.test(env.mailFrom)) {
+  // Recusa o padrão de desenvolvimento (@primearena.local) e domínios reservados (.local/.invalid/.test) SÓ no final do endereço:
+  // "app.test-arena.com.br" e "loja.local.com.br" são domínios legítimos.
+  if (!process.env.MAIL_FROM?.trim() || /@[^\s>]*\.(local|invalid|test)\s*>?\s*$/i.test(env.mailFrom)) {
     problems.push('MAIL_FROM é obrigatório em produção e precisa ser um endereço do seu domínio (ex.: "Prime Arena <nao-responda@meusite.com.br>"); o padrão de desenvolvimento (@primearena.local) é recusado pelos provedores de e-mail.');
   }
   if (env.adminEmails.length === 0) {
