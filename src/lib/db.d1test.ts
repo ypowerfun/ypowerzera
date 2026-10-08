@@ -6,9 +6,13 @@ import type { PrismaClient as NodePrismaClient, Prisma as NodePrisma } from "@pr
 import { createTestClient, createTestD1 } from "../../tests/d1/harness";
 
 const t = await createTestD1();
-const { db: client } = createTestClient(t.d1, { acquireMaxWaitMs: 30_000 });
+const { db: client, engine } = createTestClient(t.d1, { acquireMaxWaitMs: 30_000 });
 (globalThis as { __d1Dispose?: () => Promise<void> }).__d1Dispose = () => t.dispose();
 
 export const db = client as unknown as NodePrismaClient;
 export type Tx = NodePrisma.TransactionClient | NodePrismaClient;
 export type TxClient = NodePrisma.TransactionClient;
+
+export async function engineHealth(): Promise<{ dead: number; pending: number; staleLease: boolean } | null> {
+  return engine.health();
+}

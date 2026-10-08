@@ -9,3 +9,8 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
 /** Cliente ou transação interativa. */
 export type Tx = Prisma.TransactionClient | PrismaClient;
 export type TxClient = Prisma.TransactionClient;
+
+/** Saúde do motor de transações do D1 (só existe no ChatGPT Sites; aqui, no banco SQLite tradicional, não se aplica). */
+export async function engineHealth(): Promise<{ dead: number; pending: number; staleLease: boolean } | null> {
+  return null;
+}

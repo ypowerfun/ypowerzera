@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, engineHealth } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { getEnv, isValidDataEncryptionKey, mailProviderReady } from "@/lib/env";
 import { audit } from "./audit";
@@ -151,6 +151,24 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
   const smtpOk = mailProviderReady(env);
   const viaLabel = { resend: "Resend", brevo: "Brevo", smtp: "SMTP", none: "" }[env.mailProvider];
   items.push({ key: "smtp", label: "E-mail de confirmação de conta", ok: smtpOk, hint: smtpOk ? `Envio configurado (${viaLabel}); remetente: ${env.mailFrom}. Use o botão abaixo para testar.` : "Nenhum envio de e-mail configurado (RESEND_API_KEY, BREVO_API_KEY ou SMTP_URL): ninguém recebe o e-mail de confirmação (docs/CONFIGURAR_EMAIL.md)." });
+
+  // ChatGPT Sites: o motor de transações do D1 deve estar limpo (nada na quarentena, nenhuma transação interrompida esperando)
+  const engine = await engineHealth().catch(() => null);
+  if (engine) {
+    const ok = engine.dead === 0 && !engine.staleLease;
+    items.push({
+      key: "d1",
+      label: "Banco do Sites (transações)",
+      ok,
+      hint: ok
+        ? engine.pending > 0
+          ? `${engine.pending} operação(ões) em andamento agora.`
+          : "Tudo certo: nenhuma transação interrompida."
+        : engine.dead > 0
+          ? `${engine.dead} registro(s) em quarentena (_JournalDead): uma transação não pôde ser desfeita. Confira a conciliação da carteira e peça ajuda (docs/SITES.md, seção 2).`
+          : "Uma transação foi interrompida e será desfeita sozinha na próxima operação de escrita.",
+    });
+  }
 
   const lastRaw = await read(K_CRON_LAST);
   const last = lastRaw ? new Date(lastRaw) : null;

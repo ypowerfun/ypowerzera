@@ -27,9 +27,15 @@ O D1 grava cada comando na hora e **não tem `BEGIN/COMMIT`**. Todo o dinheiro d
 1. **Uma trava global de escrita** (uma linha no banco). Só uma transação, ou escrita avulsa, roda por vez; as outras esperam alguns instantes. É o mesmo modelo do SQLite com um escritor só, para o qual o projeto foi desenhado.
 2. **Diário de desfazer.** Antes de cada escrita dentro de uma transação, o site grava no banco "como era antes". Se algo falhar, tudo é desfeito na ordem inversa.
 3. **Confirmar = apagar o diário e soltar a trava**, em um único passo atômico do D1.
-4. **Queda no meio.** Se o servidor morrer no meio (energia, Worker encerrado), a trava vence sozinha em 40 segundos e a **próxima** operação desfaz a transação inacabada antes de qualquer coisa. Se desfazer falhar 5 vezes seguidas, o diário vai para a tabela `_JournalDead` (quarentena) e o erro aparece no log, para o site não ficar travado; a **conciliação** em *Admin → Carteiras* acusa qualquer divergência de dinheiro.
+4. **Queda no meio.** Se o servidor morrer no meio (energia, Worker encerrado), a trava vence sozinha em 40 segundos e a **próxima** operação desfaz a transação inacabada antes de qualquer coisa. Se desfazer falhar 5 vezes seguidas, o diário vai para a tabela `_JournalDead` (quarentena) e o erro aparece no log, para o site não ficar travado. **Admin → Configurações → Verificação do site → "Banco do Sites (transações)"** mostra a quarentena e qualquer transação interrompida; a **conciliação** em *Admin → Carteiras* acusa qualquer divergência de dinheiro.
 
 Testado com: erro no meio de transações, cascatas de exclusão, colunas JSON e datas, 10 saques simultâneos (o saldo nunca fica negativo), webhooks repetidos, queda simulada em 3 pontos, trava perdida por demora.
+
+**Limites conhecidos do motor (documentados nos testes `tests/d1/engine-*.test.ts`, marcados `it.fails`):**
+- uma **única** chamada ao D1 que ficasse parada por mais de 40 segundos exatamente entre a conferência da trava e a gravação poderia deixar metade de uma transação (a chance real é mínima: o D1 responde em milissegundos e cada gravação renova a trava);
+- `Prisma.JsonNull` explícito numa coluna JSON opcional voltaria como `NULL` ao desfazer (o site só usa `Prisma.DbNull`);
+- SQL cru (`$executeRaw`) é recusado dentro de transação; escrita aninhada (pai + filhos num só comando) é recusada em qualquer lugar; chaves primárias não podem ser alteradas dentro de transação;
+- uma operação toca no máximo 5.000 linhas dentro de uma transação.
 
 **O que isso não é:** um banco com transações de verdade. Duas consequências práticas: (a) leituras feitas *fora* de uma transação podem ver, por instantes, algo que ainda vai ser desfeito (todas as decisões de dinheiro são tomadas *dentro* da transação, já protegidas); (b) todas as escritas passam por uma fila única, então o site é pensado para **movimento pequeno ou médio** (dezenas de escritas por segundo, não milhares).
 
@@ -45,7 +51,7 @@ Testado com: erro no meio de transações, cascatas de exclusão, colunas JSON e
 
 1. **Gere os segredos** no seu computador (com Node instalado): `npm run secrets`. Guarde o resultado no gerenciador de senhas. **Não cole segredos numa conversa**; eles vão só nas configurações do site, como *secrets*.
 2. **Abra uma conversa com o ChatGPT (Codex) com acesso ao projeto**, anexe o zip e cole o texto de [`PROMPT_PARA_O_CHATGPT.md`](../PROMPT_PARA_O_CHATGPT.md). Ele deve: montar com `npm run build:sites`, criar o banco **D1 com o nome de binding `DB`**, aplicar as migrações da pasta `migrations/` **em ordem** (`0001_prime_arena.sql` e `0002_d1_engine.sql`) e publicar.
-3. **Cadastre as variáveis** nas configurações do site (tabela abaixo). As marcadas *secret* nunca vão em arquivo.
+3. **Cadastre as variáveis** nas configurações do site (tabela abaixo). As marcadas *secret* nunca vão em arquivo. (O build para o Sites **recusa** montar se houver um arquivo `.env` na pasta, justamente para que nenhum segredo seja embutido no pacote.)
 4. **Conecte o domínio** nas configurações do site e crie os registros DNS que o Sites mostrar.
 5. **Primeiro acesso:** abra o site, vá em **Criar conta** com o e-mail que você colocou em `ADMIN_EMAILS`, confirme pelo e-mail, e crie a senha (a conta vira administradora). Depois rode a *Verificação do site* em **Admin → Configurações** (tudo ✔).
 6. **Teste o e-mail** (botão em Admin → Configurações) e crie uma conta de teste.
@@ -61,7 +67,8 @@ Testado com: erro no meio de transações, cascatas de exclusão, colunas JSON e
 | `RESEND_API_KEY` ou `BREVO_API_KEY` | **secret** | sim | chave da API de e-mail |
 | `CRON_SECRET` | **secret** | para o agendador | 24+ caracteres aleatórios |
 | `DATA_ENCRYPTION_KEY` | **secret** | Fase 2 | 32 bytes (hex/base64). **Nunca troque com o site no ar**: ele protege os CPFs |
-| `PA_RUNTIME` | normal | sim | `sites` (já vem no `wrangler.jsonc`) |
+| `PA_RUNTIME` | normal | sim | `sites` (já vem no `wrangler.jsonc`; o site também reconhece sozinho que está no Cloudflare Workers) |
+| `PA_LOCAL_PREVIEW` | — | **nunca** | só para a prévia no seu computador (`preview:sites`). Não coloque no site de verdade |
 | `PAYMENTS_PROVIDER` | normal | — | `none` na Fase 1 (campeonatos grátis) |
 | `WALLET_ENABLED` | normal | — | `false` na Fase 1 |
 
@@ -79,7 +86,17 @@ Conferência: **Admin → Configurações → Verificação do site → Agendado
 
 ## 6. Fase 2: depósitos pela carteira com o Stripe
 
-*(Esta seção é completada junto com o módulo Stripe; veja também `CONFIGURAR_PIX.md`.)*
+Com o Sites a carteira usa o **Stripe** (Pix) para receber depósitos. O passo a passo completo, com as variáveis, os eventos do webhook e como testar no modo de teste do Stripe, está em [`CONFIGURAR_PIX.md`](CONFIGURAR_PIX.md), **seção 10**. O resumo:
+
+1. No Stripe: ative o **Pix**, crie a chave secreta e um **webhook** em `https://seudominio.com.br/api/webhooks/stripe` com os 6 eventos da seção 10.3.
+2. Nas configurações do site (segredos): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `DATA_ENCRYPTION_KEY`, e as variáveis `PIX_PROVIDER=stripe` e `WALLET_ENABLED=true`.
+3. **Todo depósito fica retido** até um administrador conferir o nome do pagador no painel do Stripe (o CPF digitado pelo pagador não é confirmado pelo banco). O crédito automático existe, mas é opcional e mais arriscado (`STRIPE_PIX_AUTO_CREDIT`).
+4. **Saques são manuais**: o Stripe recebe Pix, mas não paga Pix a terceiros. O administrador paga no app do banco e registra no painel (um administrador por saque, com comprovante).
+5. Ensaie primeiro com chave de teste (`STRIPE_ALLOW_TEST_KEY=true`, temporário) e comece com limites baixos.
+
+Nada disso foi testado contra o Stripe de verdade (a documentação oficial não pôde ser aberta no desenvolvimento): a seção 10.6 do guia lista exatamente o que confirmar no modo de teste.
+
+---
 
 ## 7. Levar dados de um banco existente para o D1
 
@@ -98,13 +115,15 @@ O exportador só lê o banco de origem, põe os pais antes dos filhos, **convert
 
 - `npm run preview:sites`: monta o site, cria um banco D1 local e abre em `http://localhost:8787` (o e-mail não sai de verdade).
 - `npm run smoke:sites`: sobe o site montado, cadastra uma conta num navegador real, entra, abre a área da conta e confere o agendador (16 verificações).
-- `npm run test:d1`: roda **toda** a suíte de testes contra um D1 simulado, com o motor de transações do Sites.
+- `npm run test:d1`: roda **toda** a suíte de testes (600+) contra um D1 simulado, com o motor de transações do Sites.
+- `npm test`: os testes normais, incluindo os do próprio motor (`tests/d1/`). `npm run test:d1:fuzz`: varreduras pesadas do motor (alguns minutos).
 
 ## 9. Limites e riscos (leia)
 
 | Risco | Detalhe | O que fazer |
 |---|---|---|
 | **Nunca publicado de verdade** | Testado em simulação local do Cloudflare, não no Sites real. O formato do arquivo de ligação com o Sites (`.openai/hosting.json`) não pôde ser consultado, por isso não vem incluído. | Use o prompt pronto: o ChatGPT gera/ajusta a ligação com o Sites e diz o que faltar. Teste tudo com a Fase 1 antes de qualquer dinheiro. |
+| **Tamanho do site** | O Worker montado tem ~15,5 MiB (3,9 MiB comprimido). O limite da Cloudflare é 10 MiB comprimido no plano pago e **3 MiB no grátis**. | Precisa de plano com limite de 10 MiB; confirme o do seu plano do Sites. |
 | **Limites do plano do Sites/Workers** | A hospedagem limita tempo de CPU por pedido, número de consultas ao banco por pedido e tamanho do site. O hash de senha (scrypt) gasta bastante CPU; o agendador faz muitas consultas. | Se cadastro/login falharem por tempo, ou o agendador ficar incompleto, o plano é pequeno demais: confirme os limites com a OpenAI. Em último caso use o servidor próprio. |
 | **Fila única de escrita** | Todas as escritas passam por uma trava global. | Adequado a movimento pequeno/médio. Muitos usuários simultâneos pedem servidor próprio com Postgres. |
 | **Regras de uso da OpenAI** | Hospedagens podem proibir apostas/jogos de azar e processamento de pagamentos. Desafios com dinheiro entre jogadores podem se enquadrar. | Leia a política do Sites e consulte um advogado **antes** da Fase 2. A Fase 1 (campeonatos gratuitos) não tem esse risco. |

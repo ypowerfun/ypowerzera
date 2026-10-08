@@ -355,3 +355,26 @@ describe("trava", () => {
     await holding;
   });
 });
+
+describe("saúde do motor (painel do dono)", () => {
+  it("conta a quarentena e acusa trava vencida por queda no meio", async () => {
+    let clock = 60_000_000;
+    const dirty = createTestClient(t.d1, { now: () => clock });
+    const base = await dirty.engine.health();
+    expect(base.staleLease).toBe(false);
+
+    await (t.d1.prepare("INSERT INTO _JournalDead (txId, seq, undo, deadAt) VALUES ('x', 1, '[]', 1)") as unknown as { run(): Promise<unknown> }).run();
+    expect((await dirty.engine.health()).dead).toBe(base.dead + 1);
+    await (t.d1.prepare("DELETE FROM _JournalDead WHERE txId = 'x'") as unknown as { run(): Promise<unknown> }).run();
+
+    // queda no meio de uma transação: a trava fica com dono e vence
+    const crashing = createTestClient(t.d1, { now: () => clock, crashPoint: (p) => { if (p === "after-write") throw new SimulatedCrash(p); } });
+    await expect(crashing.db.$transaction(async (tx) => { await tx.siteSetting.create({ data: { key: key(), value: "x" } }); })).rejects.toBeInstanceOf(SimulatedCrash);
+    expect((await dirty.engine.health()).staleLease).toBe(false); // ainda dentro do prazo
+    clock += 50_000;
+    expect((await dirty.engine.health()).staleLease).toBe(true);
+    // a próxima escrita recupera e a saúde volta ao normal
+    await dirty.db.siteSetting.create({ data: { key: key(), value: "recupera" } });
+    expect(await dirty.engine.health()).toMatchObject({ dead: 0, pending: 0, staleLease: false });
+  });
+});

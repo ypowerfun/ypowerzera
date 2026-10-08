@@ -49,6 +49,10 @@ export const ACQUIRE_MAX_WAIT_MS = 20_000;
 /** Teto de linhas que uma única operação dentro de transação pode tocar (para o diário não explodir). */
 export const MAX_ROWS_PER_OP = 5_000;
 const JOURNAL_CHUNK_ROWS = 40;
+/** Cada linha do diário fica bem abaixo do limite de ~2 MB por linha do D1. */
+const JOURNAL_CHUNK_BYTES = 400_000;
+/** Comandos por lote enviado ao D1 (o limite documentado é maior; esta folga evita surpresas). */
+const D1_BATCH_MAX = 50;
 /** Depois de tantas tentativas seguidas de desfazer sem sucesso, o diário vai para quarentena (veja `acquire`). */
 const MAX_RECOVERY_FAILURES = 5;
 
@@ -102,6 +106,8 @@ interface TxCtx {
   seq: number;
   tail: Promise<unknown>;
   closed: boolean;
+  /** true quando a transação foi DESFEITA: qualquer escrita que chegue depois (ramo órfão de Promise.all) é recusada. */
+  rolledBack: boolean;
   rows: number;
 }
 
@@ -143,19 +149,20 @@ export function createD1Engine(deps: EngineDeps) {
   // ───────── trava + recuperação ─────────
 
   /** Toma a trava (esperando, se preciso). Se encontrar o diário de uma transação que morreu, desfaz antes de seguir. */
-  async function acquire(owner: string): Promise<void> {
+  async function acquire(owner: string): Promise<number> {
     const started = now();
     for (;;) {
       const t = now();
       const [upd, journal] = await d1.batch([
         d1.prepare("UPDATE _Lease SET owner = ?1, expiresAt = ?2 WHERE id = 1 AND (owner IS NULL OR expiresAt < ?3)").bind(owner, t + leaseTtl, t),
-        d1.prepare("SELECT undo FROM _Journal ORDER BY rowid DESC"),
+        // só quem CONSEGUIU a trava recebe o diário (quem perde a disputa não baixa nada a cada tentativa)
+        d1.prepare("SELECT undo FROM _Journal WHERE EXISTS (SELECT 1 FROM _Lease WHERE id = 1 AND owner = ?1) ORDER BY rowid DESC").bind(owner),
       ]);
       if ((upd?.meta?.changes ?? 0) === 1) {
         const pending = (journal?.results ?? []) as Array<{ undo: string }>;
         if (pending.length) {
           try {
-            await applyUndoRows(pending.map((r) => r.undo));
+            await applyUndoRows(pending.map((r) => r.undo), owner);
             await d1.batch([d1.prepare("DELETE FROM _Journal"), d1.prepare("UPDATE _Lease SET failures = 0 WHERE id = 1")]);
           } catch (e) {
             // Falhou desfazer uma transação que morreu. Tentamos de novo nos próximos pedidos; se continuar falhando, o diário vai
@@ -170,13 +177,13 @@ export function createD1Engine(deps: EngineDeps) {
                 d1.prepare("DELETE FROM _Journal"),
                 d1.prepare("UPDATE _Lease SET failures = 0 WHERE id = 1"),
               ]);
-              return;
+              return t;
             }
             await releaseLease(owner).catch(() => undefined);
             throw e;
           }
         }
-        return;
+        return t;
       }
       if (now() - started > acquireMax) throw new DbBusyError();
       await sleep(15 + Math.floor(Math.random() * 60));
@@ -189,6 +196,15 @@ export function createD1Engine(deps: EngineDeps) {
     if (txId) stmts.push(d1.prepare("DELETE FROM _Journal WHERE txId = ?1").bind(txId));
     stmts.push(d1.prepare("UPDATE _Lease SET owner = NULL, expiresAt = 0 WHERE id = 1 AND owner = ?1").bind(owner));
     await d1.batch(stmts);
+  }
+
+  /** COMMIT: só vale se a trava ainda é desta transação (senão outro Worker já a desfez) — e nesse caso FALHA em vez de fingir sucesso. */
+  async function commit(owner: string): Promise<void> {
+    const res = await d1.batch([
+      d1.prepare("DELETE FROM _Journal WHERE txId = ?1 AND EXISTS (SELECT 1 FROM _Lease WHERE id = 1 AND owner = ?1)").bind(owner),
+      d1.prepare("UPDATE _Lease SET owner = NULL, expiresAt = 0 WHERE id = 1 AND owner = ?1").bind(owner),
+    ]);
+    if ((res[1]?.meta?.changes ?? 0) !== 1) throw new AppError("A operação demorou demais e foi cancelada. Tente novamente.");
   }
 
   async function withLease<T>(fn: () => Promise<T>): Promise<T> {
@@ -215,11 +231,24 @@ export function createD1Engine(deps: EngineDeps) {
     return out;
   }
 
-  async function applyUndoRows(serialized: string[]): Promise<void> {
+  /**
+   * Renova a trava do dono (mais `leaseTtl` a partir de agora) e confirma que ela ainda é dele. Se não for mais, lança: quem perdeu a
+   * trava não pode seguir escrevendo nem desfazendo (sobrescreveria o que o novo dono já confirmou).
+   */
+  async function renewLease(owner: string): Promise<void> {
+    const t = now();
+    const res = await d1.batch([d1.prepare("UPDATE _Lease SET expiresAt = ?2 WHERE id = 1 AND owner = ?1").bind(owner, t + leaseTtl)]);
+    if ((res[0]?.meta?.changes ?? 0) !== 1) throw new AppError("A operação foi interrompida porque demorou demais. Tente novamente.");
+  }
+
+  async function applyUndoRows(serialized: string[], owner?: string): Promise<void> {
     // `serialized` já vem do mais novo para o mais antigo; dentro de cada linha, de trás para frente
     for (const text of serialized) {
       const entries = JSON.parse(text) as Undo[];
-      for (let i = entries.length - 1; i >= 0; i--) await applyUndo(entries[i]);
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (owner) await renewLease(owner); // desfazer lento não pode deixar a trava vencer no meio e pisar na escrita do próximo dono
+        await applyUndo(entries[i]);
+      }
     }
   }
 
@@ -240,19 +269,44 @@ export function createD1Engine(deps: EngineDeps) {
     }
   }
 
+  /** Desfaz (e apaga do diário) as entradas com seq >= fromSeq desta transação: usado por escritas que falharam e por $transaction aninhada. */
+  async function undoSince(ctx: TxCtx, fromSeq: number): Promise<void> {
+    const rows = (await d1.batch([d1.prepare("SELECT undo FROM _Journal WHERE txId = ?1 AND seq >= ?2 ORDER BY seq DESC").bind(ctx.id, fromSeq)]))[0]?.results as Array<{ undo: string }> | undefined;
+    if (!rows?.length) return;
+    await applyUndoRows(rows.map((r) => r.undo), ctx.id);
+    await d1.batch([d1.prepare("DELETE FROM _Journal WHERE txId = ?1 AND seq >= ?2").bind(ctx.id, fromSeq)]);
+  }
+
   async function journalAppend(ctx: TxCtx, entries: Undo[]): Promise<void> {
     if (!entries.length) return;
-    const stmts: D1PreparedLike[] = [];
-    for (let i = 0; i < entries.length; i += JOURNAL_CHUNK_ROWS) {
-      // só grava se a trava ainda é desta transação: quem perdeu a trava (ficou parado além do prazo) é barrado ANTES de escrever
-      stmts.push(
+    // fatias por TAMANHO (o D1 limita cada linha a ~2 MB) e por quantidade
+    const slices: Undo[][] = [];
+    let cur: Undo[] = [];
+    let bytes = 0;
+    for (const e of entries) {
+      const size = JSON.stringify(e).length;
+      if (cur.length && (cur.length >= JOURNAL_CHUNK_ROWS || bytes + size > JOURNAL_CHUNK_BYTES)) {
+        slices.push(cur);
+        cur = [];
+        bytes = 0;
+      }
+      cur.push(e);
+      bytes += size;
+    }
+    if (cur.length) slices.push(cur);
+    for (let i = 0; i < slices.length; i += D1_BATCH_MAX) {
+      const group = slices.slice(i, i + D1_BATCH_MAX);
+      // só grava se a trava ainda é desta transação: quem perdeu a trava (ficou parado além do prazo) é barrado ANTES de escrever;
+      // e cada gravação renova a trava (uma chamada lenta precisa durar um TTL inteiro para perdê-la)
+      const stmts: D1PreparedLike[] = group.map((slice) =>
         d1
           .prepare("INSERT INTO _Journal (txId, seq, undo) SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM _Lease WHERE id = 1 AND owner = ?1)")
-          .bind(ctx.id, ctx.seq++, JSON.stringify(entries.slice(i, i + JOURNAL_CHUNK_ROWS))),
+          .bind(ctx.id, ctx.seq++, JSON.stringify(slice)),
       );
+      stmts.push(d1.prepare("UPDATE _Lease SET expiresAt = ?2 WHERE id = 1 AND owner = ?1").bind(ctx.id, now() + leaseTtl));
+      const res = await d1.batch(stmts);
+      if (res.some((r) => (r?.meta?.changes ?? 0) !== 1)) throw new AppError("A operação foi interrompida porque demorou demais. Tente novamente.");
     }
-    const res = await d1.batch(stmts);
-    if (res.some((r) => (r?.meta?.changes ?? 0) !== 1)) throw new AppError("A operação foi interrompida porque demorou demais. Tente novamente.");
     crash("after-journal");
   }
 
@@ -263,6 +317,12 @@ export function createD1Engine(deps: EngineDeps) {
     const rels = new Set(M[model].relations);
     for (const k of Object.keys(data as Row)) {
       if (rels.has(k)) throw new Error(`d1-engine: escrita aninhada (${model}.${k}) não é suportada em ${what}; faça as gravações em passos separados.`);
+    }
+  }
+
+  function rejectPkChange(model: string, data: unknown, what: string): void {
+    if (data && typeof data === "object" && (data as Row)[M[model].pk] !== undefined) {
+      throw new Error(`d1-engine: alterar a chave primária (${model}.${M[model].pk}) não é suportado em ${what}: o desfazer não alcança a linha renomeada nem as cascatas ON UPDATE.`);
     }
   }
 
@@ -326,7 +386,42 @@ export function createD1Engine(deps: EngineDeps) {
   }
 
   /** Para apagar: guarda as linhas, os filhos em cascata e os que viram NULL, na ordem certa para restaurar. */
+  // posição do modelo na cadeia de chaves estrangeiras (pais antes dos filhos): define a ordem de recriação ao desfazer
+  const rankMemo = new Map<string, number>();
+  function rank(model: string, guard = 0): number {
+    const hit = rankMemo.get(model);
+    if (hit !== undefined) return hit;
+    let r = 0;
+    if (guard < 50) for (const [pm, pmeta] of Object.entries(M)) if (pmeta.dependents.some((d) => d.model === model && pm !== model)) r = Math.max(r, 1 + rank(pm, guard + 1));
+    rankMemo.set(model, r);
+    return r;
+  }
+
+  /**
+   * Cascata em losango (ex.: BrResult depende de BrGame E de Participant): a ordem em que a recursão encontra as linhas
+   * NÃO serve para recriá-las. Aqui: sem repetições, todos os `ins` do pai para o filho, e só DEPOIS os `rest` (reatar SetNull).
+   * (`out` é aplicado de trás para frente ao desfazer, então os pais ficam por último e os `rest` por primeiro.)
+   */
   async function captureDelete(ctx: TxCtx, model: string, rows: Row[]): Promise<Undo[]> {
+    const raw = await captureDeleteRaw(ctx, model, rows);
+    const seen = new Set<string>();
+    const ins: Undo[] = [];
+    const rest: Undo[] = [];
+    for (const u of raw) {
+      if (u.k !== "ins") {
+        rest.push(u);
+        continue;
+      }
+      const key = `${u.m}\u0000${String((u.d as Row)[M[u.m].pk])}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      ins.push(u);
+    }
+    ins.sort((a, b) => rank(b.m) - rank(a.m)); // estável: filhos primeiro no array = pais primeiro ao desfazer
+    return [...rest, ...ins];
+  }
+
+  async function captureDeleteRaw(ctx: TxCtx, model: string, rows: Row[]): Promise<Undo[]> {
     const out: Undo[] = [];
     if (!rows.length) return out;
     guardRows(ctx, rows.length, model);
@@ -335,7 +430,7 @@ export function createD1Engine(deps: EngineDeps) {
       const refs = [...new Set(rows.map((r) => r[dep.ref]))];
       const children = (await baseDelegate(dep.model).findMany({ where: { [dep.fk]: { in: refs } } })) as Row[];
       if (!children.length) continue;
-      if (dep.onDelete === "Cascade") out.push(...(await captureDelete(ctx, dep.model, children)));
+      if (dep.onDelete === "Cascade") out.push(...(await captureDeleteRaw(ctx, dep.model, children)));
       else {
         guardRows(ctx, children.length, dep.model);
         out.push(...(await restoreEntries(dep.model, children)));
@@ -354,21 +449,25 @@ export function createD1Engine(deps: EngineDeps) {
       }
       case "createMany":
       case "createManyAndReturn":
+        guardRows(ctx, Array.isArray(args.data) ? (args.data as unknown[]).length : 1, model);
         return prepareCreateMany(model, args);
       case "update": {
         rejectNested(model, args.data, "update");
+        rejectPkChange(model, args.data, "update");
         const row = (await dlg.findUnique({ where: args.where })) as Row | null;
         return { args, undo: row ? await restoreEntries(model, [row]) : [] };
       }
       case "updateMany":
       case "updateManyAndReturn": {
         rejectNested(model, args.data, op);
+        rejectPkChange(model, args.data, op);
         const rows = (await dlg.findMany({ where: args.where })) as Row[];
         guardRows(ctx, rows.length, model);
         return { args, undo: await restoreEntries(model, rows) };
       }
       case "upsert": {
         rejectNested(model, args.update, "upsert.update");
+        rejectPkChange(model, args.update, "upsert.update");
         const row = (await dlg.findUnique({ where: args.where })) as Row | null;
         if (row) return { args, undo: await restoreEntries(model, [row]) };
         const c = await prepareCreateRow(model, args.create as Row);
@@ -393,6 +492,19 @@ export function createD1Engine(deps: EngineDeps) {
     if (!WRITE_OPS.has(operation)) return query(args);
     const ctx = als.getStore();
     if (ctx && !ctx.closed) return txWrite(ctx, model, operation, args, query);
+    // ramo órfão de uma transação que já foi DESFEITA (ex.: Promise.all em que um ramo falhou): recusar, nunca virar escrita avulsa
+    if (ctx && ctx.rolledBack) return Promise.reject(new Error("d1-engine: a transação já foi desfeita; esta escrita foi recusada."));
+    // fora de transação também: uma escrita aninhada (pai + filhos) viraria vários comandos soltos e poderia ficar pela metade
+    try {
+      if (operation === "create" || operation === "update" || operation === "updateMany" || operation === "updateManyAndReturn") rejectNested(model, args.data, operation);
+      if (operation === "createMany" || operation === "createManyAndReturn") for (const r of Array.isArray(args.data) ? (args.data as unknown[]) : [args.data]) rejectNested(model, r, operation);
+      if (operation === "upsert") {
+        rejectNested(model, args.create, "upsert.create");
+        rejectNested(model, args.update, "upsert.update");
+      }
+    } catch (e) {
+      return Promise.reject(e);
+    }
     if (LEASE_EXEMPT_MODELS.has(model)) return query(args);
     return withLease(() => query(args));
   }
@@ -403,8 +515,16 @@ export function createD1Engine(deps: EngineDeps) {
       if (ctx.closed) throw new Error("d1-engine: a transação já terminou.");
       if (now() > ctx.deadline) throw new AppError("A operação demorou demais e foi cancelada. Tente novamente.");
       const prepared = await prepareWrite(ctx, model, op, args);
+      const seqStart = ctx.seq;
       await journalAppend(ctx, prepared.undo);
-      const result = await query(prepared.args);
+      let result: unknown;
+      try {
+        result = await query(prepared.args);
+      } catch (e) {
+        // "tudo ou nada" por COMANDO (como no SQLite): o que esta operação gravou antes de falhar (ex.: createMany em várias partes) é desfeito já
+        if (!(e instanceof SimulatedCrash) && ctx.seq > seqStart) await undoSince(ctx, seqStart).catch((u) => console.error("[d1-engine] desfazer da operação falhou; o rollback final tenta de novo:", u));
+        throw e;
+      }
       crash("after-write");
       return result;
     };
@@ -427,31 +547,52 @@ export function createD1Engine(deps: EngineDeps) {
             for (const p of arg) out.push(await p); // PrismaPromise é preguiçoso: roda aqui, dentro do contexto da transação
             return out as unknown as T;
           });
-    if (als.getStore() && !als.getStore()!.closed) return body(clientRef); // transação dentro de transação: junta-se à de fora
+    const outer = als.getStore();
+    if (outer && !outer.closed) {
+      // transação dentro de transação: junta-se à de fora, com "savepoint" — se a interna falhar, as escritas dela são desfeitas antes de o erro subir
+      const mark = outer.seq;
+      try {
+        return await body(clientRef);
+      } catch (e) {
+        if (!(e instanceof SimulatedCrash)) {
+          await outer.tail.catch(() => undefined);
+          if (outer.seq > mark) await undoSince(outer, mark);
+        }
+        throw e;
+      }
+    }
     const id = newId(now());
-    await acquire(id);
-    const ctx: TxCtx = { id, deadline: now() + Math.min(options?.timeout ?? txDeadline, txDeadline), seq: 0, tail: Promise.resolve(), closed: false, rows: 0 };
+    const acquiredAt = await acquire(id);
+    // o prazo conta a partir da AQUISIÇÃO da trava (a recuperação de uma queda anterior pode ter consumido parte do TTL)
+    const ctx: TxCtx = { id, deadline: acquiredAt + Math.min(options?.timeout ?? txDeadline, txDeadline), seq: 0, tail: Promise.resolve(), closed: false, rolledBack: false, rows: 0 };
     let result: T;
     try {
       result = await als.run(ctx, () => body(clientRef));
       await ctx.tail; // escritas esquecidas sem await terminam (ou falham) antes do commit
     } catch (e) {
       ctx.closed = true;
+      ctx.rolledBack = true;
       if (e instanceof SimulatedCrash) throw e; // "o processo morreu": nada de limpeza
       await ctx.tail.catch(() => undefined);
-      try {
-        const rows = (await d1.batch([d1.prepare("SELECT undo FROM _Journal WHERE txId = ?1 ORDER BY rowid DESC").bind(id)]))[0]?.results as Array<{ undo: string }> | undefined;
-        await applyUndoRows((rows ?? []).map((r) => r.undo));
-        await releaseLease(id, id);
-      } catch (rollbackError) {
-        // não conseguimos desfazer agora: a trava vence sozinha e a PRÓXIMA aquisição termina o serviço a partir do diário
-        console.error("[d1-engine] rollback falhou; a recuperação automática vai concluir:", rollbackError);
+      let done = false;
+      for (let attempt = 0; attempt < 3 && !done; attempt++) {
+        try {
+          const rows = (await d1.batch([d1.prepare("SELECT undo FROM _Journal WHERE txId = ?1 ORDER BY rowid DESC").bind(id)]))[0]?.results as Array<{ undo: string }> | undefined;
+          await applyUndoRows((rows ?? []).map((r) => r.undo), id);
+          await releaseLease(id, id);
+          done = true;
+        } catch (rollbackError) {
+          console.error(`[d1-engine] rollback falhou (tentativa ${attempt + 1}/3):`, rollbackError);
+          if (attempt < 2) await sleep(100 * (attempt + 1));
+        }
       }
+      // sem sucesso: marca a trava como VENCIDA agora (o dono continua registrado) para a PRÓXIMA aquisição concluir o desfazer já, sem esperar o TTL
+      if (!done) await d1.batch([d1.prepare("UPDATE _Lease SET expiresAt = 0 WHERE id = 1 AND owner = ?1").bind(id)]).catch(() => undefined);
       throw e;
     }
     ctx.closed = true;
     crash("before-commit");
-    await releaseLease(id, id); // COMMIT: apaga o diário e solta a trava de uma vez só
+    await commit(id); // COMMIT: apaga o diário e solta a trava de uma vez só — e só se a trava ainda é nossa
     return result;
   }
 
@@ -472,13 +613,38 @@ export function createD1Engine(deps: EngineDeps) {
     get(target, prop) {
       if (prop === "$transaction") return transaction;
       if (prop === "$connect" || prop === "$disconnect") return async () => undefined;
+      if (prop === "$executeRaw" || prop === "$executeRawUnsafe") {
+        // SQL cru não entra no diário: dentro de uma transação não teria como ser desfeito. Fora dela, passa pela trava de escrita.
+        const run = Reflect.get(target, prop, target) as (...a: unknown[]) => Promise<unknown>;
+        return (...a: unknown[]) => {
+          const ctx = als.getStore();
+          if (ctx && !ctx.closed) return Promise.reject(new Error("d1-engine: SQL cru ($executeRaw) não é suportado dentro de transação: o desfazer não o alcança."));
+          return withLease(() => run.apply(target, a));
+        };
+      }
       return Reflect.get(target, prop, target);
     },
   });
   clientRef = client;
 
+  /** Para o painel do dono: quarentena do diário (deve ser 0), diário pendente e trava vencida (queda no meio). */
+  async function health(): Promise<{ dead: number; pending: number; staleLease: boolean }> {
+    const [dead, pending, lease] = await d1.batch([
+      d1.prepare("SELECT COUNT(*) AS n FROM _JournalDead"),
+      d1.prepare("SELECT COUNT(*) AS n FROM _Journal"),
+      d1.prepare("SELECT owner, expiresAt FROM _Lease WHERE id = 1"),
+    ]);
+    const l = (lease?.results?.[0] ?? {}) as { owner?: string | null; expiresAt?: number };
+    return {
+      dead: Number((dead?.results?.[0] as { n?: number } | undefined)?.n ?? 0),
+      pending: Number((pending?.results?.[0] as { n?: number } | undefined)?.n ?? 0),
+      staleLease: !!l.owner && (l.expiresAt ?? 0) < now(),
+    };
+  }
+
   return {
     client: client as unknown,
+    health,
     /** Roda `fn` já dentro da trava (para tarefas de manutenção). */
     withLease,
     /** Só para testes. */
