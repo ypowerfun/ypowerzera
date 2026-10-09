@@ -1,0 +1,42 @@
+import {applyD1Schema} from './helpers/d1-schema.mjs';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {Miniflare} from 'miniflare';
+const bundle=await build({stdin:{resolveDir:process.cwd(),contents:`
+import {addD1OrgMember,removeD1OrgMember,updateD1Organization,deleteD1Organization} from './src/server/d1/organizations';
+export default {async fetch(request,env){try{const input=await request.json();const path=new URL(request.url).pathname;
+if(path==='/add')await addD1OrgMember(env.DB,input);else if(path==='/remove')await removeD1OrgMember(env.DB,input);
+else if(path==='/update')await updateD1Organization(env.DB,input);else await deleteD1Organization(env.DB,input);
+return Response.json({ok:true});}catch(e){return Response.json({error:e.message},{status:409});}}}`},bundle:true,write:false,format:'esm',platform:'browser',external:['node:*']});
+const mf=new Miniflare({modules:true,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],script:bundle.outputFiles[0].text});
+try{
+ const db=await mf.getD1Database('DB');await applyD1Schema(db);
+ for(let i=0;i<5;i++)await db.prepare('INSERT INTO User(id,email,username,displayName,passwordHash,emailVerifiedAt,updatedAt,role) VALUES (?,?,?,?,?,?,?,?)').bind('u'+i,`u${i}@example.com`,'u'+i,'User '+i,'hash',1,1,i<2?'ORGANIZER':'USER').run();
+ await db.prepare("INSERT INTO Organization(id,slug,name) VALUES ('o','org','Original')").run();
+ for(const [id,role] of [['u0','OWNER'],['u1','ADMIN']])await db.prepare('INSERT INTO OrgMember(id,orgId,userId,role) VALUES (?,?,?,?)').bind(id,'o',id,role).run();
+ const call=async(path,input)=>{const r=await mf.dispatchFetch('https://runtime.invalid'+path,{method:'POST',body:JSON.stringify({actorId:'u0',actorIsAdmin:false,orgId:'o',...input})});return {status:r.status,data:await r.json()};};
+ assert.equal((await call('/add',{actorId:'u1',userId:'u2',role:'ADMIN'})).status,409);
+ const added=await Promise.all(Array.from({length:8},()=>call('/add',{userId:'u2',role:'STAFF'})));
+ assert.equal(added.filter(x=>x.status===200).length,1);
+ assert.equal((await call('/remove',{userId:'u0'})).status,409);
+ assert.equal((await call('/remove',{actorId:'u1',userId:'u1'})).status,409);
+ await db.prepare("CREATE TRIGGER fail_org BEFORE INSERT ON AuditLog BEGIN SELECT RAISE(ABORT,'test rollback'); END").run();
+ assert.equal((await call('/remove',{userId:'u2'})).status,409);
+ assert(await db.prepare("SELECT id FROM OrgMember WHERE userId='u2'").first());
+ assert.equal((await call('/update',{name:'Changed',description:null})).status,409);
+ assert.equal((await db.prepare("SELECT name FROM Organization WHERE id='o'").first()).name,'Original');
+ await db.prepare('DROP TRIGGER fail_org').run();
+ assert.equal((await call('/update',{name:'Changed',description:'Text'})).status,200);
+ assert.equal((await call('/delete',{confirmName:'Original'})).status,409);
+ await db.prepare("INSERT INTO Tournament(id,orgId,slug,name,gameId,modeId,status,startsAt,maxParticipants,seedSalt,updatedAt) VALUES ('t','o','t','Tournament','g','m','REGISTRATION',100,16,'s',1)").run();
+ assert.equal((await call('/delete',{confirmName:'Changed'})).status,409);
+ await db.prepare("UPDATE Tournament SET status='DRAFT' WHERE id='t'").run();
+ await db.prepare("CREATE TRIGGER fail_notify BEFORE INSERT ON Notification BEGIN SELECT RAISE(ABORT,'test rollback'); END").run();
+ assert.equal((await call('/delete',{confirmName:'Changed'})).status,409);
+ assert.equal((await db.prepare("SELECT deletedAt FROM Organization WHERE id='o'").first()).deletedAt,null);
+ await db.prepare('DROP TRIGGER fail_notify').run();
+ assert.equal((await call('/delete',{confirmName:'Changed'})).status,200);
+ assert(await db.prepare("SELECT id FROM Tournament WHERE id='t'").first());
+ assert.equal((await call('/add',{userId:'u3',role:'STAFF'})).status,409);
+ console.log('PASS: organization role boundaries; concurrent membership uniqueness; update/remove/delete rollback; active tournament guard; historical drafts retained.');
+}finally{await mf.dispose();}

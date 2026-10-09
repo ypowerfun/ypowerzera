@@ -1,4 +1,5 @@
 import { sitesDatabase } from "@/lib/sites-d1";
+import { respondD1TeamInvite, changeD1TeamRole, removeD1TeamMember, inviteD1TeamMember, deleteD1Team } from "./d1/team-members";
 import { createD1Team } from "./d1/create-groups";
 import { Prisma, type ChallengeStatus, type ParticipantStatus, type TournamentStatus, type WithdrawalStatus } from "@prisma/client";
 import { z } from "zod";
@@ -66,6 +67,11 @@ export async function inviteToTeam(actorIn: Actor | null, teamId: string, userna
   if (team.members.length >= 15) throw new AppError("O time atingiu o limite de 15 membros.");
   const pending = await db.teamInvite.findFirst({ where: { teamId, userId: user.id, status: "PENDING", expiresAt: { gt: new Date() } } });
   if (pending) throw new AppError("Já existe um convite pendente para esta pessoa.", "CONFLICT");
+  const d1 = sitesDatabase();
+  if (d1) {
+    const id = await inviteD1TeamMember(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", teamId, userId: user.id, role, token: randomToken(24) });
+    return db.teamInvite.findUniqueOrThrow({ where: { id } });
+  }
   const invite = await db.teamInvite.create({
     data: { teamId, invitedById: actor.id, userId: user.id, role, token: randomToken(24), expiresAt: new Date(Date.now() + 7 * 86400_000) },
   });
@@ -79,6 +85,8 @@ export async function respondToInvite(actorIn: Actor | null, inviteId: string, a
   if (!invite || invite.userId !== actor.id) throw new AppError("Convite não encontrado.", "NOT_FOUND");
   if (invite.status !== "PENDING") throw new AppError("Este convite não está mais disponível.");
   if (invite.expiresAt < new Date()) throw new AppError("Este convite expirou.");
+  const d1 = sitesDatabase();
+  if (d1) return respondD1TeamInvite(d1, { actorId: actor.id, inviteId, accept });
   if (!accept) {
     await db.teamInvite.update({ where: { id: invite.id }, data: { status: "DECLINED" } });
     return;
@@ -102,6 +110,8 @@ export async function removeFromTeam(actorIn: Actor | null, teamId: string, user
   if (target.role === "CAPTAIN" && team.members.filter((m) => m.role === "CAPTAIN").length === 1) {
     throw new AppError("Transfira a capitania antes de sair do time.");
   }
+  const d1 = sitesDatabase();
+  if (d1) return removeD1TeamMember(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", teamId, userId });
   await db.teamMember.delete({ where: { id: target.id } });
   await audit(actor.id, self ? "team.leave" : "team.kick", "Team", teamId, { userId });
 }
@@ -138,6 +148,8 @@ export async function setMemberRole(actorIn: Actor | null, teamId: string, userI
     throw new AppError("Administradores não podem se tornar líder de um time. Transfira a capitania para um integrante.", "FORBIDDEN");
   }
   if (role !== "CAPTAIN" && target.role === "CAPTAIN") throw new AppError("Para tirar a capitania, transfira-a para outro integrante.");
+  const d1 = sitesDatabase();
+  if (d1) return changeD1TeamRole(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", teamId, userId, role });
   await db.$transaction(async (tx) => {
     await tx.teamMember.update({ where: { id: target.id }, data: { role } });
     if (role === "CAPTAIN") {
@@ -176,6 +188,8 @@ export async function deleteTeam(actorIn: Actor | null, teamId: string, input: {
   const isLeader = team.members.some((m) => m.userId === actor.id && m.role === "CAPTAIN");
   if (!isLeader && reason.length < 10) throw new AppError("Informe o motivo da exclusão (mínimo de 10 caracteres).");
 
+  const d1 = sitesDatabase();
+  if (d1) return deleteD1Team(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", teamId, reason });
   const now = new Date();
   return db.$transaction(
     async (tx) => {
