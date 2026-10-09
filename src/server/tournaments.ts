@@ -1,5 +1,5 @@
 import { sitesDatabase } from "@/lib/sites-d1";
-import { createD1Tournament, transitionD1Tournament } from "./d1/tournaments";
+import { createD1Tournament, transitionD1Tournament, updateD1Tournament, cancelD1FreeTournament, deleteD1Draft, seedD1Tournament } from "./d1/tournaments";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { safeHttpUrl } from "@/lib/url";
@@ -295,6 +295,14 @@ export async function updateTournament(actorIn: Actor | null, id: string, patch:
   if (patch.customFields) data.customFields = patch.customFields as unknown as Prisma.InputJsonValue;
   if (patch.mapPool) data.mapPool = patch.mapPool as unknown as Prisma.InputJsonValue;
 
+  const d1 = sitesDatabase();
+  if (d1) {
+    if (patch.stages) validateStagesLoose(patch.stages as PresetStage[]);
+    const norm = (v: unknown) => JSON.stringify(((v as PrizeSplitEntry[] | null) ?? []).map(e => [e.placement,e.label,e.percent]));
+    await updateD1Tournament(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", tournamentId: id, updatedAt: t.updatedAt.getTime(),
+      data, fields: Object.keys(patch), stages: patch.stages, prizeChanged: patch.prizeSplit !== undefined && norm(patch.prizeSplit) !== norm(t.prizeSplit) });
+    return db.tournament.findUniqueOrThrow({ where: { id } });
+  }
   await db.$transaction(async (tx) => {
     await tx.tournament.update({ where: { id }, data });
     if (patch.stages) {
@@ -344,6 +352,8 @@ export async function applySeeding(actorIn: Actor | null, id: string, method?: "
   const m = method ?? t.seedingMethod;
   const ps = await db.participant.findMany({ where: { tournamentId: id, status: { in: ["REGISTERED", "CHECKED_IN"] } } });
   const ordered = orderSeeds(ps.map((p) => ({ id: p.id, seed: m === "MANUAL" ? p.seed : null, rating: p.rating })), m.toLowerCase() as EngineSeeding, t.seedSalt);
+  const d1 = sitesDatabase();
+  if (d1) return seedD1Tournament(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", tournamentId: id, updatedAt: t.updatedAt.getTime(), participants: ps, ordered });
   await db.$transaction(ordered.map((pid, i) => db.participant.update({ where: { id: pid }, data: { seed: i + 1 } })));
 }
 
@@ -447,6 +457,8 @@ export async function cancelTournament(actorIn: Actor | null, id: string, reason
   if (t.status === "COMPLETED" || t.status === "CANCELED") throw new AppError("Este campeonato já foi encerrado.");
   if (reason.trim().length < 3) throw new AppError("Informe o motivo do cancelamento.");
   if (reason.length > 500) throw new AppError("O motivo pode ter até 500 caracteres.");
+  const d1 = sitesDatabase();
+  if (d1) return cancelD1FreeTournament(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", tournamentId: id, updatedAt: t.updatedAt.getTime(), reason });
   await db.tournament.update({ where: { id }, data: { status: "CANCELED" } });
   const orders = await db.order.findMany({ where: { tournamentId: id, status: { in: ["PAID", "PARTIALLY_REFUNDED"] } } });
   const failures: string[] = [];
@@ -468,6 +480,8 @@ export async function deleteDraft(actorIn: Actor | null, id: string) {
   const actor = requireActor(actorIn);
   const t = await loadManaged(actor, id, "admin");
   if (t.status !== "DRAFT") throw new AppError("Só rascunhos podem ser excluídos. Para os demais, cancele o campeonato.");
+  const d1 = sitesDatabase();
+  if (d1) return deleteD1Draft(d1, { actorId: actor.id, actorIsAdmin: actor.role === "ADMIN", tournamentId: id, updatedAt: t.updatedAt.getTime() });
   await db.tournament.delete({ where: { id } });
   await audit(actor.id, "tournament.delete", "Tournament", id);
 }
