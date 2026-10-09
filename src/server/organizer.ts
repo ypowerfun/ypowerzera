@@ -1,3 +1,5 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { TournamentPlan } from "./d1/tournament-plan";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { audit } from "./audit";
@@ -30,6 +32,17 @@ export async function markPrizePaid(actorIn: Actor | null, awardId: string, note
   if (!a) throw new AppError("Premiação não encontrada.", "NOT_FOUND");
   await assertTournamentAccess(actor, a.tournament, "admin");
   if (a.status === "PAID") return;
+  const d1 = sitesDatabase();
+  if (d1) {
+    const plan = await TournamentPlan.load(d1, a.tournamentId);
+    const award = plan.row('PrizeAward', awardId);
+    if (award.status === 'PAID') return;
+    Object.assign(award, {status:'PAID', paidAt:plan.now, note:note?.trim().slice(0,200)||null});
+    plan.audit(actor.id,'prize.paid','PrizeAward',awardId,{amountCents:award.amountCents});
+    plan.notify([String(plan.row('Participant', String(award.participantId)).userId)],'prize.paid','Premiação paga',`Sua premiação de ${plan.tournament.name} (${award.placement}º lugar) foi marcada como paga.`,`/torneios/${plan.tournament.slug}`);
+    await plan.commit({id:actor.id,isAdmin:actor.role==='ADMIN'},'admin');
+    return;
+  }
   await db.prizeAward.update({ where: { id: awardId }, data: { status: "PAID", paidAt: new Date(), note: note?.trim().slice(0, 200) || null } });
   await audit(actor.id, "prize.paid", "PrizeAward", awardId, { amountCents: a.amountCents });
   await notify(a.participant.userId, "prize.paid", "Premiação paga", `Sua premiação de ${a.tournament.name} (${a.placement}º lugar) foi marcada como paga.`, `/torneios/${a.tournament.slug}`);

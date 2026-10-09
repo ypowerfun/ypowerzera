@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { sitesDatabase } from "@/lib/sites-d1";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { getEnv, isValidDataEncryptionKey } from "@/lib/env";
@@ -21,8 +23,20 @@ async function read(key: string): Promise<string | null> {
   return (await db.siteSetting.findUnique({ where: { key } }))?.value ?? null;
 }
 
-async function write(key: string, value: string, actorId: string): Promise<void> {
+async function write(key: string, value: string, actorId: string, action: string, meta: Record<string, unknown>): Promise<void> {
+  const d1 = sitesDatabase();
+  if (d1) {
+    await d1.batch([
+      d1.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM User u WHERE u.id=? AND u.bannedAt IS NULL AND (u.role='ADMIN'
+        OR EXISTS (SELECT 1 FROM ChatGPTIdentity i WHERE i.userId=u.id AND i.subject IN (SELECT value FROM json_each(?)))))
+        THEN 1 ELSE json('settings-permission-conflict') END`).bind(actorId,JSON.stringify(getEnv().chatgptAdminUserIds)),
+      d1.prepare(`INSERT INTO SiteSetting(key,value,updatedById,updatedAt) VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updatedById=excluded.updatedById,updatedAt=excluded.updatedAt`).bind(key,value,actorId,Date.now()),
+      d1.prepare(`INSERT INTO AuditLog(id,actorId,action,entity,entityId,meta,createdAt) VALUES (?,?,?,'SiteSetting',?,?,?)`).bind(randomUUID(),actorId,action,key,JSON.stringify(meta),Date.now()),
+    ]);
+    return;
+  }
   await db.siteSetting.upsert({ where: { key }, create: { key, value, updatedById: actorId }, update: { value, updatedById: actorId } });
+  await audit(actorId, action, "SiteSetting", key, meta);
 }
 
 export interface ReadinessItem {
@@ -108,15 +122,13 @@ export async function setWalletEnabled(actorIn: Actor | null, enabled: boolean):
     const r = walletReadiness();
     if (!r.ready) throw new AppError(`Termine as configurações antes de ativar: ${r.items.filter((i) => !i.ok).map((i) => i.label).join(", ")}.`, "FORBIDDEN");
   }
-  await write(K_WALLET, enabled ? "true" : "false", actor.id);
-  await audit(actor.id, "settings.wallet", "SiteSetting", K_WALLET, { enabled });
+  await write(K_WALLET, enabled ? "true" : "false", actor.id, "settings.wallet", { enabled });
 }
 
 export async function setWithdrawalsNeedAdminApproval(actorIn: Actor | null, required: boolean): Promise<void> {
   const actor = requireActor(actorIn);
   requireAdmin(actor);
-  await write(K_WITHDRAW_ADMIN, required ? "true" : "false", actor.id);
-  await audit(actor.id, "settings.withdraw_admin_approval", "SiteSetting", K_WITHDRAW_ADMIN, { required });
+  await write(K_WITHDRAW_ADMIN, required ? "true" : "false", actor.id, "settings.withdraw_admin_approval", { required });
 }
 
 // ───────── Verificação do site (a lista que o admin vê em Configurações) ─────────
@@ -124,6 +136,11 @@ export async function setWithdrawalsNeedAdminApproval(actorIn: Actor | null, req
 /** O agendador (/api/cron/wallet) chama isto a cada rodada: é como o admin enxerga que ele está funcionando. */
 export async function markCronRun(now = new Date()): Promise<void> {
   const value = now.toISOString();
+  const d1 = sitesDatabase();
+  if (d1) {
+    await d1.prepare(`INSERT INTO SiteSetting(key,value,updatedAt) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updatedAt=excluded.updatedAt`).bind(K_CRON_LAST,value,now.getTime()).run();
+    return;
+  }
   await db.siteSetting.upsert({ where: { key: K_CRON_LAST }, create: { key: K_CRON_LAST, value }, update: { value } });
 }
 
@@ -145,8 +162,8 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
   const urlOk = env.appUrl.startsWith("https://") && !/localhost|127\.0\.0\.1/.test(env.appUrl);
   items.push({ key: "url", label: "Endereço público com https", ok: urlOk, hint: urlOk ? `Os links dos e-mails usam ${env.appUrl}.` : `APP_URL está como ${env.appUrl}. Em produção use o endereço https:// do site, senão os links dos e-mails ficam errados.` });
 
-  const smtpOk = !!env.smtpUrl || !!env.resendApiKey;
-  items.push({ key: "smtp", label: "E-mail de confirmação de conta (SMTP)", ok: smtpOk, hint: smtpOk ? `Envio configurado; remetente: ${env.mailFrom}. Use o botão abaixo para testar.` : "SMTP_URL não está configurado: ninguém recebe o e-mail de confirmação (docs/CONFIGURAR_EMAIL.md)." });
+  const smtpOk = env.authProvider === "chatgpt" || !!env.smtpUrl || !!env.resendApiKey;
+  items.push({ key: "smtp", label: "Acesso e confirmação de conta", ok: smtpOk, hint: env.authProvider === "chatgpt" ? "Login e recuperação de acesso são gerenciados pela conta ChatGPT." : smtpOk ? `Envio configurado; remetente: ${env.mailFrom}. Use o botão abaixo para testar.` : "SMTP_URL não está configurado: ninguém recebe o e-mail de confirmação (docs/CONFIGURAR_EMAIL.md)." });
 
   const lastRaw = await read(K_CRON_LAST);
   const last = lastRaw ? new Date(lastRaw) : null;
@@ -154,8 +171,8 @@ export async function siteHealth(now = new Date()): Promise<ReadinessItem[]> {
   items.push({
     key: "cron",
     label: "Agendador (saques, Pix expirado, desafios)",
-    ok: cronOk,
-    hint: cronOk ? `Rodou ${agoLabel(last!, now)}.` : last ? `Parado: a última rodada foi ${agoLabel(last, now)}. Sem ele os saques aprovados não saem e os Pix expirados não são limpos.` : "Ainda não rodou. Ele precisa chamar /api/cron/wallet a cada 1 a 5 minutos (já vem pronto no docker-compose).",
+    ok: !env.walletEnabled || cronOk,
+    hint: !env.walletEnabled ? "Movimentações financeiras desativadas nesta fase; não há saques nem depósitos a processar." : cronOk ? `Rodou ${agoLabel(last!, now)}.` : last ? `Parado: a última rodada foi ${agoLabel(last, now)}. Sem ele os saques aprovados não saem e os Pix expirados não são limpos.` : "Ainda não rodou. Ele precisa chamar /api/cron/wallet a cada 1 a 5 minutos (já vem pronto no docker-compose).",
   });
 
   const payOk = env.paymentsProvider === "none" || env.paymentsProvider === "stripe" || !env.isProd;

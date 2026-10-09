@@ -47,5 +47,27 @@ await submit.text();assert.equal(submit.status,303,'profile server action');
  assert.equal(promoted.status,303,'admin role server action');await promoted.text();
  assert.equal((await db.prepare("SELECT role FROM User WHERE username='runtimeplayer'").first()).role,'ORGANIZER');
  assert.equal((await db.prepare("SELECT count(*) n FROM AuditLog WHERE action='user.role'").first()).n,1);
- console.log('PASS: packaged Next Worker, anonymous login/profile/Viradão/API and authenticated profile creation through a real Server Action and account lookup on D1; admin page and actual role action; forged admin action denied.');
+ const config=await mf.dispatchFetch(base+'/admin/configuracoes',{headers:adminHeaders});assert.equal(config.status,200);
+ const configHtml=await config.text();
+ const configForm=(configHtml.match(/<form[\s\S]*?<\/form>/g)??[]).find(f=>f.includes('name="required" value="off"'));assert(configForm,'withdraw approval setting');
+ const configData=new FormData();for(const tag of configForm.match(/<input[^>]*>/g)??[]){const name=/name="([^"]+)"/.exec(tag)?.[1],value=/value="([^"]*)"/.exec(tag)?.[1];if(name)configData.append(decode(name),decode(value??''));}
+ const configRequest=new Request(base+'/admin/configuracoes',{method:'POST',body:configData});
+ const configResponse=await mf.dispatchFetch(base+'/admin/configuracoes',{method:'POST',redirect:'manual',headers:{...adminHeaders,origin:base,'content-type':configRequest.headers.get('content-type')},body:await configRequest.arrayBuffer()});
+ await configResponse.text();assert.equal(configResponse.status,303,'settings server action');
+ assert.equal((await db.prepare("SELECT value FROM SiteSetting WHERE key='withdraw.requireAdminApproval'").first()).value,'false');
+ assert.equal((await db.prepare("SELECT count(*) n FROM AuditLog WHERE action='settings.withdraw_admin_approval'").first()).n,1);
+ await db.prepare("INSERT INTO Organization(id,slug,name) VALUES ('real-org','real-org','Real Org')").run();
+ await db.prepare("INSERT INTO Tournament(id,orgId,slug,name,gameId,modeId,status,startsAt,maxParticipants,seedSalt,updatedAt,requireCheckIn) VALUES ('real-t','real-org','real-t','Real Tournament','sf6','1v1','REGISTRATION',1900000000000,8,'seed',1,0)").run();
+ await db.prepare('INSERT INTO Stage(id,tournamentId,"order",name,type,settings) VALUES (?,?,?,?,?,?)').bind('real-stage','real-t',1,'Final','SINGLE_ELIMINATION',JSON.stringify({type:'SINGLE_ELIMINATION',bestOf:{default:3},thirdPlaceMatch:false})).run();
+ const playerId=(await db.prepare("SELECT id FROM User WHERE username='runtimeplayer'").first()).id;
+ for(const [id,userId] of [['real-a','admin'],['real-b',playerId]])await db.prepare('INSERT INTO Participant(id,tournamentId,userId,name,status,roster) VALUES (?,?,?,?,?,?)').bind(id,'real-t',userId,id,'REGISTERED','[]').run();
+ const manage=await mf.dispatchFetch(base+'/organizar/real-t',{headers:adminHeaders});assert.equal(manage.status,200);const manageHtml=await manage.text();
+ const startForm=(manageHtml.match(/<form[\s\S]*?<\/form>/g)??[]).find(f=>f.includes('Iniciar campeonato e gerar chaves'));assert(startForm,'start tournament form');
+ const startData=new FormData();for(const tag of startForm.match(/<input[^>]*>/g)??[]){const name=/name="([^"]+)"/.exec(tag)?.[1],value=/value="([^"]*)"/.exec(tag)?.[1];if(name)startData.append(decode(name),decode(value??''));}
+ const startRequest=new Request(base+'/organizar/real-t',{method:'POST',body:startData});
+ const started=await mf.dispatchFetch(base+'/organizar/real-t',{method:'POST',redirect:'manual',headers:{...adminHeaders,origin:base,'content-type':startRequest.headers.get('content-type')},body:await startRequest.arrayBuffer()});
+ await started.text();assert(started.status<400,'start action response');
+ assert.equal((await db.prepare("SELECT status FROM Tournament WHERE id='real-t'").first()).status,'LIVE');
+ assert.equal((await db.prepare("SELECT count(*) n FROM Match WHERE stageId='real-stage' AND status='READY'").first()).n,1);
+ console.log('PASS: packaged Next Worker, anonymous login/profile/Viradão/API and authenticated profile creation through a real Server Action and account lookup on D1; admin page and actual role action; forged admin action denied; actual settings and tournament-start actions, bracket on D1.');
 } finally {await mf.dispose();}

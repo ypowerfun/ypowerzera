@@ -1,4 +1,5 @@
-import { randomInt } from "node:crypto";
+import { sitesDatabase } from "@/lib/sites-d1";
+import { randomInt, randomUUID } from "node:crypto";
 import type { Coupon, Order, Prisma, Tournament } from "@prisma/client";
 import { db, type Tx } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -51,6 +52,21 @@ export async function createCoupon(
   if (input.tournamentId) {
     const t = await db.tournament.findUnique({ where: { id: input.tournamentId } });
     if (!t || t.orgId !== input.orgId) throw new AppError("Campeonato inválido para este cupom.");
+  }
+  const d1 = sitesDatabase();
+  if (d1) {
+    const id = randomUUID();
+    await d1.batch([
+      d1.prepare(`SELECT CASE WHEN EXISTS (SELECT 1 FROM Organization o JOIN User u ON u.id=? WHERE o.id=? AND o.deletedAt IS NULL
+        AND u.bannedAt IS NULL AND (?=1 OR (u.role='ORGANIZER' AND EXISTS (SELECT 1 FROM OrgMember WHERE orgId=o.id AND userId=u.id AND role IN ('OWNER','ADMIN'))))
+        AND (? IS NULL OR EXISTS (SELECT 1 FROM Tournament WHERE id=? AND orgId=o.id))) THEN 1 ELSE json('coupon-permission-conflict') END`)
+        .bind(actor.id,input.orgId,actor.role==='ADMIN'?1:0,input.tournamentId||null,input.tournamentId||null),
+      d1.prepare(`INSERT INTO Coupon(id,code,orgId,tournamentId,percentOff,amountOffCents,maxRedemptions,expiresAt,createdAt) VALUES (?,?,?,?,?,?,?,?,?)`)
+        .bind(id,code,input.orgId,input.tournamentId||null,input.percentOff??null,input.amountOffCents??null,input.maxRedemptions??null,input.expiresAt?.getTime()??null,Date.now()),
+      d1.prepare(`INSERT INTO AuditLog(id,actorId,action,entity,entityId,meta,createdAt) VALUES (?,?,'coupon.create','Coupon',?,?,?)`)
+        .bind(randomUUID(),actor.id,id,JSON.stringify({code}),Date.now()),
+    ]);
+    return db.coupon.findUniqueOrThrow({where:{id}});
   }
   const coupon = await db.coupon.create({
     data: {
