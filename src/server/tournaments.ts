@@ -1,3 +1,4 @@
+import { startD1Tournament, startD1NextStage } from "./d1/tournament-start";
 import { sitesDatabase } from "@/lib/sites-d1";
 import { createD1Tournament, transitionD1Tournament, updateD1Tournament, cancelD1FreeTournament, deleteD1Draft, seedD1Tournament } from "./d1/tournaments";
 import { randomBytes } from "node:crypto";
@@ -364,6 +365,11 @@ export async function startTournament(actorIn: Actor | null, id: string) {
   const first = t.stages[0];
   if (!first) throw new AppError("Defina ao menos uma fase.");
 
+  const d1 = sitesDatabase();
+  if (d1) {
+    await startD1Tournament(d1, actor, id);
+    return db.tournament.findUniqueOrThrow({ where: { id } });
+  }
   const dropped: Array<{ id: string; userId: string; was: string }> = [];
   await db.$transaction(
     async (tx) => {
@@ -430,6 +436,8 @@ async function settleDropped(t: Pick<Tournament, "name" | "slug" | "checkInClose
 /** Inicia a próxima fase (depois que a anterior terminou). */
 export async function startNextStage(actorIn: Actor | null, id: string) {
   const actor = requireActor(actorIn);
+  const d1 = sitesDatabase();
+  if (d1) return startD1NextStage(d1, actor, id);
   const t = await loadManaged(actor, id, "admin");
   if (t.status !== "LIVE") throw new AppError("O campeonato não está em andamento.");
   const live = t.stages.find((s) => s.status === "LIVE");

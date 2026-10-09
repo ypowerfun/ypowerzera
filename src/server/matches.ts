@@ -1,3 +1,5 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { reportD1Match, disputeD1Match, resultD1Match, scheduleD1Match, vetoD1Match } from "./d1/matches";
 import { Prisma } from "@prisma/client";
 import { db, type TxClient } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -109,6 +111,8 @@ const TX = { timeout: 30000 };
 export async function reportMatch(actorIn: Actor | null, matchId: string, scoreA: number, scoreB: number): Promise<"reported" | "completed" | "disputed"> {
   const actor = requireActor(actorIn);
   await rateLimit(`report:${actor.id}`, 40, 3600, "Muitos relatos de placar seguidos. Aguarde um pouco.");
+  const d1 = sitesDatabase();
+  if (d1) return reportD1Match(d1, actor, matchId, scoreA, scoreB);
   return db.$transaction(async (tx) => {
     const m = await loadMatch(tx, matchId);
     const t = m.stage.tournament;
@@ -161,6 +165,8 @@ export async function openDispute(actorIn: Actor | null, matchId: string, reason
   if (text.length < 5) throw new AppError("Descreva o motivo da disputa (mínimo de 5 caracteres).");
   if (text.length > 600) throw new AppError("O motivo pode ter até 600 caracteres. Se precisar de mais, anexe um link.");
   await rateLimit(`dispute:${actor.id}`, 10, 3600, "Muitas disputas seguidas. Aguarde um pouco.");
+  const d1 = sitesDatabase();
+  if (d1) return disputeD1Match(d1, actor, matchId, text);
   await db.$transaction(async (tx) => {
     await tx.match.update({ where: { id: m.id }, data: { status: "DISPUTED" } });
     const open = await tx.matchDispute.findFirst({ where: { matchId: m.id, status: "OPEN" } });
@@ -182,6 +188,8 @@ export async function openDispute(actorIn: Actor | null, matchId: string, reason
 export async function setMatchResult(actorIn: Actor | null, matchId: string, scoreA: number, scoreB: number, note?: string) {
   const actor = requireActor(actorIn);
   if ((note ?? "").length > 500) throw new AppError("A observação pode ter até 500 caracteres.");
+  const d1 = sitesDatabase();
+  if (d1) return resultD1Match(d1, actor, matchId, { scoreA, scoreB, note: note?.trim() || undefined });
   await db.$transaction(async (tx) => {
     const m = await loadMatch(tx, matchId);
     await assertTournamentAccess(actor, m.stage.tournament, "staff", tx);
@@ -196,6 +204,11 @@ export async function setMatchResult(actorIn: Actor | null, matchId: string, sco
 
 export async function forfeitMatch(actorIn: Actor | null, matchId: string, loserSide: "a" | "b", reason: string) {
   const actor = requireActor(actorIn);
+  const d1 = sitesDatabase();
+  if (d1) {
+    if (!['a','b'].includes(loserSide) || reason.trim().length < 3 || reason.length > 500) throw new AppError("Informe um motivo de W.O. de 3 a 500 caracteres.");
+    return resultD1Match(d1, actor, matchId, { loserSide, note: `W.O.: ${reason.trim()}` });
+  }
   await db.$transaction(async (tx) => {
     const m = await loadMatch(tx, matchId);
     await assertTournamentAccess(actor, m.stage.tournament, "staff", tx);
@@ -213,6 +226,8 @@ export async function forfeitMatch(actorIn: Actor | null, matchId: string, loser
 /** Desfaz o resultado de uma partida (somente se as partidas seguintes não foram jogadas). */
 export async function resetMatch(actorIn: Actor | null, matchId: string) {
   const actor = requireActor(actorIn);
+  const d1 = sitesDatabase();
+  if (d1) return resultD1Match(d1, actor, matchId, { reset: true });
   await db.$transaction(async (tx) => {
     const m = await loadMatch(tx, matchId);
     await assertTournamentAccess(actor, m.stage.tournament, "staff", tx);
@@ -230,6 +245,8 @@ export async function resetMatch(actorIn: Actor | null, matchId: string) {
 
 export async function scheduleMatch(actorIn: Actor | null, matchId: string, at: Date | null) {
   const actor = requireActor(actorIn);
+  const d1 = sitesDatabase();
+  if (d1) return scheduleD1Match(d1, actor, matchId, at);
   const m = await loadMatch(db, matchId);
   await assertTournamentAccess(actor, m.stage.tournament, "staff");
   await db.match.update({ where: { id: m.id }, data: { scheduledAt: at } });
@@ -255,6 +272,8 @@ export function vetoAvailable(m: { bestOf: number; stage: { tournament: { gameId
 
 export async function vetoAction(actorIn: Actor | null, matchId: string, map: string): Promise<VetoState> {
   const actor = requireActor(actorIn);
+  const d1 = sitesDatabase();
+  if (d1) return vetoD1Match(d1, actor, matchId, map);
   return db.$transaction(async (tx) => {
     const m = await loadMatch(tx, matchId);
     if (!["READY", "REPORTED"].includes(m.status)) throw new AppError("O veto só pode ser feito em partidas liberadas.");

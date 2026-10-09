@@ -1,3 +1,5 @@
+import { sitesDatabase } from "@/lib/sites-d1";
+import { submitD1BrResults, codeD1BrGame } from "./d1/leaderboard";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
@@ -20,6 +22,8 @@ export interface BrRowInput {
  */
 export async function submitBrResults(actorIn: Actor | null, brGameId: string, rows: BrRowInput[], opts: { fillMissing?: boolean; code?: string } = {}) {
   const actor = requireActor(actorIn);
+  const d1 = sitesDatabase();
+  if (d1) return submitD1BrResults(d1, actor, brGameId, rows, opts);
   await db.$transaction(
     async (tx) => {
       const game = await tx.brGame.findUnique({ where: { id: brGameId }, include: { stage: { include: { tournament: true } } } });
@@ -79,6 +83,8 @@ export async function submitBrResults(actorIn: Actor | null, brGameId: string, r
 
 export async function setBrGameCode(actorIn: Actor | null, brGameId: string, code: string) {
   const actor = requireActor(actorIn);
+  const d1 = sitesDatabase();
+  if (d1) return codeD1BrGame(d1, actor, brGameId, code);
   const game = await db.brGame.findUnique({ where: { id: brGameId }, include: { stage: { include: { tournament: true } } } });
   if (!game) throw new AppError("Partida não encontrada.", "NOT_FOUND");
   await assertTournamentAccess(actor, game.stage.tournament, "staff");

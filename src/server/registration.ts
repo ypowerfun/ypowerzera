@@ -1,3 +1,4 @@
+import { seedD1Participant, disqualifyD1Participant } from "./d1/participant-management";
 import { changeD1CheckIn, withdrawD1FreeRegistration } from "./d1/registration-lifecycle";
 import { sitesDatabase } from "@/lib/sites-d1";
 import { commitFreeRegistration } from "./d1/free-registration";
@@ -286,6 +287,8 @@ export async function setParticipantSeed(actorIn: Actor | null, participantId: s
   await assertTournamentAccess(actor, p.tournament, "staff");
   if (p.tournament.status === "LIVE" || p.tournament.status === "COMPLETED") throw new AppError("O campeonato já começou; o seed não pode mais ser alterado.");
   if (seed !== null && (!Number.isInteger(seed) || seed < 1 || seed > 1024)) throw new AppError("Seed inválido.");
+  const d1 = sitesDatabase();
+  if (d1) return seedD1Participant(d1, actor, participantId, seed, rating);
   await db.participant.update({ where: { id: p.id }, data: { seed, ...(rating !== undefined ? { rating } : {}) } });
 }
 
@@ -298,6 +301,8 @@ export async function disqualifyParticipant(actorIn: Actor | null, participantId
   if (reason.trim().length < 3) throw new AppError("Informe o motivo da desclassificação.");
   if (reason.length > 500) throw new AppError("O motivo pode ter até 500 caracteres.");
   if (p.status === "DISQUALIFIED") return;
+  const d1 = sitesDatabase();
+  if (d1) return disqualifyD1Participant(d1, actor, participantId, reason);
   await db.$transaction(
     async (tx) => {
       await tx.participant.update({ where: { id: p.id }, data: { status: "DISQUALIFIED", dqReason: reason.trim() } });
